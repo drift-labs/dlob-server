@@ -24,6 +24,7 @@ import {
   PerpMarkets,
   DLOBSubscriber,
   MarketType,
+  isVariant,
 } from "@drift-labs/sdk";
 
 import { Mutex } from "async-mutex";
@@ -549,40 +550,66 @@ const main = async () => {
     }
   });
 
-  app.get(
-    "/orders/idlWithSlot",
-    handleResponseTime,
-    async (_req, res, next) => {
-      try {
-        const dlobOrders: DLOBOrders = [];
+  app.get("/orders/idlWithSlot", handleResponseTime, async (req, res, next) => {
+    try {
+      const { marketName, marketIndex, marketType } = req.query;
+      const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
+        marketType as string,
+        marketIndex as string,
+        marketName as string
+      );
+      const useFilter =
+        marketName !== undefined ||
+        marketIndex !== undefined ||
+        marketType !== undefined;
 
-        for (const user of userMap.values()) {
-          const userAccount = user.getUserAccount();
+      if (useFilter) {
+        if (
+          error ||
+          normedMarketType === undefined ||
+          normedMarketIndex === undefined
+        ) {
+          res.status(400).send(error);
+          return;
+        }
+      }
 
-          for (const order of userAccount.orders) {
-            if (getVariant(order.status) === "init") {
+      const dlobOrders: DLOBOrders = [];
+
+      for (const user of userMap.values()) {
+        const userAccount = user.getUserAccount();
+
+        for (const order of userAccount.orders) {
+          if (getVariant(order.status) === "init") {
+            continue;
+          }
+
+          if (useFilter) {
+            if (
+              getVariant(order.marketType) !== getVariant(normedMarketType) ||
+              order.marketIndex !== normedMarketIndex
+            ) {
               continue;
             }
-
-            dlobOrders.push({
-              user: user.getUserAccountPublicKey(),
-              order,
-            } as DLOBOrder);
           }
-        }
 
-        res.writeHead(200);
-        res.end(
-          JSON.stringify({
-            slot: bulkAccountLoader.mostRecentSlot,
-            data: dlobCoder.encode(dlobOrders).toString("base64"),
-          })
-        );
-      } catch (err) {
-        next(err);
+          dlobOrders.push({
+            user: user.getUserAccountPublicKey(),
+            order,
+          } as DLOBOrder);
+        }
       }
+
+      res.end(
+        JSON.stringify({
+          slot: bulkAccountLoader.mostRecentSlot,
+          data: dlobCoder.encode(dlobOrders).toString("base64"),
+        })
+      );
+    } catch (err) {
+      next(err);
     }
-  );
+  });
 
   const validateDlobQuery = (
     marketType?: string,
