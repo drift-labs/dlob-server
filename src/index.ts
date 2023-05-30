@@ -24,7 +24,6 @@ import {
   PerpMarkets,
   DLOBSubscriber,
   MarketType,
-  isVariant,
 } from "@drift-labs/sdk";
 
 import { Mutex } from "async-mutex";
@@ -686,8 +685,15 @@ const main = async () => {
 
   app.get("/l2", handleResponseTime, async (req, res, next) => {
     try {
-      const { marketName, marketIndex, marketType, depth, includeVamm } =
-        req.query;
+      const {
+        marketName,
+        marketIndex,
+        marketType,
+        depth,
+        includeVamm,
+        includePhoenix,
+        includeSerum,
+      } = req.query;
 
       const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
         marketType as string,
@@ -699,13 +705,21 @@ const main = async () => {
         return;
       }
 
-      const l2 = dlobSubscriber.getL2({
+      const l2 = await dlobSubscriber.getL2({
         marketIndex: normedMarketIndex,
         marketType: normedMarketType,
         depth: depth ? parseInt(depth as string) : 10,
-        includeVamm: includeVamm
-          ? (includeVamm as string).toLowerCase() === "true"
-          : false,
+        opts: {
+          includeVammL2: includeVamm
+            ? `${includeVamm}`.toLowerCase() === "true"
+            : false,
+          includePhoenixL2: includeSerum
+            ? `${includeSerum}`.toLowerCase() === "true"
+            : false,
+          includeSerumL2: includePhoenix
+            ? `${includePhoenix}`.toLowerCase() === "true"
+            : false,
+        },
       });
 
       for (const key of Object.keys(l2)) {
