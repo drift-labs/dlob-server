@@ -24,6 +24,9 @@ import {
   PerpMarkets,
   DLOBSubscriber,
   MarketType,
+  SpotMarketConfig,
+  PhoenixSubscriber,
+  SerumSubscriber,
 } from "@drift-labs/sdk";
 
 import { Mutex } from "async-mutex";
@@ -215,6 +218,68 @@ const endpointResponseTimeHistogram = meter.createHistogram(
   }
 );
 
+const getPhoenixSubscriber = (
+  driftClient: DriftClient,
+  marketConfig: SpotMarketConfig
+) => {
+  return new PhoenixSubscriber({
+    connection: driftClient.connection,
+    programId: new PublicKey(sdkConfig.PHOENIX),
+    marketAddress: marketConfig.phoenixMarket,
+    accountSubscription: {
+      type: "websocket",
+    },
+  });
+};
+
+const getSerumSubscriber = (
+  driftClient: DriftClient,
+  marketConfig: SpotMarketConfig
+) => {
+  return new SerumSubscriber({
+    connection: driftClient.connection,
+    programId: new PublicKey(sdkConfig.SERUM_V3),
+    marketAddress: marketConfig.serumMarket,
+    accountSubscription: {
+      type: "websocket",
+    },
+  });
+};
+
+type SubscriberLookup = {
+  [marketIndex: number]: {
+    phoenix?: PhoenixSubscriber;
+    serum?: SerumSubscriber;
+  };
+};
+
+let MARKET_SUBSCRIBERS: SubscriberLookup = {};
+
+const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
+  const markets: SubscriberLookup = {};
+
+  for (const market of sdkConfig.SPOT_MARKETS) {
+    markets[market.marketIndex] = {
+      phoenix: undefined,
+      serum: undefined,
+    };
+
+    if (market.phoenixMarket) {
+      const phoenixSubscriber = getPhoenixSubscriber(driftClient, market);
+      await phoenixSubscriber.subscribe();
+      markets[market.marketIndex].phoenix = phoenixSubscriber;
+    }
+
+    if (market.serumMarket) {
+      const serumSubscriber = getSerumSubscriber(driftClient, market);
+      await serumSubscriber.subscribe();
+      markets[market.marketIndex].serum = serumSubscriber;
+    }
+  }
+
+  return markets;
+};
+
 const main = async () => {
   const wallet = getWallet();
   const clearingHousePublicKey = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
@@ -311,6 +376,8 @@ const main = async () => {
       endpoint,
     });
   });
+
+  MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
 
   // start http server listening to /health endpoint using http package
   app.get("/health", handleResponseTime, async (req, res, next) => {
@@ -705,21 +772,21 @@ const main = async () => {
         return;
       }
 
+      const isSpot = marketType === "spot";
+
       const l2 = await dlobSubscriber.getL2({
         marketIndex: normedMarketIndex,
         marketType: normedMarketType,
         depth: depth ? parseInt(depth as string) : 10,
-        opts: {
-          includeVammL2: includeVamm
-            ? `${includeVamm}`.toLowerCase() === "true"
-            : false,
-          includePhoenixL2: includeSerum
-            ? `${includeSerum}`.toLowerCase() === "true"
-            : false,
-          includeSerumL2: includePhoenix
-            ? `${includePhoenix}`.toLowerCase() === "true"
-            : false,
-        },
+        includeVamm: `${includeVamm}`.toLowerCase() === "true",
+        fallbackL2Generators: isSpot
+          ? [
+              `${includePhoenix}`.toLowerCase() === "true" &&
+                MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+              `${includeSerum}`.toLowerCase() === "true" &&
+                MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+            ].filter((a) => !!a)
+          : [],
       });
 
       for (const key of Object.keys(l2)) {
