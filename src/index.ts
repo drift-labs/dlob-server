@@ -790,7 +790,7 @@ const main = async () => {
         return;
       }
 
-      const isSpot = marketType === "spot";
+      const isSpot = getVariant(normedMarketType);
 
       const l2 = await dlobSubscriber.getL2({
         marketIndex: normedMarketIndex,
