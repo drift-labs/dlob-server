@@ -220,28 +220,32 @@ const endpointResponseTimeHistogram = meter.createHistogram(
 
 const getPhoenixSubscriber = (
   driftClient: DriftClient,
-  marketConfig: SpotMarketConfig
+  marketConfig: SpotMarketConfig,
+  accountLoader: BulkAccountLoader
 ) => {
   return new PhoenixSubscriber({
     connection: driftClient.connection,
     programId: new PublicKey(sdkConfig.PHOENIX),
     marketAddress: marketConfig.phoenixMarket,
     accountSubscription: {
-      type: "websocket",
+      type: "polling",
+      accountLoader,
     },
   });
 };
 
 const getSerumSubscriber = (
   driftClient: DriftClient,
-  marketConfig: SpotMarketConfig
+  marketConfig: SpotMarketConfig,
+  accountLoader: BulkAccountLoader
 ) => {
   return new SerumSubscriber({
     connection: driftClient.connection,
     programId: new PublicKey(sdkConfig.SERUM_V3),
     marketAddress: marketConfig.serumMarket,
     accountSubscription: {
-      type: "websocket",
+      type: "polling",
+      accountLoader,
     },
   });
 };
@@ -255,7 +259,10 @@ type SubscriberLookup = {
 
 let MARKET_SUBSCRIBERS: SubscriberLookup = {};
 
-const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
+const initializeAllMarketSubscribers = async (
+  driftClient: DriftClient,
+  bulkAccountLoader: BulkAccountLoader
+) => {
   const markets: SubscriberLookup = {};
 
   for (const market of sdkConfig.SPOT_MARKETS) {
@@ -265,13 +272,21 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
     };
 
     if (market.phoenixMarket) {
-      const phoenixSubscriber = getPhoenixSubscriber(driftClient, market);
+      const phoenixSubscriber = getPhoenixSubscriber(
+        driftClient,
+        market,
+        bulkAccountLoader
+      );
       await phoenixSubscriber.subscribe();
       markets[market.marketIndex].phoenix = phoenixSubscriber;
     }
 
     if (market.serumMarket) {
-      const serumSubscriber = getSerumSubscriber(driftClient, market);
+      const serumSubscriber = getSerumSubscriber(
+        driftClient,
+        market,
+        bulkAccountLoader
+      );
       await serumSubscriber.subscribe();
       markets[market.marketIndex].serum = serumSubscriber;
     }
@@ -377,7 +392,10 @@ const main = async () => {
     });
   });
 
-  MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
+  MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(
+    driftClient,
+    bulkAccountLoader
+  );
 
   // start http server listening to /health endpoint using http package
   app.get("/health", handleResponseTime, async (req, res, next) => {
