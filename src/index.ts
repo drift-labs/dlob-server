@@ -27,6 +27,7 @@ import {
   SpotMarketConfig,
   PhoenixSubscriber,
   SerumSubscriber,
+  DLOBNode,
 } from "@drift-labs/sdk";
 
 import { Mutex } from "async-mutex";
@@ -767,6 +768,96 @@ const main = async () => {
       normedMarketIndex,
     };
   };
+
+  app.get("/topMakers", handleResponseTime, async (req, res, next) => {
+    try {
+      const {
+        marketName,
+        marketIndex,
+        marketType,
+        side, // bid or ask
+        limit, // number of unique makers to return, if undefined will return all
+      } = req.query;
+
+      const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
+        marketType as string,
+        marketIndex as string,
+        marketName as string
+      );
+      if (error) {
+        res.status(400).send(error);
+        return;
+      }
+
+      if (side !== "bid" && side !== "ask") {
+        res.status(400).send("Bad Request: side must be either bid or ask");
+        return;
+      }
+      const normedSide = (side as string).toLowerCase();
+      const oracle = driftClient.getOracleDataForPerpMarket(normedMarketIndex);
+
+      let normedLimit = undefined;
+      if (limit) {
+        if (isNaN(parseInt(limit as string))) {
+          res
+            .status(400)
+            .send("Bad Request: limit must be a number if supplied");
+          return;
+        }
+        normedLimit = parseInt(limit as string);
+      }
+
+      const topMakers: Set<string> = new Set();
+      let foundMakers = 0;
+      const findMakers = (sideGenerator: Generator<DLOBNode>) => {
+        for (const side of sideGenerator) {
+          if (limit && foundMakers >= normedLimit) {
+            break;
+          }
+          if (side.userAccount) {
+            const maker = side.userAccount.toBase58();
+            if (topMakers.has(maker)) {
+              continue;
+            } else {
+              topMakers.add(side.userAccount.toBase58());
+              foundMakers++;
+            }
+          } else {
+            continue;
+          }
+        }
+      };
+
+      if (normedSide === "bid") {
+        findMakers(
+          dlobSubscriber
+            .getDLOB()
+            .getRestingLimitBids(
+              normedMarketIndex,
+              slotSubscriber.getSlot(),
+              normedMarketType,
+              oracle
+            )
+        );
+      } else {
+        findMakers(
+          dlobSubscriber
+            .getDLOB()
+            .getRestingLimitAsks(
+              normedMarketIndex,
+              slotSubscriber.getSlot(),
+              normedMarketType,
+              oracle
+            )
+        );
+      }
+
+      res.writeHead(200);
+      res.end(JSON.stringify([...topMakers]));
+    } catch (err) {
+      next(err);
+    }
+  });
 
   app.get("/l2", handleResponseTime, async (req, res, next) => {
     try {
