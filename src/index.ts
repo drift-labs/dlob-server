@@ -24,7 +24,9 @@ import {
   PerpMarkets,
   DLOBSubscriber,
   MarketType,
-  isVariant,
+  SpotMarketConfig,
+  PhoenixSubscriber,
+  SerumSubscriber,
 } from "@drift-labs/sdk";
 
 import { Mutex } from "async-mutex";
@@ -216,6 +218,83 @@ const endpointResponseTimeHistogram = meter.createHistogram(
   }
 );
 
+const getPhoenixSubscriber = (
+  driftClient: DriftClient,
+  marketConfig: SpotMarketConfig,
+  accountLoader: BulkAccountLoader
+) => {
+  return new PhoenixSubscriber({
+    connection: driftClient.connection,
+    programId: new PublicKey(sdkConfig.PHOENIX),
+    marketAddress: marketConfig.phoenixMarket,
+    accountSubscription: {
+      type: "polling",
+      accountLoader,
+    },
+  });
+};
+
+const getSerumSubscriber = (
+  driftClient: DriftClient,
+  marketConfig: SpotMarketConfig,
+  accountLoader: BulkAccountLoader
+) => {
+  return new SerumSubscriber({
+    connection: driftClient.connection,
+    programId: new PublicKey(sdkConfig.SERUM_V3),
+    marketAddress: marketConfig.serumMarket,
+    accountSubscription: {
+      type: "polling",
+      accountLoader,
+    },
+  });
+};
+
+type SubscriberLookup = {
+  [marketIndex: number]: {
+    phoenix?: PhoenixSubscriber;
+    serum?: SerumSubscriber;
+  };
+};
+
+let MARKET_SUBSCRIBERS: SubscriberLookup = {};
+
+const initializeAllMarketSubscribers = async (
+  driftClient: DriftClient,
+  bulkAccountLoader: BulkAccountLoader
+) => {
+  const markets: SubscriberLookup = {};
+
+  for (const market of sdkConfig.SPOT_MARKETS) {
+    markets[market.marketIndex] = {
+      phoenix: undefined,
+      serum: undefined,
+    };
+
+    if (market.phoenixMarket) {
+      const phoenixSubscriber = getPhoenixSubscriber(
+        driftClient,
+        market,
+        bulkAccountLoader
+      );
+      await phoenixSubscriber.subscribe();
+      markets[market.marketIndex].phoenix = phoenixSubscriber;
+    }
+
+    if (market.serumMarket) {
+      const serumSubscriber = getSerumSubscriber(
+        driftClient,
+        market,
+        bulkAccountLoader
+      );
+      await serumSubscriber.subscribe();
+      markets[market.marketIndex].serum = serumSubscriber;
+    }
+  }
+
+  return markets;
+};
+
 const main = async () => {
   const wallet = getWallet();
   const clearingHousePublicKey = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
@@ -312,6 +391,11 @@ const main = async () => {
       endpoint,
     });
   });
+
+  MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(
+    driftClient,
+    bulkAccountLoader
+  );
 
   // start http server listening to /health endpoint using http package
   app.get("/health", handleResponseTime, async (req, res, next) => {
@@ -686,8 +770,15 @@ const main = async () => {
 
   app.get("/l2", handleResponseTime, async (req, res, next) => {
     try {
-      const { marketName, marketIndex, marketType, depth, includeVamm } =
-        req.query;
+      const {
+        marketName,
+        marketIndex,
+        marketType,
+        depth,
+        includeVamm,
+        includePhoenix,
+        includeSerum,
+      } = req.query;
 
       const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
         marketType as string,
@@ -699,13 +790,21 @@ const main = async () => {
         return;
       }
 
-      const l2 = dlobSubscriber.getL2({
+      const isSpot = getVariant(normedMarketType);
+
+      const l2 = await dlobSubscriber.getL2({
         marketIndex: normedMarketIndex,
         marketType: normedMarketType,
         depth: depth ? parseInt(depth as string) : 10,
-        includeVamm: includeVamm
-          ? (includeVamm as string).toLowerCase() === "true"
-          : false,
+        includeVamm: `${includeVamm}`.toLowerCase() === "true",
+        fallbackL2Generators: isSpot
+          ? [
+              `${includePhoenix}`.toLowerCase() === "true" &&
+                MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+              `${includeSerum}`.toLowerCase() === "true" &&
+                MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+            ].filter((a) => !!a)
+          : [],
       });
 
       for (const key of Object.keys(l2)) {
