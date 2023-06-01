@@ -906,10 +906,17 @@ const main = async () => {
 
 			const isSpot = isVariant(normedMarketType, 'spot');
 
+			let adjustedDepth = depth ?? '10';
+			if (grouping !== undefined) {
+				// If grouping is also supplied, we want the entire book depth.
+				// we will apply depth after grouping
+				adjustedDepth = '-1';
+			}
+
 			const l2 = dlobSubscriber.getL2({
 				marketIndex: normedMarketIndex,
 				marketType: normedMarketType,
-				depth: depth ? parseInt(depth as string) : 10,
+				depth: parseInt(adjustedDepth as string),
 				includeVamm: `${includeVamm}`.toLowerCase() === 'true',
 				fallbackL2Generators: isSpot
 					? [
@@ -922,6 +929,7 @@ const main = async () => {
 			});
 
 			if (grouping) {
+				const finalDepth = depth ? parseInt(depth as string) : 10;
 				if (isNaN(parseInt(grouping as string))) {
 					res
 						.status(400)
@@ -930,7 +938,9 @@ const main = async () => {
 				}
 				const groupingBN = new BN(parseInt(grouping as string));
 				res.writeHead(200);
-				res.end(JSON.stringify(l2WithBNToStrings(groupL2(l2, groupingBN))));
+				res.end(
+					JSON.stringify(l2WithBNToStrings(groupL2(l2, groupingBN, finalDepth)))
+				);
 			} else {
 				// make the BNs into strings
 				res.writeHead(200);
