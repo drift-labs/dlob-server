@@ -923,6 +923,177 @@ const main = async () => {
 		}
 	});
 
+	/**
+	 * Takes in a req.query like: `{
+	 * 		marketName: 'SOL-PERP,BTC-PERP,ETH-PERP',
+	 * 		marketType: undefined,
+	 * 		marketIndices: undefined,
+	 * 		...
+	 * 	}` and returns a normalized object like:
+	 *
+	 * `[
+	 * 		{marketName: 'SOL-PERP', marketType: undefined, marketIndex: undefined,...},
+	 * 		{marketName: 'BTC-PERP', marketType: undefined, marketIndex: undefined,...},
+	 * 		{marketName: 'ETH-PERP', marketType: undefined, marketIndex: undefined,...}
+	 * ]`
+	 *
+	 * @param rawParams req.query object
+	 * @returns normalized query params for batch requests, or undefined if there is a mismatched length
+	 */
+	const normalizeBatchQueryParams = (rawParams: {
+		[key: string]: string | undefined;
+	}): Array<{ [key: string]: string | undefined }> => {
+		const normedParams: Array<{ [key: string]: string | undefined }> = [];
+		const parsedParams = {};
+
+		// parse the query string into arrays
+		for (const key of Object.keys(rawParams)) {
+			const rawParam = rawParams[key];
+			if (rawParam === undefined) {
+				parsedParams[key] = [];
+			} else {
+				parsedParams[key] = rawParam.split(',') || [rawParam];
+			}
+		}
+
+		// of all parsedParams, find the max length
+		const maxLength = Math.max(
+			...Object.values(parsedParams).map(
+				(param: Array<unknown>) => param.length
+			)
+		);
+
+		// all params have to be either 0 length, or maxLength to be valid
+		const values = Object.values(parsedParams);
+		const validParams = values.every(
+			(value: Array<unknown>) =>
+				value.length === 0 || value.length === maxLength
+		);
+		if (!validParams) {
+			return undefined;
+		}
+
+		// merge all params into an array of objects
+		// normalize all params to the same length, filling in undefineds
+		for (let i = 0; i < maxLength; i++) {
+			const newParam = {};
+			for (const key of Object.keys(parsedParams)) {
+				const parsedParam = parsedParams[key];
+				newParam[key] =
+					parsedParam.length === maxLength ? parsedParam[i] : undefined;
+			}
+			normedParams.push(newParam);
+		}
+
+		return normedParams;
+	};
+
+	app.get('/batchL2', handleResponseTime, async (req, res, next) => {
+		try {
+			const {
+				marketName,
+				marketIndex,
+				marketType,
+				depth,
+				includeVamm,
+				includePhoenix,
+				includeSerum,
+				grouping, // undefined or PRICE_PRECISION
+			} = req.query;
+
+			const normedParams = normalizeBatchQueryParams({
+				marketName: marketName as string | undefined,
+				marketIndex: marketIndex as string | undefined,
+				marketType: marketType as string | undefined,
+				depth: depth as string | undefined,
+				includeVamm: includeVamm as string | undefined,
+				includePhoenix: includePhoenix as string | undefined,
+				includeSerum: includeSerum as string | undefined,
+				grouping: grouping as string | undefined,
+			});
+
+			if (normedParams === undefined) {
+				res
+					.status(400)
+					.send(
+						'Bad Request: all params for batch request must be the same length'
+					);
+				return;
+			}
+
+			const batchedL2s = {};
+			for (const normedParam of normedParams) {
+				const { normedMarketType, normedMarketIndex, error } =
+					validateDlobQuery(
+						normedParam['marketType'] as string,
+						normedParam['marketIndex'] as string,
+						normedParam['marketName'] as string
+					);
+				if (error) {
+					res.status(400).send(`Bad Request: ${error}`);
+					return;
+				}
+
+				const isSpot = isVariant(normedMarketType, 'spot');
+				const marketTypeStr = getVariant(normedMarketType);
+
+				let adjustedDepth = normedParam['depth'] ?? '10';
+				if (normedParam['grouping'] !== undefined) {
+					// If grouping is also supplied, we want the entire book depth.
+					// we will apply depth after grouping
+					adjustedDepth = '-1';
+				}
+
+				const l2 = dlobSubscriber.getL2({
+					marketIndex: normedMarketIndex,
+					marketType: normedMarketType,
+					depth: parseInt(adjustedDepth as string),
+					includeVamm: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
+					fallbackL2Generators: isSpot
+						? [
+								`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
+									MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+								`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
+									MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+						  ].filter((a) => !!a)
+						: [],
+				});
+
+				if (normedParam['grouping']) {
+					const finalDepth = normedParam['depth']
+						? parseInt(normedParam['depth'] as string)
+						: 10;
+					if (isNaN(parseInt(normedParam['grouping'] as string))) {
+						res
+							.status(400)
+							.send('Bad Request: grouping must be a number if supplied');
+						return;
+					}
+					const groupingBN = new BN(
+						parseInt(normedParam['grouping'] as string)
+					);
+					if (batchedL2s[marketTypeStr] === undefined) {
+						batchedL2s[marketTypeStr] = {};
+					}
+					batchedL2s[marketTypeStr][normedMarketIndex] = l2WithBNToStrings(
+						groupL2(l2, groupingBN, finalDepth)
+					);
+				} else {
+					// make the BNs into strings
+					if (batchedL2s[marketTypeStr] === undefined) {
+						batchedL2s[marketTypeStr] = {};
+					}
+					batchedL2s[marketTypeStr][normedMarketIndex] = l2WithBNToStrings(l2);
+				}
+			}
+
+			res.writeHead(200);
+			res.end(JSON.stringify(batchedL2s));
+		} catch (err) {
+			next(err);
+		}
+	});
+
 	app.get('/l3', handleResponseTime, async (req, res, next) => {
 		try {
 			const { marketName, marketIndex, marketType } = req.query;
