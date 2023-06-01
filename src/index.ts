@@ -309,11 +309,6 @@ const main = async () => {
 		connection,
 		wallet,
 		programID: clearingHousePublicKey,
-		perpMarketIndexes: PerpMarkets[driftEnv].map((mkt) => mkt.marketIndex),
-		spotMarketIndexes: SpotMarkets[driftEnv].map((mkt) => mkt.marketIndex),
-		oracleInfos: PerpMarkets[driftEnv].map((mkt) => {
-			return { publicKey: mkt.oracle, source: mkt.oracleSource };
-		}),
 		accountSubscription: {
 			type: 'polling',
 			accountLoader: bulkAccountLoader,
