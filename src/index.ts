@@ -1,4 +1,4 @@
-import { program, Option } from 'commander';
+import { program } from 'commander';
 
 import responseTime = require('response-time');
 import express from 'express';
@@ -7,7 +7,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import cors from 'cors';
 
-import { Connection, Commitment, PublicKey } from '@solana/web3.js';
+import { Connection, Commitment, PublicKey, Keypair } from '@solana/web3.js';
 
 import {
 	getVariant,
@@ -32,11 +32,11 @@ import {
 	BN,
 	groupL2,
 	L2OrderBook,
+	Wallet,
 } from '@drift-labs/sdk';
 
 import { Mutex } from 'async-mutex';
 
-import { getWallet } from './utils';
 import { logger, setLogLevel } from './logger';
 
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
@@ -103,18 +103,6 @@ app.use((req, _res, next) => {
 	}
 	next();
 });
-
-program
-	.option('-d, --dry-run', 'Dry run, do not send transactions on chain')
-	.option('--test-liveness', 'Purposefully fail liveness test after 1 minute')
-	.addOption(
-		new Option(
-			'-p, --private-key <string>',
-			'private key, supports path to id.json, or list of comma separate numbers'
-		).env('ANCHOR_PRIVATE_KEY')
-	)
-	.option('--debug', 'Enable debug logging')
-	.parse();
 
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
@@ -301,7 +289,7 @@ const initializeAllMarketSubscribers = async (
 };
 
 const main = async () => {
-	const wallet = getWallet();
+	const wallet = new Wallet(new Keypair());
 	const clearingHousePublicKey = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
 
 	const connection = new Connection(endpoint, {
@@ -361,17 +349,6 @@ const main = async () => {
 			lastSlotReceived = slot;
 		});
 	});
-
-	if (!(await driftClient.getUser().exists())) {
-		logger.error(`User for ${wallet.publicKey} does not exist`);
-		if (opts.initUser) {
-			logger.info(`Creating User for ${wallet.publicKey}`);
-			const [txSig] = await driftClient.initializeUserAccount();
-			logger.info(`Initialized user account in transaction: ${txSig}`);
-		} else {
-			throw new Error("Run with '--init-user' flag to initialize a User");
-		}
-	}
 
 	const userMap = new UserMap(
 		driftClient,
