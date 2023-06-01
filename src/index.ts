@@ -29,6 +29,9 @@ import {
 	SerumSubscriber,
 	DLOBNode,
 	isVariant,
+	BN,
+	groupL2,
+	L2OrderBook,
 } from '@drift-labs/sdk';
 
 import { Mutex } from 'async-mutex';
@@ -860,6 +863,24 @@ const main = async () => {
 		}
 	});
 
+	const l2WithBNToStrings = (l2: L2OrderBook): any => {
+		for (const key of Object.keys(l2)) {
+			for (const idx in l2[key]) {
+				const level = l2[key][idx];
+				const sources = level['sources'];
+				for (const sourceKey of Object.keys(sources)) {
+					sources[sourceKey] = sources[sourceKey].toString();
+				}
+				l2[key][idx] = {
+					price: level.price.toString(),
+					size: level.size.toString(),
+					sources,
+				};
+			}
+		}
+		return l2;
+	};
+
 	app.get('/l2', handleResponseTime, async (req, res, next) => {
 		try {
 			const {
@@ -870,6 +891,7 @@ const main = async () => {
 				includeVamm,
 				includePhoenix,
 				includeSerum,
+				grouping, // undefined or PRICE_PRECISION
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -884,7 +906,7 @@ const main = async () => {
 
 			const isSpot = isVariant(normedMarketType, 'spot');
 
-			const l2 = await dlobSubscriber.getL2({
+			const l2 = dlobSubscriber.getL2({
 				marketIndex: normedMarketIndex,
 				marketType: normedMarketType,
 				depth: depth ? parseInt(depth as string) : 10,
@@ -899,23 +921,21 @@ const main = async () => {
 					: [],
 			});
 
-			for (const key of Object.keys(l2)) {
-				for (const idx in l2[key]) {
-					const level = l2[key][idx];
-					const sources = level['sources'];
-					for (const sourceKey of Object.keys(sources)) {
-						sources[sourceKey] = sources[sourceKey].toString();
-					}
-					l2[key][idx] = {
-						price: level.price.toString(),
-						size: level.size.toString(),
-						sources,
-					};
+			if (grouping) {
+				if (isNaN(parseInt(grouping as string))) {
+					res
+						.status(400)
+						.send('Bad Request: grouping must be a number if supplied');
+					return;
 				}
+				const groupingBN = new BN(parseInt(grouping as string));
+				res.writeHead(200);
+				res.end(JSON.stringify(l2WithBNToStrings(groupL2(l2, groupingBN))));
+			} else {
+				// make the BNs into strings
+				res.writeHead(200);
+				res.end(JSON.stringify(l2WithBNToStrings(l2)));
 			}
-
-			res.writeHead(200);
-			res.end(JSON.stringify(l2));
 		} catch (err) {
 			next(err);
 		}
