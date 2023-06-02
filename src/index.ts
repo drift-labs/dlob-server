@@ -1021,8 +1021,7 @@ const main = async () => {
 				return;
 			}
 
-			const batchedL2s = {};
-			for (const normedParam of normedParams) {
+			const l2s = normedParams.map((normedParam) => {
 				const { normedMarketType, normedMarketIndex, error } =
 					validateDlobQuery(
 						normedParam['marketType'] as string,
@@ -1035,7 +1034,6 @@ const main = async () => {
 				}
 
 				const isSpot = isVariant(normedMarketType, 'spot');
-				const marketTypeStr = getVariant(normedMarketType);
 
 				let adjustedDepth = normedParam['depth'] ?? '10';
 				if (normedParam['grouping'] !== undefined) {
@@ -1072,23 +1070,16 @@ const main = async () => {
 					const groupingBN = new BN(
 						parseInt(normedParam['grouping'] as string)
 					);
-					if (batchedL2s[marketTypeStr] === undefined) {
-						batchedL2s[marketTypeStr] = {};
-					}
-					batchedL2s[marketTypeStr][normedMarketIndex] = l2WithBNToStrings(
-						groupL2(l2, groupingBN, finalDepth)
-					);
+
+					return l2WithBNToStrings(groupL2(l2, groupingBN, finalDepth));
 				} else {
 					// make the BNs into strings
-					if (batchedL2s[marketTypeStr] === undefined) {
-						batchedL2s[marketTypeStr] = {};
-					}
-					batchedL2s[marketTypeStr][normedMarketIndex] = l2WithBNToStrings(l2);
+					return l2WithBNToStrings(l2);
 				}
-			}
+			});
 
 			res.writeHead(200);
-			res.end(JSON.stringify(batchedL2s));
+			res.end(JSON.stringify({ l2s }));
 		} catch (err) {
 			next(err);
 		}
