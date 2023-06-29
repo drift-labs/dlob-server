@@ -374,8 +374,7 @@ const main = async () => {
 		bulkAccountLoader
 	);
 
-	// start http server listening to /health endpoint using http package
-	app.get('/health', handleResponseTime, async (req, res, next) => {
+	const handleHealthCheck = async (req, res, next) => {
 		try {
 			if (req.url === '/health') {
 				if (opts.testLiveness) {
@@ -451,7 +450,11 @@ const main = async () => {
 		} catch (e) {
 			next(e);
 		}
-	});
+	};
+
+	// start http server listening to /health endpoint using http package
+	app.get('/health', handleResponseTime, handleHealthCheck);
+	app.get('/', handleResponseTime, handleHealthCheck);
 
 	app.get('/orders/json/raw', handleResponseTime, async (_req, res, next) => {
 		try {
