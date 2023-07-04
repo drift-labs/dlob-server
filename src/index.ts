@@ -863,6 +863,7 @@ const main = async () => {
 				marketIndex,
 				marketType,
 				depth,
+				numVammOrders,
 				includeVamm,
 				includePhoenix,
 				includeSerum,
@@ -893,6 +894,7 @@ const main = async () => {
 				marketType: normedMarketType,
 				depth: parseInt(adjustedDepth as string),
 				includeVamm: `${includeVamm}`.toLowerCase() === 'true',
+				numVammOrders: parseInt((numVammOrders ?? '100') as string),
 				fallbackL2Generators: isSpot
 					? [
 							`${includePhoenix}`.toLowerCase() === 'true' &&
