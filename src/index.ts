@@ -67,6 +67,8 @@ const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
 	: 10;
 
+const loadTestAllowed = process.env.LOAD_TEST_ALLOWED.toLowerCase() === 'true' ? true : false;
+
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
 const logHttp = morgan(logFormat, {
@@ -90,6 +92,13 @@ app.use(
 		max: rateLimitCallsPerSecond,
 		standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
 		legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+		skip: (req, _res) => {
+			if (!loadTestAllowed) {
+				return false;
+			}
+
+			return req.headers['user-agent'].includes('k6');
+		}
 	})
 );
 
@@ -376,7 +385,7 @@ const main = async () => {
 
 	const handleHealthCheck = async (req, res, next) => {
 		try {
-			if (req.url === '/health') {
+			if (req.url === '/health' || req.url === '/') {
 				if (opts.testLiveness) {
 					if (Date.now() > startupTime + 60 * 1000) {
 						healthStatus = HEALTH_STATUS.LivenessTesting;
