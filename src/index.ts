@@ -67,8 +67,7 @@ const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
 	: 10;
 
-const loadTestAllowed =
-	process.env.ALLOW_LOAD_TEST.toLowerCase() === 'true' ? true : false;
+const loadTestAllowed = process.env.ALLOW_LOAD_TEST?.toLowerCase() === 'true';
 
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
