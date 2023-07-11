@@ -178,7 +178,7 @@ const meterProvider = new MeterProvider({
 			instrumentName: METRIC_TYPES.endpoint_response_times_histogram,
 			instrumentType: InstrumentType.HISTOGRAM,
 			meterName,
-			aggregation: createHistogramBuckets(0, 50, 30),
+			aggregation: createHistogramBuckets(0, 20, 30),
 		}),
 	],
 });
@@ -370,7 +370,7 @@ const main = async () => {
 	await dlobSubscriber.subscribe();
 
 	const handleResponseTime = responseTime((req: Request, _res, time) => {
-		const endpoint = req.url;
+		const endpoint = req.url.split('?')[0];
 
 		const responseTimeMs = time;
 		endpointResponseTimeHistogram.record(responseTimeMs, {
