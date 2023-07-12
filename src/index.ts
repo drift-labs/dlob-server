@@ -65,7 +65,7 @@ const healthCheckInterval = bulkAccountLoaderPollingInterval * 2;
 
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
-	: 10;
+	: 1;
 
 const loadTestAllowed = process.env.ALLOW_LOAD_TEST?.toLowerCase() === 'true';
 
@@ -85,6 +85,27 @@ app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
+
+const handleResponseTime = responseTime(
+	(req: Request, res: Response, time: number) => {
+		const endpoint = req.path;
+
+		if (endpoint === '/health' || req.url === '/') {
+			return;
+		}
+
+		responseStatusCounter.add(1, {
+			endpoint,
+			status: res.statusCode,
+		});
+
+		const responseTimeMs = time;
+		endpointResponseTimeHistogram.record(responseTimeMs, {
+			endpoint,
+		});
+	}
+);
+app.use(handleResponseTime);
 
 app.use(
 	rateLimit({
@@ -377,22 +398,6 @@ const main = async () => {
 	});
 	await dlobSubscriber.subscribe();
 
-	const handleResponseTime = responseTime(
-		(req: Request, res: Response, time: number) => {
-			const endpoint = req.path;
-
-			responseStatusCounter.add(1, {
-				endpoint,
-				status: res.statusCode,
-			});
-
-			const responseTimeMs = time;
-			endpointResponseTimeHistogram.record(responseTimeMs, {
-				endpoint,
-			});
-		}
-	);
-
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(
 		driftClient,
 		bulkAccountLoader
@@ -480,7 +485,7 @@ const main = async () => {
 	app.get('/health', handleHealthCheck);
 	app.get('/', handleHealthCheck);
 
-	app.get('/orders/json/raw', handleResponseTime, async (_req, res, next) => {
+	app.get('/orders/json/raw', async (_req, res, next) => {
 		try {
 			// object with userAccount key and orders object serialized
 			const orders: Array<any> = [];
@@ -526,7 +531,7 @@ const main = async () => {
 		}
 	});
 
-	app.get('/orders/json', handleResponseTime, async (_req, res, next) => {
+	app.get('/orders/json', async (_req, res, next) => {
 		try {
 			// object with userAccount key and orders object serialized
 			const slot = bulkAccountLoader.mostRecentSlot;
@@ -612,7 +617,7 @@ const main = async () => {
 		}
 	});
 
-	app.get('/orders/idl', handleResponseTime, async (_req, res, next) => {
+	app.get('/orders/idl', async (_req, res, next) => {
 		try {
 			const dlobOrders: DLOBOrders = [];
 
@@ -638,7 +643,7 @@ const main = async () => {
 		}
 	});
 
-	app.get('/orders/idlWithSlot', handleResponseTime, async (req, res, next) => {
+	app.get('/orders/idlWithSlot', async (req, res, next) => {
 		try {
 			const { marketName, marketIndex, marketType } = req.query;
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -772,7 +777,7 @@ const main = async () => {
 		};
 	};
 
-	app.get('/topMakers', handleResponseTime, async (req, res, next) => {
+	app.get('/topMakers', async (req, res, next) => {
 		try {
 			const {
 				marketName,
@@ -880,7 +885,7 @@ const main = async () => {
 		return l2;
 	};
 
-	app.get('/l2', handleResponseTime, async (req, res, next) => {
+	app.get('/l2', async (req, res, next) => {
 		try {
 			const {
 				marketName,
@@ -1017,7 +1022,7 @@ const main = async () => {
 		return normedParams;
 	};
 
-	app.get('/batchL2', handleResponseTime, async (req, res, next) => {
+	app.get('/batchL2', async (req, res, next) => {
 		try {
 			const {
 				marketName,
@@ -1114,7 +1119,7 @@ const main = async () => {
 		}
 	});
 
-	app.get('/l3', handleResponseTime, async (req, res, next) => {
+	app.get('/l3', async (req, res, next) => {
 		try {
 			const { marketName, marketIndex, marketType } = req.query;
 
