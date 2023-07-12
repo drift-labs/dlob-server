@@ -1,7 +1,7 @@
 import { program } from 'commander';
 
 import responseTime = require('response-time');
-import express from 'express';
+import express, { Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import compression from 'compression';
 import morgan from 'morgan';
@@ -147,6 +147,7 @@ const createHistogramBuckets = (
 enum METRIC_TYPES {
 	runtime_specs = 'runtime_specs',
 	endpoint_response_times_histogram = 'endpoint_response_times_histogram',
+	endpoint_response_status = 'endpoint_response_status',
 	health_status = 'health_status',
 }
 
@@ -217,6 +218,13 @@ const endpointResponseTimeHistogram = meter.createHistogram(
 	{
 		description: 'Duration of endpoint responses',
 		unit: 'ms',
+	}
+);
+
+const responseStatusCounter = meter.createCounter(
+	METRIC_TYPES.endpoint_response_status,
+	{
+		description: 'Count of endpoint responses by status code',
 	}
 );
 
@@ -369,14 +377,21 @@ const main = async () => {
 	});
 	await dlobSubscriber.subscribe();
 
-	const handleResponseTime = responseTime((req: Request, _res, time) => {
-		const endpoint = req.url.split('?')[0];
+	const handleResponseTime = responseTime(
+		(req: Request, res: Response, time: number) => {
+			const endpoint = req.path;
 
-		const responseTimeMs = time;
-		endpointResponseTimeHistogram.record(responseTimeMs, {
-			endpoint,
-		});
-	});
+			responseStatusCounter.add(1, {
+				endpoint,
+				status: res.statusCode,
+			});
+
+			const responseTimeMs = time;
+			endpointResponseTimeHistogram.record(responseTimeMs, {
+				endpoint,
+			});
+		}
+	);
 
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(
 		driftClient,
@@ -462,8 +477,8 @@ const main = async () => {
 	};
 
 	// start http server listening to /health endpoint using http package
-	app.get('/health', handleResponseTime, handleHealthCheck);
-	app.get('/', handleResponseTime, handleHealthCheck);
+	app.get('/health', handleHealthCheck);
+	app.get('/', handleHealthCheck);
 
 	app.get('/orders/json/raw', handleResponseTime, async (_req, res, next) => {
 		try {
