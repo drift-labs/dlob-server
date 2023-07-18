@@ -54,7 +54,7 @@ const commitHash = process.env.COMMIT;
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
 
-const stateCommitment: Commitment = 'confirmed';
+const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 
 const bulkAccountLoaderPollingInterval = process.env
