@@ -76,8 +76,10 @@ const logHttp = morgan(logFormat, {
 });
 
 function errorHandler(err, _req, res, _next) {
-	logger.error(err.stack);
-	res.status(500).send('Internal error');
+	logger.error(`errorHandler, message: ${err.message}, stack: ${err.stack}`);
+	if (!res.headersSent) {
+		res.status(500).send('Internal error');
+	}
 }
 
 const app = express();
