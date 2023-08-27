@@ -24,7 +24,6 @@ import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
 const dlobServerURL = "http://localhost:6969/orders/idl";
 // const dlobServerURL = "https://dlob.drift.trade/orders/idl";
-// const rpcEndpoint = "https://solana-api.syndica.io/access-token/eqLMxrnnLgz5eSGKsPIaFK0dSvJeYCNviWhnIgaAH3YdM0K6C6tQdctk94Rb9mCX/rpc";
 // const driftEnv = "mainnet-beta";
 
 // const dlobServerURL = "https://master.dlob.drift.trade/orders/idl";
