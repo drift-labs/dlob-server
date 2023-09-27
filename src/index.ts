@@ -924,7 +924,7 @@ const main = async () => {
 				marketIndex: normedMarketIndex,
 				marketType: normedMarketType,
 				depth: parseInt(adjustedDepth as string),
-				includeVamm: `${includeVamm}`.toLowerCase() === 'true',
+				includeVamm: isSpot ? false : `${includeVamm}`.toLowerCase() === 'true',
 				numVammOrders: parseInt((numVammOrders ?? '100') as string),
 				fallbackL2Generators: isSpot
 					? [
@@ -1082,7 +1082,9 @@ const main = async () => {
 					marketIndex: normedMarketIndex,
 					marketType: normedMarketType,
 					depth: parseInt(adjustedDepth as string),
-					includeVamm: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
+					includeVamm: isSpot
+						? false
+						: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
 					fallbackL2Generators: isSpot
 						? [
 								`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
