@@ -887,6 +887,21 @@ const main = async () => {
 		return l2;
 	};
 
+	const getOracleForMarket = (
+		marketType: MarketType,
+		marketIndex: number
+	): number => {
+		if (isVariant(marketType, 'spot')) {
+			return driftClient
+				.getOracleDataForSpotMarket(marketIndex)
+				.price.toNumber();
+		} else if (isVariant(marketType, 'perp')) {
+			return driftClient
+				.getOracleDataForPerpMarket(marketIndex)
+				.price.toNumber();
+		}
+	};
+
 	app.get('/l2', async (req, res, next) => {
 		try {
 			const {
@@ -899,6 +914,7 @@ const main = async () => {
 				includePhoenix,
 				includeSerum,
 				grouping, // undefined or PRICE_PRECISION
+				includeOracle,
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -945,14 +961,30 @@ const main = async () => {
 					return;
 				}
 				const groupingBN = new BN(parseInt(grouping as string));
-				res.writeHead(200);
-				res.end(
-					JSON.stringify(l2WithBNToStrings(groupL2(l2, groupingBN, finalDepth)))
+				const l2Formatted = l2WithBNToStrings(
+					groupL2(l2, groupingBN, finalDepth)
 				);
+				if (`${includeOracle}`.toLowerCase() === 'true') {
+					l2Formatted['oracle'] = getOracleForMarket(
+						normedMarketType,
+						normedMarketIndex
+					);
+				}
+
+				res.writeHead(200);
+				res.end(JSON.stringify(l2Formatted));
 			} else {
 				// make the BNs into strings
+				const l2Formatted = l2WithBNToStrings(l2);
+				if (`${includeOracle}`.toLowerCase() === 'true') {
+					l2Formatted['oracle'] = getOracleForMarket(
+						normedMarketType,
+						normedMarketIndex
+					);
+				}
+
 				res.writeHead(200);
-				res.end(JSON.stringify(l2WithBNToStrings(l2)));
+				res.end(JSON.stringify(l2Formatted));
 			}
 		} catch (err) {
 			next(err);
@@ -1109,10 +1141,26 @@ const main = async () => {
 						parseInt(normedParam['grouping'] as string)
 					);
 
-					return l2WithBNToStrings(groupL2(l2, groupingBN, finalDepth));
+					const l2Formatted = l2WithBNToStrings(
+						groupL2(l2, groupingBN, finalDepth)
+					);
+					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
+						l2Formatted['oracle'] = getOracleForMarket(
+							normedMarketType,
+							normedMarketIndex
+						);
+					}
+					return l2Formatted;
 				} else {
 					// make the BNs into strings
-					return l2WithBNToStrings(l2);
+					const l2Formatted = l2WithBNToStrings(l2);
+					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
+						l2Formatted['oracle'] = getOracleForMarket(
+							normedMarketType,
+							normedMarketIndex
+						);
+					}
+					return l2Formatted;
 				}
 			});
 
@@ -1125,7 +1173,7 @@ const main = async () => {
 
 	app.get('/l3', async (req, res, next) => {
 		try {
-			const { marketName, marketIndex, marketType } = req.query;
+			const { marketName, marketIndex, marketType, includeOracle } = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
 				marketType as string,
@@ -1151,6 +1199,10 @@ const main = async () => {
 						size: level.size.toString(),
 					};
 				}
+			}
+
+			if (`${includeOracle}`.toLowerCase() === 'true') {
+				l3['oracle'] = getOracleForMarket(normedMarketType, normedMarketIndex);
 			}
 
 			res.writeHead(200);
