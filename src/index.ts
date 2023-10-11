@@ -33,6 +33,7 @@ import {
 	groupL2,
 	L2OrderBook,
 	Wallet,
+	UserStatsMap,
 } from '@drift-labs/sdk';
 
 import { Mutex } from 'async-mutex';
@@ -391,6 +392,10 @@ const main = async () => {
 		false
 	);
 	await userMap.subscribe();
+	const userStatsMap = new UserStatsMap(
+		driftClient,
+		driftClient.userStatsAccountSubscriptionConfig
+	);
 
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
@@ -787,6 +792,7 @@ const main = async () => {
 				marketType,
 				side, // bid or ask
 				limit, // number of unique makers to return, if undefined will return all
+				includeUserStats,
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -817,7 +823,7 @@ const main = async () => {
 				normedLimit = parseInt(limit as string);
 			}
 
-			const topMakers: Set<string> = new Set();
+			const topMakers = new Set();
 			let foundMakers = 0;
 			const findMakers = (sideGenerator: Generator<DLOBNode>) => {
 				for (const side of sideGenerator) {
@@ -829,7 +835,15 @@ const main = async () => {
 						if (topMakers.has(maker)) {
 							continue;
 						} else {
-							topMakers.add(side.userAccount.toBase58());
+							if (`${includeUserStats}`.toLowerCase() === 'true') {
+								const userAccount = side.userAccount.toBase58();
+								const userStats = userStatsMap
+									.get(userAccount)
+									.userStatsAccountPublicKey.toBase58();
+								topMakers.add([userAccount, userStats]);
+							} else {
+								topMakers.add(side.userAccount.toBase58());
+							}
 							foundMakers++;
 						}
 					} else {
