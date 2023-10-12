@@ -1100,6 +1100,7 @@ const main = async () => {
 				includeVamm,
 				includePhoenix,
 				includeSerum,
+				includeOracle,
 				grouping, // undefined or PRICE_PRECISION
 			} = req.query;
 
@@ -1111,6 +1112,7 @@ const main = async () => {
 				includeVamm: includeVamm as string | undefined,
 				includePhoenix: includePhoenix as string | undefined,
 				includeSerum: includeSerum as string | undefined,
+				includeOracle: includeOracle as string | undefined,
 				grouping: grouping as string | undefined,
 			});
 
