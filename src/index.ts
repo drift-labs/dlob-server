@@ -33,6 +33,7 @@ import {
 	groupL2,
 	L2OrderBook,
 	Wallet,
+	UserStatsMap,
 } from '@drift-labs/sdk';
 
 import { Mutex } from 'async-mutex';
@@ -391,6 +392,10 @@ const main = async () => {
 		false
 	);
 	await userMap.subscribe();
+	const userStatsMap = new UserStatsMap(
+		driftClient,
+		driftClient.userStatsAccountSubscriptionConfig
+	);
 
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
@@ -787,6 +792,7 @@ const main = async () => {
 				marketType,
 				side, // bid or ask
 				limit, // number of unique makers to return, if undefined will return all
+				includeUserStats,
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -817,7 +823,7 @@ const main = async () => {
 				normedLimit = parseInt(limit as string);
 			}
 
-			const topMakers: Set<string> = new Set();
+			const topMakers = new Set();
 			let foundMakers = 0;
 			const findMakers = (sideGenerator: Generator<DLOBNode>) => {
 				for (const side of sideGenerator) {
@@ -829,7 +835,15 @@ const main = async () => {
 						if (topMakers.has(maker)) {
 							continue;
 						} else {
-							topMakers.add(side.userAccount.toBase58());
+							if (`${includeUserStats}`.toLowerCase() === 'true') {
+								const userAccount = side.userAccount.toBase58();
+								const userStats = userStatsMap
+									.get(userAccount)
+									.userStatsAccountPublicKey.toBase58();
+								topMakers.add([userAccount, userStats]);
+							} else {
+								topMakers.add(side.userAccount.toBase58());
+							}
 							foundMakers++;
 						}
 					} else {
@@ -887,6 +901,21 @@ const main = async () => {
 		return l2;
 	};
 
+	const getOracleForMarket = (
+		marketType: MarketType,
+		marketIndex: number
+	): number => {
+		if (isVariant(marketType, 'spot')) {
+			return driftClient
+				.getOracleDataForSpotMarket(marketIndex)
+				.price.toNumber();
+		} else if (isVariant(marketType, 'perp')) {
+			return driftClient
+				.getOracleDataForPerpMarket(marketIndex)
+				.price.toNumber();
+		}
+	};
+
 	app.get('/l2', async (req, res, next) => {
 		try {
 			const {
@@ -899,6 +928,7 @@ const main = async () => {
 				includePhoenix,
 				includeSerum,
 				grouping, // undefined or PRICE_PRECISION
+				includeOracle,
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -945,14 +975,30 @@ const main = async () => {
 					return;
 				}
 				const groupingBN = new BN(parseInt(grouping as string));
-				res.writeHead(200);
-				res.end(
-					JSON.stringify(l2WithBNToStrings(groupL2(l2, groupingBN, finalDepth)))
+				const l2Formatted = l2WithBNToStrings(
+					groupL2(l2, groupingBN, finalDepth)
 				);
+				if (`${includeOracle}`.toLowerCase() === 'true') {
+					l2Formatted['oracle'] = getOracleForMarket(
+						normedMarketType,
+						normedMarketIndex
+					);
+				}
+
+				res.writeHead(200);
+				res.end(JSON.stringify(l2Formatted));
 			} else {
 				// make the BNs into strings
+				const l2Formatted = l2WithBNToStrings(l2);
+				if (`${includeOracle}`.toLowerCase() === 'true') {
+					l2Formatted['oracle'] = getOracleForMarket(
+						normedMarketType,
+						normedMarketIndex
+					);
+				}
+
 				res.writeHead(200);
-				res.end(JSON.stringify(l2WithBNToStrings(l2)));
+				res.end(JSON.stringify(l2Formatted));
 			}
 		} catch (err) {
 			next(err);
@@ -1109,10 +1155,26 @@ const main = async () => {
 						parseInt(normedParam['grouping'] as string)
 					);
 
-					return l2WithBNToStrings(groupL2(l2, groupingBN, finalDepth));
+					const l2Formatted = l2WithBNToStrings(
+						groupL2(l2, groupingBN, finalDepth)
+					);
+					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
+						l2Formatted['oracle'] = getOracleForMarket(
+							normedMarketType,
+							normedMarketIndex
+						);
+					}
+					return l2Formatted;
 				} else {
 					// make the BNs into strings
-					return l2WithBNToStrings(l2);
+					const l2Formatted = l2WithBNToStrings(l2);
+					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
+						l2Formatted['oracle'] = getOracleForMarket(
+							normedMarketType,
+							normedMarketIndex
+						);
+					}
+					return l2Formatted;
 				}
 			});
 
@@ -1125,7 +1187,7 @@ const main = async () => {
 
 	app.get('/l3', async (req, res, next) => {
 		try {
-			const { marketName, marketIndex, marketType } = req.query;
+			const { marketName, marketIndex, marketType, includeOracle } = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
 				marketType as string,
@@ -1151,6 +1213,10 @@ const main = async () => {
 						size: level.size.toString(),
 					};
 				}
+			}
+
+			if (`${includeOracle}`.toLowerCase() === 'true') {
+				l3['oracle'] = getOracleForMarket(normedMarketType, normedMarketIndex);
 			}
 
 			res.writeHead(200);
