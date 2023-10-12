@@ -396,6 +396,7 @@ const main = async () => {
 		driftClient,
 		driftClient.userStatsAccountSubscriptionConfig
 	);
+	await userStatsMap.subscribe();
 
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
@@ -488,8 +489,23 @@ const main = async () => {
 		}
 	};
 
+	const handleStartup = async (_req, res, _next) => {
+		if (
+			driftClient.isSubscribed &&
+			userMap.size() > 0 &&
+			userStatsMap.size() > 0
+		) {
+			res.writeHead(200);
+			res.end('OK');
+		} else {
+			res.writeHead(500);
+			res.end('Not ready');
+		}
+	};
+
 	// start http server listening to /health endpoint using http package
 	app.get('/health', handleHealthCheck);
+	app.get('/startup', handleStartup);
 	app.get('/', handleHealthCheck);
 
 	app.get('/orders/json/raw', async (_req, res, next) => {
@@ -825,7 +841,7 @@ const main = async () => {
 
 			const topMakers = new Set();
 			let foundMakers = 0;
-			const findMakers = (sideGenerator: Generator<DLOBNode>) => {
+			const findMakers = async (sideGenerator: Generator<DLOBNode>) => {
 				for (const side of sideGenerator) {
 					if (limit && foundMakers >= normedLimit) {
 						break;
@@ -837,10 +853,14 @@ const main = async () => {
 						} else {
 							if (`${includeUserStats}`.toLowerCase() === 'true') {
 								const userAccount = side.userAccount.toBase58();
-								const userStats = userStatsMap
-									.get(userAccount)
-									.userStatsAccountPublicKey.toBase58();
-								topMakers.add([userAccount, userStats]);
+								await userMap.mustGet(userAccount);
+								const userStats = await userStatsMap.mustGet(
+									userMap.getUserAuthority(userAccount)!.toBase58()
+								);
+								topMakers.add([
+									userAccount,
+									userStats.userStatsAccountPublicKey.toBase58(),
+								]);
 							} else {
 								topMakers.add(side.userAccount.toBase58());
 							}
@@ -853,7 +873,7 @@ const main = async () => {
 			};
 
 			if (normedSide === 'bid') {
-				findMakers(
+				await findMakers(
 					dlobSubscriber
 						.getDLOB()
 						.getRestingLimitBids(
@@ -864,7 +884,7 @@ const main = async () => {
 						)
 				);
 			} else {
-				findMakers(
+				await findMakers(
 					dlobSubscriber
 						.getDLOB()
 						.getRestingLimitAsks(
