@@ -915,6 +915,7 @@ const main = async () => {
 					price: level.price.toString(),
 					size: level.size.toString(),
 					sources,
+					hasPostOnly: level.hasPostOnly ? true : false,
 				};
 			}
 		}
