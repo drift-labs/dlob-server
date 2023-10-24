@@ -22,7 +22,6 @@ import {
 	DLOBOrdersCoder,
 	SpotMarkets,
 	PerpMarkets,
-	DLOBSubscriber,
 	MarketType,
 	SpotMarketConfig,
 	PhoenixSubscriber,
@@ -31,7 +30,6 @@ import {
 	isVariant,
 	BN,
 	groupL2,
-	L2OrderBook,
 	Wallet,
 	UserStatsMap,
 } from '@drift-labs/sdk';
@@ -48,6 +46,10 @@ import {
 	View,
 } from '@opentelemetry/sdk-metrics-base';
 import { ObservableResult } from '@opentelemetry/api';
+import * as http from 'http';
+import { Server } from 'socket.io';
+import { l2WithBNToStrings, sleep } from './utils';
+import { DLOBSubscriberIO } from './dlob-subscriber/DLOBSubscriberIO';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -57,6 +59,12 @@ const sdkConfig = initialize({ env: process.env.ENV });
 
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
+const maxPerpMarketIndex = Math.max(
+	...sdkConfig.PERP_MARKETS.map((m) => m.marketIndex)
+);
+const maxSpotMarketIndex = Math.max(
+	...sdkConfig.SPOT_MARKETS.map((m) => m.marketIndex)
+);
 
 const bulkAccountLoaderPollingInterval = process.env
 	.BULK_ACCOUNT_LOADER_POLLING_INTERVAL
@@ -88,6 +96,13 @@ app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
+
+const server = http.createServer(app);
+const io = new Server(server);
+
+export function getIOServer(): Server {
+	return io;
+}
 
 const handleResponseTime = responseTime(
 	(req: Request, res: Response, time: number) => {
@@ -146,10 +161,6 @@ logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
-
-function sleep(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * Creates {count} buckets of size {increment} starting from {start}. Each bucket stores the count of values within its "size".
@@ -398,7 +409,7 @@ const main = async () => {
 	);
 	await userStatsMap.subscribe();
 
-	const dlobSubscriber = new DLOBSubscriber({
+	const dlobSubscriber = new DLOBSubscriberIO({
 		driftClient,
 		dlobSource: userMap,
 		slotSource: slotSubscriber,
@@ -903,24 +914,6 @@ const main = async () => {
 		}
 	});
 
-	const l2WithBNToStrings = (l2: L2OrderBook): any => {
-		for (const key of Object.keys(l2)) {
-			for (const idx in l2[key]) {
-				const level = l2[key][idx];
-				const sources = level['sources'];
-				for (const sourceKey of Object.keys(sources)) {
-					sources[sourceKey] = sources[sourceKey].toString();
-				}
-				l2[key][idx] = {
-					price: level.price.toString(),
-					size: level.size.toString(),
-					sources,
-				};
-			}
-		}
-		return l2;
-	};
-
 	const getOracleForMarket = (
 		marketType: MarketType,
 		marketIndex: number
@@ -1249,8 +1242,47 @@ const main = async () => {
 	});
 
 	app.use(errorHandler);
-	app.listen(serverPort, () => {
+	server.listen(serverPort, () => {
 		logger.info(`DLOB server listening on port http://localhost:${serverPort}`);
+	});
+
+	/**
+	 * Handle websocket logic here
+	 */
+
+	io.on('connection', (socket) => {
+		console.log('a user connected');
+
+		socket.on('disconnect', () => {
+			console.log('user disconnected');
+		});
+
+		socket.on('message', (msg: any) => {
+			const parsed = JSON.parse(msg);
+			if (parsed['type'] == 'subscribe') {
+				console.log('here');
+				dlobSubscriber.marketL2Args.push({
+					marketIndex: parseInt(parsed['marketIndex']),
+					marketType: isVariant(parsed['marketType'].toLowerCase(), 'spot')
+						? MarketType.SPOT
+						: MarketType.PERP,
+					marketName: parsed['marketName'],
+					depth: parseInt(parsed['depth']),
+					includeVamm: parsed['includeVamm'] === 'true',
+					grouping: parsed['grouping']
+						? parseInt(parsed['grouping'])
+						: undefined,
+					fallbackL2Generators: isVariant(parsed['marketType'], 'spot')
+						? [
+								`${parsed['includePhoenix']}`.toLowerCase() === 'true' &&
+									MARKET_SUBSCRIBERS[parseInt(parsed['marketIndex'])].phoenix,
+								`${parsed['includeSerum']}`.toLowerCase() === 'true' &&
+									MARKET_SUBSCRIBERS[parseInt(parsed['marketIndex'])].serum,
+						  ].filter((a) => !!a)
+						: [],
+				});
+			}
+		});
 	});
 };
 
