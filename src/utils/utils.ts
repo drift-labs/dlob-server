@@ -1,5 +1,6 @@
 import {
 	DriftClient,
+	DriftEnv,
 	L2OrderBook,
 	MarketType,
 	PerpMarkets,
@@ -12,7 +13,6 @@ import {
 } from '@drift-labs/sdk';
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
-import { driftClient, driftEnv, sdkConfig } from '..';
 
 export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	for (const key of Object.keys(l2)) {
@@ -111,7 +111,8 @@ export const normalizeBatchQueryParams = (rawParams: {
 };
 
 export const validateWsSubscribeMsg = (
-	msg: any
+	msg: any,
+	sdkConfig: any
 ): { valid: boolean; msg?: string } => {
 	const maxPerpMarketIndex = Math.max(
 		...sdkConfig.PERP_MARKETS.map((m) => m.marketIndex)
@@ -158,6 +159,8 @@ export const validateWsSubscribeMsg = (
 };
 
 export const validateDlobQuery = (
+	driftClient: DriftClient,
+	driftEnv: DriftEnv,
 	marketType?: string,
 	marketIndex?: string,
 	marketName?: string
@@ -248,7 +251,8 @@ export function errorHandler(
 
 export const getPhoenixSubscriber = (
 	driftClient: DriftClient,
-	marketConfig: SpotMarketConfig
+	marketConfig: SpotMarketConfig,
+	sdkConfig
 ): PhoenixSubscriber => {
 	return new PhoenixSubscriber({
 		connection: driftClient.connection,
@@ -262,7 +266,8 @@ export const getPhoenixSubscriber = (
 
 export const getSerumSubscriber = (
 	driftClient: DriftClient,
-	marketConfig: SpotMarketConfig
+	marketConfig: SpotMarketConfig,
+	sdkConfig
 ): SerumSubscriber => {
 	return new SerumSubscriber({
 		connection: driftClient.connection,

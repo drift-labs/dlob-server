@@ -11,6 +11,7 @@ import {
 import { getOracleForMarket, l2WithBNToStrings } from '../utils/utils';
 import { Server } from 'socket.io';
 import { getIOServer } from '..';
+import { RedisClient } from '../utils/redisClient';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -28,9 +29,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	public marketL2Args: wsMarketL2Args[] = [];
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
 	io: Server;
+	redisClient: RedisClient;
 
-	constructor(config: DLOBSubscriptionConfig) {
+	constructor(config: DLOBSubscriptionConfig & { redisClient: RedisClient }) {
 		super(config);
+		this.redisClient = config.redisClient;
 
 		// Set up appropriate maps
 		this.lastSeenL2Formatted = new Map();
@@ -43,7 +46,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				marketIndex: market.marketIndex,
 				marketType: MarketType.PERP,
 				marketName: market.symbol,
-				depth: 2,
+				depth: -1,
 				includeVamm: true,
 				numVammOrders: 100,
 				updateOnChange: true,
@@ -55,7 +58,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				marketIndex: market.marketIndex,
 				marketType: MarketType.SPOT,
 				marketName: market.symbol,
-				depth: 2,
+				depth: -1,
 				includeVamm: false,
 				updateOnChange: true,
 				fallbackL2Generators: [],
@@ -101,6 +104,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
-		this.io.emit('l2Update', l2Formatted);
+		this.redisClient.client.publish(
+			l2Args.marketName,
+			JSON.stringify(l2Formatted)
+		);
 	}
 }

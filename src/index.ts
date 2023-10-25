@@ -43,6 +43,7 @@ import {
 import { DLOBSubscriberIO } from './dlob-subscriber/DLOBSubscriberIO';
 import { handleResponseTime } from './core/middleware';
 import { handleHealthCheck } from './core/metrics';
+import { RedisClient } from './utils/redisClient';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -130,13 +131,21 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 		};
 
 		if (market.phoenixMarket) {
-			const phoenixSubscriber = getPhoenixSubscriber(driftClient, market);
+			const phoenixSubscriber = getPhoenixSubscriber(
+				driftClient,
+				market,
+				sdkConfig
+			);
 			await phoenixSubscriber.subscribe();
 			markets[market.marketIndex].phoenix = phoenixSubscriber;
 		}
 
 		if (market.serumMarket) {
-			const serumSubscriber = getSerumSubscriber(driftClient, market);
+			const serumSubscriber = getSerumSubscriber(
+				driftClient,
+				market,
+				sdkConfig
+			);
 			await serumSubscriber.subscribe();
 			markets[market.marketIndex].serum = serumSubscriber;
 		}
@@ -195,11 +204,15 @@ const main = async () => {
 	);
 	await userStatsMap.subscribe();
 
+	const redisClient = new RedisClient('localhost', '6379');
+	await redisClient.connect();
+
 	const dlobSubscriber = new DLOBSubscriberIO({
 		driftClient,
 		dlobSource: userMap,
 		slotSource: slotSubscriber,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
+		redisClient,
 	});
 	await dlobSubscriber.subscribe();
 
@@ -385,6 +398,8 @@ const main = async () => {
 		try {
 			const { marketName, marketIndex, marketType } = req.query;
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
+				driftClient,
+				driftEnv,
 				marketType as string,
 				marketIndex as string,
 				marketName as string
@@ -454,6 +469,8 @@ const main = async () => {
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
+				driftClient,
+				driftEnv,
 				marketType as string,
 				marketIndex as string,
 				marketName as string
@@ -561,6 +578,8 @@ const main = async () => {
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
+				driftClient,
+				driftEnv,
 				marketType as string,
 				marketIndex as string,
 				marketName as string
@@ -674,6 +693,8 @@ const main = async () => {
 			const l2s = normedParams.map((normedParam) => {
 				const { normedMarketType, normedMarketIndex, error } =
 					validateDlobQuery(
+						driftClient,
+						driftEnv,
 						normedParam['marketType'] as string,
 						normedParam['marketIndex'] as string,
 						normedParam['marketName'] as string
@@ -760,6 +781,8 @@ const main = async () => {
 			const { marketName, marketIndex, marketType, includeOracle } = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
+				driftClient,
+				driftEnv,
 				marketType as string,
 				marketIndex as string,
 				marketName as string
