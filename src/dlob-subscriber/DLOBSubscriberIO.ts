@@ -6,7 +6,7 @@ import {
 	MarketType,
 	groupL2,
 } from '@drift-labs/sdk';
-import { l2WithBNToStrings } from '../utils';
+import { getOracleForMarket, l2WithBNToStrings } from '../utils/utils';
 import { Server } from 'socket.io';
 import { getIOServer } from '..';
 
@@ -37,7 +37,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	}
 
 	getL2AndSendMsg(l2Args: wsMarketL2Args): void {
-		console.time('getL2AndSendMsg');
 		const grouping = l2Args.grouping;
 		const l2 = this.getL2(l2Args);
 		let l2Formatted: any;
@@ -50,7 +49,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		l2Formatted['marketName'] = l2Args.marketName;
 		l2Formatted['marketType'] = l2Args.marketType;
 		l2Formatted['marketIndex'] = l2Args.marketIndex;
+		l2Formatted['oracle'] = getOracleForMarket(
+			this.driftClient,
+			l2Args.marketType,
+			l2Args.marketIndex
+		);
 		this.io.emit('l2Update', l2Formatted);
-		console.timeEnd('getL2AndSendMsg');
 	}
 }
