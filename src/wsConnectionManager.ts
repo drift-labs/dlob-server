@@ -23,7 +23,6 @@ async function main() {
 			console.log('Subscribing to channel', channel);
 			redisClient.client.subscribe(channel);
 			redisClient.client.on('message', (subscribedChannel, message) => {
-				console.log(message);
 				if (subscribedChannel === channel) {
 					socket.emit(channel, JSON.parse(message));
 				}

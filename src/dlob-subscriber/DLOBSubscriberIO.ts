@@ -86,12 +86,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		}
 
 		if (
-			l2Args.updateOnChange &&
-			this.lastSeenL2Formatted
-				.get(l2Args.marketType)
-				?.get(l2Args.marketIndex) === JSON.stringify(l2Formatted)
+			l2Args.updateOnChange
 		) {
-			return;
+			if (this.lastSeenL2Formatted
+				.get(l2Args.marketType)
+				?.get(l2Args.marketIndex) === JSON.stringify(l2Formatted)) return;
 		}
 		this.lastSeenL2Formatted
 			.get(l2Args.marketType)
