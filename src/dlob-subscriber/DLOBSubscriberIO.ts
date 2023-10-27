@@ -80,7 +80,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	getL2AndSendMsg(l2Args: wsMarketL2Args): void {
 		const grouping = l2Args.grouping;
-		const {marketName, ...l2FuncArgs} = l2Args;
+		const { marketName, ...l2FuncArgs } = l2Args;
 		const l2 = this.getL2(l2FuncArgs);
 		let l2Formatted: any;
 		if (grouping) {
@@ -109,9 +109,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
-		this.redisClient.client.publish(
-			marketName,
-			JSON.stringify(l2Formatted)
-		);
+		this.redisClient.client.publish(marketName, JSON.stringify(l2Formatted));
 	}
 }
