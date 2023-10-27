@@ -9,11 +9,9 @@ import {
 	SlotSubscriber,
 	UserMap,
 	Wallet,
-	UserStatsMap,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
-
 import { sleep } from './utils/utils';
 import { DLOBSubscriberIO } from './dlob-subscriber/DLOBSubscriberIO';
 import { RedisClient } from './utils/redisClient';
@@ -86,11 +84,6 @@ const main = async () => {
 		false
 	);
 	await userMap.subscribe();
-	const userStatsMap = new UserStatsMap(
-		driftClient,
-		driftClient.userStatsAccountSubscriptionConfig
-	);
-	await userStatsMap.subscribe();
 
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
