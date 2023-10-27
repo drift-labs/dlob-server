@@ -1,0 +1,287 @@
+import {
+	DriftClient,
+	DriftEnv,
+	L2OrderBook,
+	MarketType,
+	PerpMarkets,
+	PhoenixSubscriber,
+	PublicKey,
+	SerumSubscriber,
+	SpotMarketConfig,
+	SpotMarkets,
+	isVariant,
+} from '@drift-labs/sdk';
+import { logger } from './logger';
+import { NextFunction, Request, Response } from 'express';
+
+export const l2WithBNToStrings = (l2: L2OrderBook): any => {
+	for (const key of Object.keys(l2)) {
+		for (const idx in l2[key]) {
+			const level = l2[key][idx];
+			const sources = level['sources'];
+			for (const sourceKey of Object.keys(sources)) {
+				sources[sourceKey] = sources[sourceKey].toString();
+			}
+			l2[key][idx] = {
+				price: level.price.toString(),
+				size: level.size.toString(),
+				sources,
+			};
+		}
+	}
+	return l2;
+};
+
+export function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export const getOracleForMarket = (
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number
+): number => {
+	if (isVariant(marketType, 'spot')) {
+		return driftClient.getOracleDataForSpotMarket(marketIndex).price.toNumber();
+	} else if (isVariant(marketType, 'perp')) {
+		return driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
+	}
+};
+
+/**
+ * Takes in a req.query like: `{
+ * 		marketName: 'SOL-PERP,BTC-PERP,ETH-PERP',
+ * 		marketType: undefined,
+ * 		marketIndices: undefined,
+ * 		...
+ * 	}` and returns a normalized object like:
+ *
+ * `[
+ * 		{marketName: 'SOL-PERP', marketType: undefined, marketIndex: undefined,...},
+ * 		{marketName: 'BTC-PERP', marketType: undefined, marketIndex: undefined,...},
+ * 		{marketName: 'ETH-PERP', marketType: undefined, marketIndex: undefined,...}
+ * ]`
+ *
+ * @param rawParams req.query object
+ * @returns normalized query params for batch requests, or undefined if there is a mismatched length
+ */
+export const normalizeBatchQueryParams = (rawParams: {
+	[key: string]: string | undefined;
+}): Array<{ [key: string]: string | undefined }> => {
+	const normedParams: Array<{ [key: string]: string | undefined }> = [];
+	const parsedParams = {};
+
+	// parse the query string into arrays
+	for (const key of Object.keys(rawParams)) {
+		const rawParam = rawParams[key];
+		if (rawParam === undefined) {
+			parsedParams[key] = [];
+		} else {
+			parsedParams[key] = rawParam.split(',') || [rawParam];
+		}
+	}
+
+	// of all parsedParams, find the max length
+	const maxLength = Math.max(
+		...Object.values(parsedParams).map((param: Array<unknown>) => param.length)
+	);
+
+	// all params have to be either 0 length, or maxLength to be valid
+	const values = Object.values(parsedParams);
+	const validParams = values.every(
+		(value: Array<unknown>) => value.length === 0 || value.length === maxLength
+	);
+	if (!validParams) {
+		return undefined;
+	}
+
+	// merge all params into an array of objects
+	// normalize all params to the same length, filling in undefineds
+	for (let i = 0; i < maxLength; i++) {
+		const newParam = {};
+		for (const key of Object.keys(parsedParams)) {
+			const parsedParam = parsedParams[key];
+			newParam[key] =
+				parsedParam.length === maxLength ? parsedParam[i] : undefined;
+		}
+		normedParams.push(newParam);
+	}
+
+	return normedParams;
+};
+
+export const validateWsSubscribeMsg = (
+	msg: any,
+	sdkConfig: any
+): { valid: boolean; msg?: string } => {
+	const maxPerpMarketIndex = Math.max(
+		...sdkConfig.PERP_MARKETS.map((m) => m.marketIndex)
+	);
+	const maxSpotMarketIndex = Math.max(
+		...sdkConfig.SPOT_MARKETS.map((m) => m.marketIndex)
+	);
+
+	if (msg['marketIndex'] < 0) {
+		return { valid: false, msg: `Invalid marketIndex, must be >= 0` };
+	}
+
+	if (
+		msg['marketType'].toLowerCase() == 'spot' &&
+		parseInt(msg['marketIndex']) > maxSpotMarketIndex
+	) {
+		return {
+			valid: false,
+			msg: `Invalid marketIndex for marketType: ${msg['marketType']}`,
+		};
+	}
+
+	if (
+		msg['marketType'].toLowerCase() == 'perp' &&
+		parseInt(msg['marketIndex']) > maxPerpMarketIndex
+	) {
+		return {
+			valid: false,
+			msg: `Invalid marketIndex for marketType: ${msg['marketType']}`,
+		};
+	}
+
+	if (
+		msg['marketType'].toLowerCase() != 'perp' &&
+		msg['marketType'] != 'spot'
+	) {
+		return {
+			valid: false,
+			msg: `Invalid marketType: ${msg['marketType']}`,
+		};
+	}
+
+	return { valid: true };
+};
+
+export const validateDlobQuery = (
+	driftClient: DriftClient,
+	driftEnv: DriftEnv,
+	marketType?: string,
+	marketIndex?: string,
+	marketName?: string
+): {
+	normedMarketType?: MarketType;
+	normedMarketIndex?: number;
+	error?: string;
+} => {
+	let normedMarketType: MarketType = undefined;
+	let normedMarketIndex: number = undefined;
+	let normedMarketName: string = undefined;
+	if (marketName === undefined) {
+		if (marketIndex === undefined || marketType === undefined) {
+			return {
+				error:
+					'Bad Request: (marketName) or (marketIndex and marketType) must be supplied',
+			};
+		}
+
+		// validate marketType
+		switch ((marketType as string).toLowerCase()) {
+			case 'spot': {
+				normedMarketType = MarketType.SPOT;
+				normedMarketIndex = parseInt(marketIndex as string);
+				const spotMarketIndicies = SpotMarkets[driftEnv].map(
+					(mkt) => mkt.marketIndex
+				);
+				if (!spotMarketIndicies.includes(normedMarketIndex)) {
+					return {
+						error: 'Bad Request: invalid marketIndex',
+					};
+				}
+				break;
+			}
+			case 'perp': {
+				normedMarketType = MarketType.PERP;
+				normedMarketIndex = parseInt(marketIndex as string);
+				const perpMarketIndicies = PerpMarkets[driftEnv].map(
+					(mkt) => mkt.marketIndex
+				);
+				if (!perpMarketIndicies.includes(normedMarketIndex)) {
+					return {
+						error: 'Bad Request: invalid marketIndex',
+					};
+				}
+				break;
+			}
+			default:
+				return {
+					error: 'Bad Request: marketType must be either "spot" or "perp"',
+				};
+		}
+	} else {
+		// validate marketName
+		normedMarketName = (marketName as string).toUpperCase();
+		const derivedMarketInfo =
+			driftClient.getMarketIndexAndType(normedMarketName);
+		if (!derivedMarketInfo) {
+			return {
+				error: 'Bad Request: unrecognized marketName',
+			};
+		}
+		normedMarketType = derivedMarketInfo.marketType;
+		normedMarketIndex = derivedMarketInfo.marketIndex;
+	}
+
+	return {
+		normedMarketType,
+		normedMarketIndex,
+	};
+};
+
+export function errorHandler(
+	err: Error,
+	_req: Request,
+	res: Response,
+	_next: NextFunction
+): void {
+	logger.error(`errorHandler, message: ${err.message}, stack: ${err.stack}`);
+	if (!res.headersSent) {
+		res.status(500).send('Internal error');
+	}
+}
+
+/**
+ * Spot market utils
+ */
+
+export const getPhoenixSubscriber = (
+	driftClient: DriftClient,
+	marketConfig: SpotMarketConfig,
+	sdkConfig
+): PhoenixSubscriber => {
+	return new PhoenixSubscriber({
+		connection: driftClient.connection,
+		programId: new PublicKey(sdkConfig.PHOENIX),
+		marketAddress: marketConfig.phoenixMarket,
+		accountSubscription: {
+			type: 'websocket',
+		},
+	});
+};
+
+export const getSerumSubscriber = (
+	driftClient: DriftClient,
+	marketConfig: SpotMarketConfig,
+	sdkConfig
+): SerumSubscriber => {
+	return new SerumSubscriber({
+		connection: driftClient.connection,
+		programId: new PublicKey(sdkConfig.SERUM_V3),
+		marketAddress: marketConfig.serumMarket,
+		accountSubscription: {
+			type: 'websocket',
+		},
+	});
+};
+
+export type SubscriberLookup = {
+	[marketIndex: number]: {
+		phoenix?: PhoenixSubscriber;
+		serum?: SerumSubscriber;
+	};
+};

@@ -140,3 +140,6 @@ src/**.js.map
 
 .env
 lib
+src/playground.ts
+
+*dump.rdb
