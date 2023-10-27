@@ -2,6 +2,8 @@ import {
 	BN,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
+	DevnetPerpMarkets,
+	DevnetSpotMarkets,
 	L2OrderBookGenerator,
 	MainnetPerpMarkets,
 	MainnetSpotMarkets,
@@ -10,6 +12,7 @@ import {
 } from '@drift-labs/sdk';
 import { getOracleForMarket, l2WithBNToStrings } from '../utils/utils';
 import { RedisClient } from '../utils/redisClient';
+import { driftEnv } from '../wsPublish';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -38,7 +41,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastSeenL2Formatted.set(MarketType.PERP, new Map());
 
 		// Add all active markets to the market L2Args
-		for (const market of MainnetPerpMarkets) {
+		const perpMarkets =
+			driftEnv === 'devnet' ? DevnetPerpMarkets : MainnetPerpMarkets;
+		const spotMarkets =
+			driftEnv === 'devnet' ? DevnetSpotMarkets : MainnetSpotMarkets;
+
+		for (const market of perpMarkets) {
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.PERP,
@@ -50,7 +58,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				fallbackL2Generators: [],
 			});
 		}
-		for (const market of MainnetSpotMarkets) {
+		for (const market of spotMarkets) {
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.SPOT,
