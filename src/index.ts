@@ -42,6 +42,7 @@ import {
 } from './utils/utils';
 import { handleResponseTime } from './core/middleware';
 import { handleHealthCheck } from './core/metrics';
+import { Mutex } from 'async-mutex';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -114,6 +115,13 @@ logger.info(`Commit:       ${commitHash}`);
 
 let MARKET_SUBSCRIBERS: SubscriberLookup = {};
 
+const lastSlotReceivedMutex = new Mutex();
+let lastSlotReceived: number;
+
+export const getSlotHealthCheckInfo = () => {
+	return { lastSlotReceived, lastSlotReceivedMutex };
+};
+
 const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	const markets: SubscriberLookup = {};
 
@@ -162,6 +170,7 @@ const main = async () => {
 		programID: clearingHousePublicKey,
 		accountSubscription: {
 			type: 'websocket',
+			resubTimeoutMs: 60000,
 		},
 		env: driftEnv,
 		userStats: true,
@@ -184,6 +193,11 @@ const main = async () => {
 	});
 
 	await slotSubscriber.subscribe();
+	slotSubscriber.eventEmitter.on('newSlot', async (slot: number) => {
+		await lastSlotReceivedMutex.runExclusive(async () => {
+			lastSlotReceived = slot;
+		});
+	});
 
 	const userMap = new UserMap(
 		driftClient,

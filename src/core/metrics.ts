@@ -7,7 +7,13 @@ import {
 	MeterProvider,
 	View,
 } from '@opentelemetry/sdk-metrics-base';
-import { commitHash, driftEnv, endpoint, wsEndpoint } from '..';
+import {
+	commitHash,
+	driftEnv,
+	endpoint,
+	getSlotHealthCheckInfo,
+	wsEndpoint,
+} from '..';
 
 /**
  * Creates {count} buckets of size {increment} starting from {start}. Each bucket stores the count of values within its "size".
@@ -110,15 +116,35 @@ const responseStatusCounter = meter.createCounter(
 	}
 );
 
-const startupTime = Date.now();
+const healthCheckInterval = 2000;
+let lastHealthCheckSlot = -1;
+let lastHealthCheckSlotUpdated = Date.now();
 const handleHealthCheck = async (req, res, next) => {
+	const { lastSlotReceived, lastSlotReceivedMutex } = getSlotHealthCheckInfo();
+
 	try {
 		if (req.url === '/health' || req.url === '/') {
-			if (Date.now() > startupTime + 60 * 1000) {
-				healthStatus = HEALTH_STATUS.LivenessTesting;
+			// check if a slot was received recently
+			let healthySlotSubscriber = false;
+			await lastSlotReceivedMutex.runExclusive(async () => {
+				const slotChanged = lastSlotReceived > lastHealthCheckSlot;
+				const slotChangedRecently =
+					Date.now() - lastHealthCheckSlotUpdated < healthCheckInterval;
+				healthySlotSubscriber = slotChanged || slotChangedRecently;
+				logger.debug(
+					`Slotsubscriber health check: lastSlotReceived: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, slotChanged: ${slotChanged}, slotChangedRecently: ${slotChangedRecently}`
+				);
+				if (slotChanged) {
+					lastHealthCheckSlot = lastSlotReceived;
+					lastHealthCheckSlotUpdated = Date.now();
+				}
+			});
+			if (!healthySlotSubscriber) {
+				healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
+				logger.error(`SlotSubscriber is not healthy`);
 
 				res.writeHead(500);
-				res.end('Testing liveness test fail');
+				res.end(`SlotSubscriber is not healthy`);
 				return;
 			}
 
