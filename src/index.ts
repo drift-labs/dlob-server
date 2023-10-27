@@ -23,12 +23,12 @@ import {
 	groupL2,
 	Wallet,
 	UserStatsMap,
+	DLOBSubscriber,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
-import { Server } from 'socket.io';
 import {
 	l2WithBNToStrings,
 	sleep,
@@ -40,10 +40,8 @@ import {
 	getSerumSubscriber,
 	validateDlobQuery,
 } from './utils/utils';
-import { DLOBSubscriberIO } from './dlob-subscriber/DLOBSubscriberIO';
 import { handleResponseTime } from './core/middleware';
 import { handleHealthCheck } from './core/metrics';
-import { RedisClient } from './utils/redisClient';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -103,11 +101,6 @@ app.use((req, _res, next) => {
 
 app.use(errorHandler);
 const server = http.createServer(app);
-const io = new Server(server);
-
-export function getIOServer(): Server {
-	return io;
-}
 
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
@@ -204,15 +197,11 @@ const main = async () => {
 	);
 	await userStatsMap.subscribe();
 
-	const redisClient = new RedisClient('localhost', '6379');
-	await redisClient.connect();
-
-	const dlobSubscriber = new DLOBSubscriberIO({
+	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
 		dlobSource: userMap,
 		slotSource: slotSubscriber,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
-		redisClient,
 	});
 	await dlobSubscriber.subscribe();
 
@@ -825,14 +814,6 @@ const main = async () => {
 
 	server.listen(serverPort, () => {
 		logger.info(`DLOB server listening on port http://localhost:${serverPort}`);
-	});
-
-	io.on('connection', (socket) => {
-		console.log('a user connected');
-
-		socket.on('disconnect', () => {
-			console.log('user disconnected');
-		});
 	});
 };
 

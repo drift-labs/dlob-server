@@ -9,8 +9,6 @@ import {
 	groupL2,
 } from '@drift-labs/sdk';
 import { getOracleForMarket, l2WithBNToStrings } from '../utils/utils';
-import { Server } from 'socket.io';
-import { getIOServer } from '..';
 import { RedisClient } from '../utils/redisClient';
 
 type wsMarketL2Args = {
@@ -28,7 +26,6 @@ type wsMarketL2Args = {
 export class DLOBSubscriberIO extends DLOBSubscriber {
 	public marketL2Args: wsMarketL2Args[] = [];
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
-	io: Server;
 	redisClient: RedisClient;
 
 	constructor(config: DLOBSubscriptionConfig & { redisClient: RedisClient }) {
@@ -67,7 +64,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	}
 
 	override async updateDLOB(): Promise<void> {
-		this.io = getIOServer();
 		await super.updateDLOB();
 		for (const l2Args of this.marketL2Args) {
 			this.getL2AndSendMsg(l2Args);
@@ -85,12 +81,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Formatted = l2WithBNToStrings(l2);
 		}
 
-		if (
-			l2Args.updateOnChange
-		) {
-			if (this.lastSeenL2Formatted
-				.get(l2Args.marketType)
-				?.get(l2Args.marketIndex) === JSON.stringify(l2Formatted)) return;
+		if (l2Args.updateOnChange) {
+			if (
+				this.lastSeenL2Formatted
+					.get(l2Args.marketType)
+					?.get(l2Args.marketIndex) === JSON.stringify(l2Formatted)
+			)
+				return;
 		}
 		this.lastSeenL2Formatted
 			.get(l2Args.marketType)

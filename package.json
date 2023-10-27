@@ -49,6 +49,7 @@
     "clean": "rm -rf lib",
     "start": "node lib/index.js",
     "dev": "ts-node src/index.ts",
+    "ws-publish": "ts-node src/wsPublish.ts",
     "manager": "ts-node src/wsConnectionManager.ts",
     "dev:inspect": "yarn build && node --inspect ./lib/index.js",
     "dev:debug": "yarn build && node --inspect-brk --inspect=2230 ./lib/index.js",

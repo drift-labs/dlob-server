@@ -14,8 +14,11 @@ app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server);
 
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+const REDIS_PORT = process.env.REDIS_PORT || '6379';
+
 async function main() {
-	const redisClient = new RedisClient('localhost', '6379');
+	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT);
 	await redisClient.connect();
 
 	io.on('connection', (socket) => {
