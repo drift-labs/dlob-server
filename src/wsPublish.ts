@@ -23,6 +23,7 @@ const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
@@ -91,7 +92,7 @@ const main = async () => {
 	);
 	await userStatsMap.subscribe();
 
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT);
+	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
 	const dlobSubscriber = new DLOBSubscriberIO({
