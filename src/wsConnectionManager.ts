@@ -16,9 +16,10 @@ const io = new Server(server);
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
 async function main() {
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT);
+	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
 	io.on('connection', (socket) => {
@@ -31,6 +32,16 @@ async function main() {
 				}
 			});
 		});
+
+		socket.on('unsubscribe', (channel) => {
+			console.log('Unsubscribing from channel', channel);
+			redisClient.client.unsubscribe(channel);
+		});
+
+		socket.on('disconnect', () => {
+			console.log('Client disconnected');
+		});
+
 	});
 
 	server.listen('3000', () => {
