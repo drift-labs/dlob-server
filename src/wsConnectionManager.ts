@@ -12,7 +12,7 @@ app.use(compression());
 app.set('trust proxy', 1);
 
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { path: '/ws' });
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
