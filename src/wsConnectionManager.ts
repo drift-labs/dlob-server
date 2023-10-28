@@ -42,6 +42,9 @@ async function main() {
 			console.log('Client disconnected');
 		});
 
+		socket.on('error', (error) => {
+			console.error('Socket error:', error);
+		});
 	});
 
 	server.listen('3000', () => {
