@@ -1,6 +1,5 @@
 import WebSocket from 'ws';
-// const ws = new WebSocket('wss://master.dlob.drift.trade/ws');
-const ws = new WebSocket('ws://localhost:3000/ws');
+const ws = new WebSocket('wss://master.dlob.drift.trade/ws');
 import { sleep } from '../src/utils/utils';
 
 ws.on('open', async () => {
