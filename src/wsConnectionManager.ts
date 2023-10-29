@@ -22,45 +22,82 @@ async function main() {
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
+	const channelSubscribers = new Map<string, Set<WebSocket>>();
+	const subscribedChannels = new Set<string>();
+
+	redisClient.client.on('message', (subscribedChannel, message) => {
+		const subscribers = channelSubscribers.get(subscribedChannel);
+		subscribers.forEach((ws) => {
+			ws.send(JSON.stringify({channel: subscribedChannel, data: message }));
+		});
+	});
+
 	wss.on('connection', (ws: WebSocket) => {
 		console.log('Client connected');
 
 		ws.on('message', async (msg) => {
 			const parsedMessage = JSON.parse(msg.toString());
-			switch (parsedMessage.type) {
+
+			switch (parsedMessage.type.toLowerCase()) {
 				case 'subscribe': {
 					const channel = parsedMessage.channel;
-					console.log('Subscribing to channel', channel);
-					redisClient.client.subscribe(channel);
-					redisClient.client.on('message', (subscribedChannel, message) => {
-						if (subscribedChannel === channel) {
-							ws.send(JSON.stringify({channel, data: message}));
-						}
-					});
+					if (!subscribedChannels.has(channel)) {
+						console.log('Subscribing to channel', channel);
+						redisClient.client.subscribe(channel).then(() => {
+							subscribedChannels.add(channel);
+						}).catch(() => {
+							ws.send(JSON.stringify({channel, error: `Invalid channel: ${channel}`}));
+							return;
+						});
+					}	
+				
+					if (!channelSubscribers.get(channel)) {
+						const subscribers = new Set<WebSocket>();
+						channelSubscribers.set(channel, subscribers);
+					}
+					channelSubscribers.get(channel).add(ws);
 					break;
 				}
 				case 'unsubscribe': {
 					const channel = parsedMessage.channel;
-					console.log('Unsubscribing from channel', channel);
-					redisClient.client.unsubscribe(channel);
+					const subscribers = channelSubscribers.get(channel);
+					if (subscribers) {
+						channelSubscribers.get(channel).delete(ws);
+					}
+					break;
 				}	
+				default:
+					break;
 			}
 		});
 
 		// Ping/pong connection timeout
+		let pongTimeoutId;
 		let isAlive = true;
-
-    ws.on('pong', () => {
-      isAlive = true;
-    });
-		setInterval(() => {
-			wss.clients.forEach((ws: WebSocket) => {
-				if (isAlive === false) return ws.terminate();
-		
-				isAlive = false;
-				ws.ping();
-			});
+		const pingIntervalId = setInterval(() => {
+			isAlive = false;
+			pongTimeoutId = setTimeout(() => {
+				if (!isAlive) {
+					console.log('Disconnecting because of ping/pong timeout');
+					ws.terminate();
+				}
+			}, 5000);  // 5 seconds to wait for a pong
+			ws.ping();
 		}, 30000);
+
+		// Listen for pong messages
+		ws.on('pong', () => {
+			console.log('poooooooong');
+			isAlive = true;
+			clearTimeout(pongTimeoutId);
+		});
+
+		// Handle disconnection
+		ws.on('close', () => {
+			// Clear any existing intervals and timeouts
+			clearInterval(pingIntervalId);
+			clearTimeout(pongTimeoutId);
+		});
 
 		ws.on('disconnect', () => {
 			console.log('Client disconnected');
