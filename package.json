@@ -14,6 +14,7 @@
     "@project-serum/serum": "^0.13.65",
     "@solana/web3.js": "^1.22.0",
     "@types/redis": "^4.0.11",
+    "@types/ws": "^8.5.8",
     "async-mutex": "^0.4.0",
     "commander": "^9.4.0",
     "compression": "^1.7.4",
@@ -25,11 +26,10 @@
     "morgan": "^1.10.0",
     "redis": "^4.6.10",
     "response-time": "^2.3.2",
-    "socket.io": "^4.7.2",
-    "socket.io-client": "^4.7.2",
     "socket.io-redis": "^6.1.1",
     "typescript": "4.5.4",
-    "winston": "^3.8.1"
+    "winston": "^3.8.1",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "@types/k6": "^0.45.0",

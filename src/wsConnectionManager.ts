@@ -1,8 +1,8 @@
 import cors from 'cors';
 import express from 'express';
 import * as http from 'http';
-import { Server } from 'socket.io';
 import compression from 'compression';
+import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
 import { RedisClient } from './utils/redisClient';
 
@@ -12,7 +12,7 @@ app.use(compression());
 app.set('trust proxy', 1);
 
 const server = http.createServer(app);
-const io = new Server(server, { path: '/ws' });
+const wss = new WebSocketServer({server, path: '/ws'});
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
@@ -22,27 +22,51 @@ async function main() {
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
-	io.on('connection', (socket) => {
-		socket.on('subscribe', (channel) => {
-			console.log('Subscribing to channel', channel);
-			redisClient.client.subscribe(channel);
-			redisClient.client.on('message', (subscribedChannel, message) => {
-				if (subscribedChannel === channel) {
-					socket.emit(channel, JSON.parse(message));
+	wss.on('connection', (ws: WebSocket) => {
+		console.log('Client connected');
+
+		ws.on('message', async (msg) => {
+			const parsedMessage = JSON.parse(msg.toString());
+			switch (parsedMessage.type) {
+				case 'subscribe': {
+					const channel = parsedMessage.channel;
+					console.log('Subscribing to channel', channel);
+					redisClient.client.subscribe(channel);
+					redisClient.client.on('message', (subscribedChannel, message) => {
+						if (subscribedChannel === channel) {
+							ws.send(JSON.stringify({channel, data: message}));
+						}
+					});
+					break;
 				}
+				case 'unsubscribe': {
+					const channel = parsedMessage.channel;
+					console.log('Unsubscribing from channel', channel);
+					redisClient.client.unsubscribe(channel);
+				}	
+			}
+		});
+
+		// Ping/pong connection timeout
+		let isAlive = true;
+
+    ws.on('pong', () => {
+      isAlive = true;
+    });
+		setInterval(() => {
+			wss.clients.forEach((ws: WebSocket) => {
+				if (isAlive === false) return ws.terminate();
+		
+				isAlive = false;
+				ws.ping();
 			});
-		});
+		}, 30000);
 
-		socket.on('unsubscribe', (channel) => {
-			console.log('Unsubscribing from channel', channel);
-			redisClient.client.unsubscribe(channel);
-		});
-
-		socket.on('disconnect', () => {
+		ws.on('disconnect', () => {
 			console.log('Client disconnected');
 		});
 
-		socket.on('error', (error) => {
+		ws.on('error', (error) => {
 			console.error('Socket error:', error);
 		});
 	});
