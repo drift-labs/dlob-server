@@ -1,17 +1,24 @@
 import WebSocket from 'ws';
+// const ws = new WebSocket('wss://master.dlob.drift.trade/ws');
 const ws = new WebSocket('ws://localhost:3000/ws');
+import { sleep } from '../src/utils/utils';
 
-ws.on('open', () => {
+ws.on('open', async () => {
   console.log('Connected to the server');
   ws.send(JSON.stringify({ type: 'subscribe', channel: 'SOL-PERP' }));
+  ws.send(JSON.stringify({ type: 'subscribe', channel: 'LINK-PERP' }));
+  ws.send(JSON.stringify({ type: 'subscribe', channel: 'INJ-PERP' }));
+  await sleep(5000);
+  
+  ws.send(JSON.stringify({ type: 'unsubscribe', channel: 'SOL-PERP' }));
+  console.log("####################");
 });
 
 ws.on('message', (data: WebSocket.Data) => {
   try {
     const message = JSON.parse(data.toString());
-    if (message.channel === 'SOL-PERP') {
-      console.log('Received data:', message.data);
-    }
+    console.log(`Received data from market ${message.channel}`);
+    // book data is in message.data
   } catch (e) {
     console.error('Invalid message:', data);
   }

@@ -12,7 +12,7 @@ app.use(compression());
 app.set('trust proxy', 1);
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({server, path: '/ws'});
+const wss = new WebSocketServer({ server, path: '/ws' });
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
@@ -28,7 +28,7 @@ async function main() {
 	redisClient.client.on('message', (subscribedChannel, message) => {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		subscribers.forEach((ws) => {
-			ws.send(JSON.stringify({channel: subscribedChannel, data: message }));
+			ws.send(JSON.stringify({ channel: subscribedChannel, data: message }));
 		});
 	});
 
@@ -43,14 +43,22 @@ async function main() {
 					const channel = parsedMessage.channel;
 					if (!subscribedChannels.has(channel)) {
 						console.log('Subscribing to channel', channel);
-						redisClient.client.subscribe(channel).then(() => {
-							subscribedChannels.add(channel);
-						}).catch(() => {
-							ws.send(JSON.stringify({channel, error: `Invalid channel: ${channel}`}));
-							return;
-						});
-					}	
-				
+						redisClient.client
+							.subscribe(channel)
+							.then(() => {
+								subscribedChannels.add(channel);
+							})
+							.catch(() => {
+								ws.send(
+									JSON.stringify({
+										channel,
+										error: `Invalid channel: ${channel}`,
+									})
+								);
+								return;
+							});
+					}
+
 					if (!channelSubscribers.get(channel)) {
 						const subscribers = new Set<WebSocket>();
 						channelSubscribers.set(channel, subscribers);
@@ -65,7 +73,7 @@ async function main() {
 						channelSubscribers.get(channel).delete(ws);
 					}
 					break;
-				}	
+				}
 				default:
 					break;
 			}
@@ -81,7 +89,7 @@ async function main() {
 					console.log('Disconnecting because of ping/pong timeout');
 					ws.terminate();
 				}
-			}, 5000);  // 5 seconds to wait for a pong
+			}, 5000); // 5 seconds to wait for a pong
 			ws.ping();
 		}, 30000);
 
