@@ -6,6 +6,9 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
 import { RedisClient } from './utils/redisClient';
 
+// Set up env constants
+require('dotenv').config();
+
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(compression());
@@ -16,6 +19,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
+const WS_PORT = process.env.WS_PORT || '3000';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
 async function main() {
@@ -116,8 +120,8 @@ async function main() {
 		});
 	});
 
-	server.listen('3000', () => {
-		console.log('connection manager running on 3000');
+	server.listen(WS_PORT, () => {
+		console.log(`connection manager running on ${WS_PORT}`);
 	});
 }
 
