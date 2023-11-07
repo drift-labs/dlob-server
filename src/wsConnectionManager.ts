@@ -24,7 +24,10 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
 async function main() {
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
+	const lastMessageRetriever = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
+
 	await redisClient.connect();
+	await lastMessageRetriever.connect();
 
 	const channelSubscribers = new Map<string, Set<WebSocket>>();
 	const subscribedChannels = new Set<string>();
@@ -34,6 +37,9 @@ async function main() {
 		subscribers.forEach((ws) => {
 			ws.send(JSON.stringify({ channel: subscribedChannel, data: message }));
 		});
+
+		// Save and persist last message
+		lastMessageRetriever.client.set(`last_update_${subscribedChannel}`, message);
 	});
 
 	wss.on('connection', (ws: WebSocket) => {
@@ -68,6 +74,13 @@ async function main() {
 						channelSubscribers.set(channel, subscribers);
 					}
 					channelSubscribers.get(channel).add(ws);
+
+					// Fetch and send last message
+					const lastMessage = await lastMessageRetriever.client.get(`last_update_${channel}`);
+					if (lastMessage !== null) {
+						console.log('sending last message on new subscribe');
+						ws.send(JSON.stringify({ channel, data: lastMessage }));
+					}
 					break;
 				}
 				case 'unsubscribe': {
