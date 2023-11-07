@@ -24,6 +24,7 @@ import {
 	Wallet,
 	UserStatsMap,
 	DLOBSubscriber,
+	BulkAccountLoader,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -205,10 +206,14 @@ const main = async () => {
 		false
 	);
 	await userMap.subscribe();
-	const userStatsMap = new UserStatsMap(
-		driftClient,
-		driftClient.userStatsAccountSubscriptionConfig
-	);
+	const userStatsMap = new UserStatsMap(driftClient, {
+		type: 'polling',
+		accountLoader: new BulkAccountLoader(
+			connection,
+			stateCommitment,
+			ORDERBOOK_UPDATE_INTERVAL * 10
+		),
+	});
 	await userStatsMap.subscribe();
 
 	const dlobSubscriber = new DLOBSubscriber({
