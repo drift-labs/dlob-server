@@ -36,6 +36,16 @@ async function main() {
 	const channelSubscribers = new Map<string, Set<WebSocket>>();
 	const subscribedChannels = new Set<string>();
 
+	redisClient.client.on('connect', () => {
+		subscribedChannels.forEach(async (channel) => {
+			try {
+				await redisClient.client.subscribe(channel);
+			} catch (error) {
+				console.error(`Error subscribing to ${channel}:`, error);
+			}
+		});
+	});
+
 	redisClient.client.on('message', (subscribedChannel, message) => {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		subscribers.forEach((ws) => {
@@ -132,7 +142,6 @@ async function main() {
 
 		// Listen for pong messages
 		ws.on('pong', () => {
-			console.log('poooooooong');
 			isAlive = true;
 			clearTimeout(pongTimeoutId);
 		});
@@ -146,6 +155,7 @@ async function main() {
 				if (subscribers.delete(ws) && subscribers.size === 0) {
 					redisClient.client.unsubscribe(channel);
 					channelSubscribers.delete(channel);
+					subscribedChannels.delete(channel);
 				}
 			});
 		});
