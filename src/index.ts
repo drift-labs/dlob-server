@@ -165,17 +165,22 @@ const main = async () => {
 		commitment: stateCommitment,
 	});
 
-	driftClient = new DriftClient({
-		connection,
-		wallet,
-		programID: clearingHousePublicKey,
-		accountSubscription: {
-			type: 'websocket',
-			resubTimeoutMs: 60000,
-		},
-		env: driftEnv,
-		userStats: true,
-	});
+	const bulkAccountLoader = new BulkAccountLoader(
+			connection,
+			stateCommitment,
+			ORDERBOOK_UPDATE_INTERVAL * 10
+		),
+		driftClient = new DriftClient({
+			connection,
+			wallet,
+			programID: clearingHousePublicKey,
+			accountSubscription: {
+				type: 'polling',
+				accountLoader: bulkAccountLoader,
+			},
+			env: driftEnv,
+			userStats: true,
+		});
 
 	const dlobCoder = DLOBOrdersCoder.create();
 	const slotSubscriber = new SlotSubscriber(connection, {});
@@ -208,11 +213,7 @@ const main = async () => {
 	await userMap.subscribe();
 	const userStatsMap = new UserStatsMap(driftClient, {
 		type: 'polling',
-		accountLoader: new BulkAccountLoader(
-			connection,
-			stateCommitment,
-			ORDERBOOK_UPDATE_INTERVAL * 10
-		),
+		accountLoader: bulkAccountLoader,
 	});
 	await userStatsMap.subscribe();
 
