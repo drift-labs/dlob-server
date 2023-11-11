@@ -168,7 +168,7 @@ const main = async () => {
 	const bulkAccountLoader = new BulkAccountLoader(
 			connection,
 			stateCommitment,
-			ORDERBOOK_UPDATE_INTERVAL * 10
+			ORDERBOOK_UPDATE_INTERVAL
 		),
 		driftClient = new DriftClient({
 			connection,
