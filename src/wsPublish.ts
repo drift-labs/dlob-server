@@ -9,6 +9,7 @@ import {
 	SlotSubscriber,
 	UserMap,
 	Wallet,
+	BulkAccountLoader,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -50,12 +51,19 @@ const main = async () => {
 		commitment: stateCommitment,
 	});
 
+	const bulkAccountLoader = new BulkAccountLoader(
+		connection,
+		stateCommitment,
+		ORDERBOOK_UPDATE_INTERVAL
+	);
+
 	driftClient = new DriftClient({
 		connection,
 		wallet,
 		programID: clearingHousePublicKey,
 		accountSubscription: {
-			type: 'websocket',
+			type: 'polling',
+			accountLoader: bulkAccountLoader,
 		},
 		env: driftEnv,
 		userStats: true,
