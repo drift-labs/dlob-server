@@ -5,6 +5,7 @@ import compression from 'compression';
 import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
 import { RedisClient } from './utils/redisClient';
+import { register, Gauge } from 'prom-client';
 
 // Set up env constants
 require('dotenv').config();
@@ -13,6 +14,11 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
+
+const wsConnectionsGauge = new Gauge({
+	name: 'websocket_connections',
+	help: 'Number of active WebSocket connections',
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -65,6 +71,7 @@ async function main() {
 
 	wss.on('connection', (ws: WebSocket) => {
 		console.log('Client connected');
+		wsConnectionsGauge.inc();
 
 		ws.on('message', async (msg) => {
 			let parsedMessage: any;
@@ -148,6 +155,8 @@ async function main() {
 
 		// Handle disconnection
 		ws.on('close', () => {
+			wsConnectionsGauge.dec();
+
 			// Clear any existing intervals and timeouts
 			clearInterval(pingIntervalId);
 			clearTimeout(pongTimeoutId);
@@ -162,15 +171,22 @@ async function main() {
 
 		ws.on('disconnect', () => {
 			console.log('Client disconnected');
+			wsConnectionsGauge.dec();
 		});
 
 		ws.on('error', (error) => {
 			console.error('Socket error:', error);
+			wsConnectionsGauge.dec();
 		});
 	});
 
 	server.listen(WS_PORT, () => {
 		console.log(`connection manager running on ${WS_PORT}`);
+	});
+
+	app.get('/metrics', async (req, res) => {
+		res.set('Content-Type', register.contentType);
+		res.end(await register.metrics());
 	});
 
 	server.on('error', (error) => {
