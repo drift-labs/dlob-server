@@ -155,8 +155,6 @@ async function main() {
 
 		// Handle disconnection
 		ws.on('close', () => {
-			wsConnectionsGauge.dec();
-
 			// Clear any existing intervals and timeouts
 			clearInterval(pingIntervalId);
 			clearTimeout(pongTimeoutId);
@@ -167,16 +165,11 @@ async function main() {
 					subscribedChannels.delete(channel);
 				}
 			});
-		});
-
-		ws.on('disconnect', () => {
-			console.log('Client disconnected');
 			wsConnectionsGauge.dec();
 		});
 
 		ws.on('error', (error) => {
 			console.error('Socket error:', error);
-			wsConnectionsGauge.dec();
 		});
 	});
 
