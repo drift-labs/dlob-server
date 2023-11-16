@@ -121,7 +121,14 @@ async function main() {
 
 			switch (messageType) {
 				case 'subscribe': {
-					const redisChannel = getRedisChannelFromMessage(parsedMessage);
+					let redisChannel: string;
+					try {
+						redisChannel = getRedisChannelFromMessage(parsedMessage);
+					} catch (error) {
+						ws.send(JSON.stringify({ error: error.message }));
+						return;
+					}
+
 					if (!subscribedChannels.has(redisChannel)) {
 						console.log('Trying to subscribe to channel', redisChannel);
 						redisClient.client
@@ -156,7 +163,13 @@ async function main() {
 					break;
 				}
 				case 'unsubscribe': {
-					const redisChannel = getRedisChannelFromMessage(parsedMessage);
+					let redisChannel: string;
+					try {
+						redisChannel = getRedisChannelFromMessage(parsedMessage);
+					} catch (error) {
+						ws.send(JSON.stringify({ error: error.message }));
+						return;
+					}
 					const subscribers = channelSubscribers.get(redisChannel);
 					if (subscribers) {
 						channelSubscribers.get(redisChannel).delete(ws);
