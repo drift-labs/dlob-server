@@ -6,9 +6,11 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
 import { RedisClient } from './utils/redisClient';
 import { register, Gauge } from 'prom-client';
+import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
 
 // Set up env constants
 require('dotenv').config();
+const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -27,6 +29,40 @@ const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const WS_PORT = process.env.WS_PORT || '3000';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+
+const getRedisChannelFromMessage = (message: any): string => {
+	const channel = message.channel;
+	const marketName = message.market?.toUpperCase();
+	const marketType = message.marketType?.toLowerCase();
+	if (!['spot', 'perp'].includes(marketType)) {
+		throw new Error('Bad market type specified');
+	}
+
+	let marketIndex: number;
+	if (marketType === 'spot') {
+		marketIndex = SpotMarkets[driftEnv].find(
+			(market) => market.symbol.toUpperCase() === marketName
+		).marketIndex;
+	} else if (marketType === 'perp') {
+		marketIndex = PerpMarkets[driftEnv].find(
+			(market) => market.symbol.toUpperCase() === marketName
+		).marketIndex;
+	}
+
+	if (marketIndex === undefined || marketIndex === null) {
+		throw new Error('Bad market specified');
+	}
+
+	switch (channel) {
+		case 'trades':
+			return `trades_${marketType}_${marketIndex}`;
+		case 'orderbook':
+			return `orderbook_${marketType}_${marketIndex}`;
+		case undefined:
+		default:
+			throw new Error('Bad channel specified');
+	}
+};
 
 async function main() {
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
@@ -85,45 +121,60 @@ async function main() {
 
 			switch (messageType) {
 				case 'subscribe': {
-					const channel = parsedMessage.channel;
-					if (!subscribedChannels.has(channel)) {
-						console.log('Trying to subscribe to channel', channel);
+					let redisChannel: string;
+					try {
+						redisChannel = getRedisChannelFromMessage(parsedMessage);
+					} catch (error) {
+						ws.send(JSON.stringify({ error: error.message }));
+						return;
+					}
+
+					if (!subscribedChannels.has(redisChannel)) {
+						console.log('Trying to subscribe to channel', redisChannel);
 						redisClient.client
-							.subscribe(channel)
+							.subscribe(redisChannel)
 							.then(() => {
-								subscribedChannels.add(channel);
+								subscribedChannels.add(redisChannel);
 							})
 							.catch(() => {
 								ws.send(
 									JSON.stringify({
-										channel,
-										error: `Error subscribing to channel: ${channel}`,
+										redisChannel,
+										error: `Error subscribing to channel: ${redisChannel}`,
 									})
 								);
 								return;
 							});
 					}
 
-					if (!channelSubscribers.get(channel)) {
+					if (!channelSubscribers.get(redisChannel)) {
 						const subscribers = new Set<WebSocket>();
-						channelSubscribers.set(channel, subscribers);
+						channelSubscribers.set(redisChannel, subscribers);
 					}
-					channelSubscribers.get(channel).add(ws);
+					channelSubscribers.get(redisChannel).add(ws);
 
 					// Fetch and send last message
-					const lastMessage = await lastMessageRetriever.client.get(
-						`last_update_${channel}`
-					);
-					if (lastMessage !== null) {
-						ws.send(JSON.stringify({ channel, data: lastMessage }));
+					if (redisChannel.includes('orderbook')) {
+						const lastMessage = await lastMessageRetriever.client.get(
+							`last_update_${redisChannel}`
+						);
+						if (lastMessage !== null) {
+							ws.send(JSON.stringify({ redisChannel, data: lastMessage }));
+						}
 					}
 					break;
 				}
 				case 'unsubscribe': {
-					const channel = parsedMessage.channel;
-					const subscribers = channelSubscribers.get(channel);
+					let redisChannel: string;
+					try {
+						redisChannel = getRedisChannelFromMessage(parsedMessage);
+					} catch (error) {
+						ws.send(JSON.stringify({ error: error.message }));
+						return;
+					}
+					const subscribers = channelSubscribers.get(redisChannel);
 					if (subscribers) {
-						channelSubscribers.get(channel).delete(ws);
+						channelSubscribers.get(redisChannel).delete(ws);
 					}
 					break;
 				}

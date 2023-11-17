@@ -9,10 +9,11 @@ import {
 	MainnetSpotMarkets,
 	MarketType,
 	groupL2,
+	isVariant,
 } from '@drift-labs/sdk';
 import { getOracleForMarket, l2WithBNToStrings } from '../utils/utils';
 import { RedisClient } from '../utils/redisClient';
-import { driftEnv } from '../wsPublish';
+import { driftEnv } from '../publishers/dlobPublisher';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -82,6 +83,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		const grouping = l2Args.grouping;
 		const { marketName, ...l2FuncArgs } = l2Args;
 		const l2 = this.getL2(l2FuncArgs);
+		const marketType = isVariant(l2Args.marketType, 'perp') ? 'perp' : 'spot';
 		let l2Formatted: any;
 		if (grouping) {
 			const groupingBN = new BN(grouping);
@@ -101,14 +103,17 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastSeenL2Formatted
 			.get(l2Args.marketType)
 			?.set(l2Args.marketIndex, JSON.stringify(l2Formatted));
-		l2Formatted['marketName'] = marketName;
-		l2Formatted['marketType'] = l2Args.marketType;
+		l2Formatted['marketName'] = marketName?.toUpperCase();
+		l2Formatted['marketType'] = marketType?.toLowerCase();
 		l2Formatted['marketIndex'] = l2Args.marketIndex;
 		l2Formatted['oracle'] = getOracleForMarket(
 			this.driftClient,
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
-		this.redisClient.client.publish(marketName, JSON.stringify(l2Formatted));
+		this.redisClient.client.publish(
+			`orderbook_${marketType}_${l2Args.marketIndex}`,
+			JSON.stringify(l2Formatted)
+		);
 	}
 }
