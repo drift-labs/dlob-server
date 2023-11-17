@@ -41,11 +41,11 @@ const getRedisChannelFromMessage = (message: any): string => {
 	let marketIndex: number;
 	if (marketType === 'spot') {
 		marketIndex = SpotMarkets[driftEnv].find(
-			(market) => market.symbol === marketName
+			(market) => market.symbol.toUpperCase() === marketName
 		).marketIndex;
 	} else if (marketType === 'perp') {
 		marketIndex = PerpMarkets[driftEnv].find(
-			(market) => market.symbol === marketName
+			(market) => market.symbol.toUpperCase() === marketName
 		).marketIndex;
 	}
 
@@ -154,11 +154,13 @@ async function main() {
 					channelSubscribers.get(redisChannel).add(ws);
 
 					// Fetch and send last message
-					const lastMessage = await lastMessageRetriever.client.get(
-						`last_update_${redisChannel}`
-					);
-					if (lastMessage !== null) {
-						ws.send(JSON.stringify({ redisChannel, data: lastMessage }));
+					if (redisChannel.includes('orderbook')) {
+						const lastMessage = await lastMessageRetriever.client.get(
+							`last_update_${redisChannel}`
+						);
+						if (lastMessage !== null) {
+							ws.send(JSON.stringify({ redisChannel, data: lastMessage }));
+						}
 					}
 					break;
 				}

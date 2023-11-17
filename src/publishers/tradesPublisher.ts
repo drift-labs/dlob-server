@@ -12,12 +12,11 @@ import {
 	BulkAccountLoader,
 	EventSubscriber,
 	OrderAction,
-	MarketType,
 	convertToNumber,
 	BASE_PRECISION,
 	QUOTE_PRECISION,
 	PRICE_PRECISION,
-	isVariant,
+	getVariant,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -129,12 +128,10 @@ const main = async () => {
 				return {
 					ts: fill.ts.toNumber(),
 					marketIndex: fill.marketIndex,
-					marketType: isVariant(fill.marketType as MarketType, 'perp')
-						? 'perp'
-						: 'spot',
+					marketType: getVariant(fill.marketType),
 					filler: fill.filler?.toBase58(),
-					takerFee: convertToNumber(fill.takerFee, BASE_PRECISION),
-					makerFee: convertToNumber(fill.makerFee, BASE_PRECISION),
+					takerFee: convertToNumber(fill.takerFee, QUOTE_PRECISION),
+					makerFee: convertToNumber(fill.makerFee, QUOTE_PRECISION),
 					quoteAssetAmountSurplus: convertToNumber(
 						fill.quoteAssetAmountSurplus,
 						QUOTE_PRECISION
@@ -149,9 +146,7 @@ const main = async () => {
 					),
 					taker: fill.taker?.toBase58(),
 					takerOrderId: fill.takerOrderId,
-					takerOrderDirection: isVariant(fill.takerOrderDirection, 'short')
-						? 'short'
-						: 'long',
+					takerOrderDirection: getVariant(fill.takerOrderDirection),
 					takerOrderBaseAssetAmount: convertToNumber(
 						fill.takerOrderBaseAssetAmount,
 						BASE_PRECISION
@@ -166,7 +161,7 @@ const main = async () => {
 					),
 					maker: fill.maker?.toBase58(),
 					makerOrderId: fill.makerOrderId,
-					makerOrderDirection: fill.makerOrderDirection,
+					makerOrderDirection: getVariant(fill.makerOrderDirection),
 					makerOrderBaseAssetAmount: convertToNumber(
 						fill.makerOrderBaseAssetAmount,
 						BASE_PRECISION
@@ -182,6 +177,9 @@ const main = async () => {
 					oraclePrice: convertToNumber(fill.oraclePrice, PRICE_PRECISION),
 					txSig: fill.txSig,
 					slot: fill.slot,
+					action: 'fill',
+					actionExplanation: getVariant(fill.actionExplanation),
+					referrerReward: convertToNumber(fill.referrerReward, QUOTE_PRECISION),
 				};
 			})
 		)
