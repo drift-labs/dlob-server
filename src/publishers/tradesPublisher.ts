@@ -161,7 +161,9 @@ const main = async () => {
 					),
 					maker: fill.maker?.toBase58(),
 					makerOrderId: fill.makerOrderId,
-					makerOrderDirection: getVariant(fill.makerOrderDirection),
+					makerOrderDirection: fill.makderOrderDirection
+						? getVariant(fill.makerOrderDirection)
+						: undefined,
 					makerOrderBaseAssetAmount: convertToNumber(
 						fill.makerOrderBaseAssetAmount,
 						BASE_PRECISION
