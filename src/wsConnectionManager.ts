@@ -159,7 +159,9 @@ async function main() {
 							`last_update_${redisChannel}`
 						);
 						if (lastMessage !== null) {
-							ws.send(JSON.stringify({ redisChannel, data: lastMessage }));
+							ws.send(
+								JSON.stringify({ channel: redisChannel, data: lastMessage })
+							);
 						}
 					}
 					break;
