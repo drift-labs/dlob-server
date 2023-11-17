@@ -12,10 +12,10 @@ import {
 	BulkAccountLoader,
 } from '@drift-labs/sdk';
 
-import { logger, setLogLevel } from './utils/logger';
-import { sleep } from './utils/utils';
-import { DLOBSubscriberIO } from './dlob-subscriber/DLOBSubscriberIO';
-import { RedisClient } from './utils/redisClient';
+import { logger, setLogLevel } from '../utils/logger';
+import { sleep } from '../utils/utils';
+import { DLOBSubscriberIO } from '../dlob-subscriber/DLOBSubscriberIO';
+import { RedisClient } from '../utils/redisClient';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
