@@ -184,7 +184,6 @@ const main = async () => {
 	});
 
 	const dlobCoder = DLOBOrdersCoder.create();
-	const slotSubscriber = new SlotSubscriber(connection, {});
 
 	const lamportsBalance = await connection.getBalance(wallet.publicKey);
 	logger.info(
@@ -199,12 +198,11 @@ const main = async () => {
 		logger.error(e);
 	});
 
-	await slotSubscriber.subscribe();
-	slotSubscriber.eventEmitter.on('newSlot', async (slot: number) => {
+	setInterval(async () => {
 		await lastSlotReceivedMutex.runExclusive(async () => {
-			lastSlotReceived = slot;
+			lastSlotReceived = bulkAccountLoader.getSlot();
 		});
-	});
+	}, ORDERBOOK_UPDATE_INTERVAL);
 
 	const userMap = new UserMap(
 		driftClient,
@@ -217,7 +215,7 @@ const main = async () => {
 		accountLoader: new BulkAccountLoader(
 			connection,
 			stateCommitment,
-			ORDERBOOK_UPDATE_INTERVAL * 10
+			0
 		),
 	});
 	await userStatsMap.subscribe();
@@ -225,7 +223,7 @@ const main = async () => {
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
 		dlobSource: userMap,
-		slotSource: slotSubscriber,
+		slotSource: bulkAccountLoader,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 	});
 	await dlobSubscriber.subscribe();
@@ -255,7 +253,7 @@ const main = async () => {
 			// object with userAccount key and orders object serialized
 			const orders: Array<any> = [];
 			const oracles: Array<any> = [];
-			const slot = slotSubscriber.currentSlot;
+			const slot = bulkAccountLoader.getSlot();
 
 			for (const market of driftClient.getPerpMarketAccounts()) {
 				const oracle = driftClient.getOracleDataForPerpMarket(
@@ -299,7 +297,7 @@ const main = async () => {
 	app.get('/orders/json', async (_req, res, next) => {
 		try {
 			// object with userAccount key and orders object serialized
-			const slot = slotSubscriber.currentSlot;
+			const slot = bulkAccountLoader.getSlot();
 			const orders: Array<any> = [];
 			const oracles: Array<any> = [];
 			for (const market of driftClient.getPerpMarketAccounts()) {
@@ -462,7 +460,7 @@ const main = async () => {
 
 			res.end(
 				JSON.stringify({
-					slot: slotSubscriber.currentSlot,
+					slot: bulkAccountLoader.getSlot(),
 					data: dlobCoder.encode(dlobOrders).toString('base64'),
 				})
 			);
@@ -551,7 +549,7 @@ const main = async () => {
 						.getDLOB()
 						.getRestingLimitBids(
 							normedMarketIndex,
-							slotSubscriber.getSlot(),
+							bulkAccountLoader.getSlot(),
 							normedMarketType,
 							oracle
 						)
@@ -562,7 +560,7 @@ const main = async () => {
 						.getDLOB()
 						.getRestingLimitAsks(
 							normedMarketIndex,
-							slotSubscriber.getSlot(),
+							bulkAccountLoader.getSlot(),
 							normedMarketType,
 							oracle
 						)
