@@ -217,7 +217,7 @@ const main = async () => {
 		accountLoader: new BulkAccountLoader(
 			connection,
 			stateCommitment,
-			ORDERBOOK_UPDATE_INTERVAL * 10
+			0
 		),
 	});
 	await userStatsMap.subscribe();
