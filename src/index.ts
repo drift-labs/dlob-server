@@ -199,10 +199,6 @@ const main = async () => {
 	});
 
 	setInterval(async () => {
-		if (lastSlotReceivedMutex.isLocked()) {
-			return;
-		}
-
 		await lastSlotReceivedMutex.runExclusive(async () => {
 			lastSlotReceived = bulkAccountLoader.getSlot();
 		});
