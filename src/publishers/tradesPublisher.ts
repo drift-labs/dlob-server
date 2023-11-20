@@ -17,6 +17,7 @@ import {
 	QUOTE_PRECISION,
 	PRICE_PRECISION,
 	getVariant,
+	ZERO,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -181,7 +182,10 @@ const main = async () => {
 					slot: fill.slot,
 					action: 'fill',
 					actionExplanation: getVariant(fill.actionExplanation),
-					referrerReward: convertToNumber(fill.referrerReward, QUOTE_PRECISION),
+					referrerReward: convertToNumber(
+						fill.referrerReward ?? ZERO,
+						QUOTE_PRECISION
+					),
 				};
 			})
 		)

@@ -115,5 +115,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			`orderbook_${marketType}_${l2Args.marketIndex}`,
 			JSON.stringify(l2Formatted)
 		);
+		this.redisClient.client.set(
+			`last_update_orderbook_${marketType}_${l2Args.marketIndex}`,
+			JSON.stringify(l2Formatted)
+		);
 	}
 }
