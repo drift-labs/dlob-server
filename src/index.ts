@@ -12,7 +12,6 @@ import {
 	DriftClient,
 	initialize,
 	DriftEnv,
-	SlotSubscriber,
 	UserMap,
 	DLOBOrder,
 	DLOBOrders,
@@ -25,6 +24,8 @@ import {
 	UserStatsMap,
 	DLOBSubscriber,
 	BulkAccountLoader,
+	getMarketsAndOraclesForSubscription,
+	SlotSubscriber,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -54,6 +55,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 const ORDERBOOK_UPDATE_INTERVAL = 1000;
+let READY_STATE = 0;
 
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -107,9 +109,14 @@ const server = http.createServer(app);
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
 
-const endpoint = process.env.ENDPOINT;
+const endpoints = process.env.ENDPOINT.includes(',')
+	? process.env.ENDPOINT.trim()
+			.replace(/^\[|\]$/g, '')
+			.split(/\s*,\s*/)
+	: [process.env.ENDPOINT as string];
+let exportedEndpoint: string = endpoints[0];
 const wsEndpoint = process.env.WS_ENDPOINT;
-logger.info(`RPC endpoint: ${endpoint}`);
+logger.info(`RPC endpoint: ${endpoints[0]}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
@@ -156,85 +163,159 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	return markets;
 };
 
+export const getEndpoint = (): string => {
+	return exportedEndpoint;
+};
+
+export const getDriftClient = (): DriftClient => {
+	return driftClient;
+};
+
 const main = async () => {
+	const driftClientProgramId = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
+	const { perpMarketIndexes, spotMarketIndexes, oracleInfos } =
+		getMarketsAndOraclesForSubscription(sdkConfig.ENV);
+
+	let currentConnectionIndex = 0;
+	let driftClient: DriftClient;
+	let endpointTimeout: NodeJS.Timeout;
+	let bulkAccountLoader: BulkAccountLoader;
+	let connection: Connection;
+	let userMap: UserMap;
+	let userStatsMap: UserStatsMap;
+	let dlobSubscriber: DLOBSubscriber;
+	let intervalId: NodeJS.Timer;
+	let slotSubscriber: SlotSubscriber;
 	const wallet = new Wallet(new Keypair());
-	const clearingHousePublicKey = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
 
-	const connection = new Connection(endpoint, {
-		wsEndpoint: wsEndpoint,
-		commitment: stateCommitment,
-	});
+	const initializeClientAndConnection = async (endpoint: string) => {
+		console.log(`
+			Initializing client and connection with endpoint: ${endpoint}
+		`);
 
-	const bulkAccountLoader = new BulkAccountLoader(
-		connection,
-		stateCommitment,
-		ORDERBOOK_UPDATE_INTERVAL
-	);
+		exportedEndpoint = endpoint;
 
-	driftClient = new DriftClient({
-		connection,
-		wallet,
-		programID: clearingHousePublicKey,
-		accountSubscription: {
-			type: 'polling',
-			accountLoader: bulkAccountLoader,
-		},
-		env: driftEnv,
-		userStats: true,
-	});
+		// Clear and unsubscribe from all objects if they've been set
+		if (intervalId) {
+			clearInterval(intervalId);
+		}
+		await driftClient?.unsubscribe();
+		await userMap?.unsubscribe();
+		await dlobSubscriber?.unsubscribe();
+		await userStatsMap?.unsubscribe();
+		await slotSubscriber?.unsubscribe();
+		if (MARKET_SUBSCRIBERS) {
+			for (const marketIndex in MARKET_SUBSCRIBERS) {
+				const subscriber = MARKET_SUBSCRIBERS[marketIndex];
+				if (subscriber.phoenix) {
+					await subscriber.phoenix.unsubscribe();
+				}
+				if (subscriber.serum) {
+					await subscriber.serum.unsubscribe();
+				}
+			}
+		}
+		slotSubscriber?.eventEmitter.removeAllListeners();
+		driftClient?.eventEmitter.removeAllListeners();
 
-	const dlobCoder = DLOBOrdersCoder.create();
-
-	const lamportsBalance = await connection.getBalance(wallet.publicKey);
-	logger.info(
-		`DriftClient ProgramId: ${driftClient.program.programId.toBase58()}`
-	);
-	logger.info(`Wallet pubkey: ${wallet.publicKey.toBase58()}`);
-	logger.info(` . SOL balance: ${lamportsBalance / 10 ** 9}`);
-
-	await driftClient.subscribe();
-	driftClient.eventEmitter.on('error', (e) => {
-		logger.info('clearing house error');
-		logger.error(e);
-	});
-
-	setInterval(async () => {
-		await lastSlotReceivedMutex.runExclusive(async () => {
-			lastSlotReceived = bulkAccountLoader.getSlot();
-		});
-	}, ORDERBOOK_UPDATE_INTERVAL);
-
-	const userMap = new UserMap(
-		driftClient,
-		driftClient.userAccountSubscriptionConfig,
-		false
-	);
-	await userMap.subscribe();
-	const userStatsMap = new UserStatsMap(driftClient, {
-		type: 'polling',
-		accountLoader: new BulkAccountLoader(
+		// First create all of the new clients and connections
+		connection = new Connection(endpoint, 'processed');
+		const bulkAccountLoader = new BulkAccountLoader(
 			connection,
 			stateCommitment,
-			0
-		),
-	});
-	await userStatsMap.subscribe();
+			ORDERBOOK_UPDATE_INTERVAL
+		);
+		driftClient = new DriftClient({
+			connection,
+			wallet,
+			programID: driftClientProgramId,
+			perpMarketIndexes,
+			spotMarketIndexes,
+			oracleInfos,
+			accountSubscription: {
+				type: 'polling',
+				accountLoader: bulkAccountLoader,
+			},
+		});
+		userMap = new UserMap(
+			driftClient,
+			driftClient.userAccountSubscriptionConfig,
+			false
+		);
+		userStatsMap = new UserStatsMap(driftClient, {
+			type: 'polling',
+			accountLoader: new BulkAccountLoader(connection, stateCommitment, 0),
+		});
+		dlobSubscriber = new DLOBSubscriber({
+			driftClient,
+			dlobSource: userMap,
+			slotSource: bulkAccountLoader,
+			updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
+		});
+		MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
+		slotSubscriber = new SlotSubscriber(connection);
 
-	const dlobSubscriber = new DLOBSubscriber({
-		driftClient,
-		dlobSource: userMap,
-		slotSource: bulkAccountLoader,
-		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
-	});
-	await dlobSubscriber.subscribe();
+		try {
+			await driftClient.subscribe();
+			await userMap.subscribe();
+			await userStatsMap.subscribe();
+			await dlobSubscriber.subscribe();
+			await slotSubscriber.subscribe();
+			console.log('driftClient successfully subscribed');
+		} catch (e) {
+			console.log('driftClient failed to subscribe', e);
+		}
 
-	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
+		driftClient.eventEmitter.on('error', (e) => {
+			console.log('driftClient error');
+			console.error(e);
+		});
+
+		slotSubscriber.eventEmitter.on('newSlot', (_slot) => {
+			if (endpointTimeout) {
+				clearTimeout(endpointTimeout);
+				endpointTimeout = setEndpointTimeout();
+			}
+		});
+		endpointTimeout = setEndpointTimeout();
+
+		intervalId = setInterval(async () => {
+			await lastSlotReceivedMutex.runExclusive(async () => {
+				lastSlotReceived = bulkAccountLoader.getSlot();
+			});
+		}, ORDERBOOK_UPDATE_INTERVAL);
+
+		READY_STATE = 1;
+	};
+
+	const setEndpointTimeout = (): NodeJS.Timeout => {
+		let timeoutValue = parseInt(process.env.ENDPOINT_UNHEALTHY_TIMEOUT);
+		if (!timeoutValue || isNaN(timeoutValue)) {
+			timeoutValue = 10000;
+		}
+
+		return setTimeout(async () => {
+			// First thing is to stop listening to slot subscribing so these dont get queued up
+			READY_STATE = 0;
+			slotSubscriber.eventEmitter.removeAllListeners();
+
+			clearTimeout(endpointTimeout);
+			console.log(`RPC connection unhealthy, rotating`);
+			currentConnectionIndex = (currentConnectionIndex + 1) % endpoints.length;
+			initializeClientAndConnection(endpoints[currentConnectionIndex]);
+		}, timeoutValue);
+	};
+
+	await initializeClientAndConnection(endpoints[currentConnectionIndex]);
+
+	const dlobCoder = DLOBOrdersCoder.create();
 
 	const handleStartup = async (_req, res, _next) => {
 		if (
 			driftClient.isSubscribed &&
 			userMap.size() > 0 &&
-			userStatsMap.size() > 0
+			userStatsMap.size() > 0 &&
+			READY_STATE
 		) {
 			res.writeHead(200);
 			res.end('OK');
@@ -852,4 +933,4 @@ async function recursiveTryCatch(f: () => void) {
 
 recursiveTryCatch(() => main());
 
-export { sdkConfig, endpoint, wsEndpoint, driftEnv, commitHash, driftClient };
+export { sdkConfig, wsEndpoint, driftEnv, commitHash };

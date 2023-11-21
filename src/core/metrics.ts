@@ -10,7 +10,7 @@ import {
 import {
 	commitHash,
 	driftEnv,
-	endpoint,
+	getEndpoint,
 	getSlotHealthCheckInfo,
 	wsEndpoint,
 } from '..';
@@ -85,7 +85,7 @@ runtimeSpecsGauge.addCallback((obs) => {
 	obs.observe(bootTimeMs, {
 		commit: commitHash,
 		driftEnv,
-		rpcEndpoint: endpoint,
+		rpcEndpoint: getEndpoint(),
 		wsEndpoint: wsEndpoint,
 	});
 });
