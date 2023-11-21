@@ -93,12 +93,6 @@ async function main() {
 		subscribers.forEach((ws) => {
 			ws.send(JSON.stringify({ channel: subscribedChannel, data: message }));
 		});
-
-		// Save and persist last message
-		lastMessageRetriever.client.set(
-			`last_update_${subscribedChannel}`,
-			message
-		);
 	});
 
 	redisClient.client.on('error', (error) => {
