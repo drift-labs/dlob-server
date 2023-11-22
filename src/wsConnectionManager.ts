@@ -28,7 +28,14 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const WS_PORT = process.env.WS_PORT || '3000';
+
+console.log(`WS LISTENER PORT : ${WS_PORT}`);
+
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+
+const safeGetRawChannelFromMessage = (message: any): string => {
+	return message?.channel;
+};
 
 const getRedisChannelFromMessage = (message: any): string => {
 	const channel = message.channel;
@@ -119,7 +126,17 @@ async function main() {
 					try {
 						redisChannel = getRedisChannelFromMessage(parsedMessage);
 					} catch (error) {
-						ws.send(JSON.stringify({ error: error.message }));
+						const requestChannel = safeGetRawChannelFromMessage(parsedMessage);
+						if (requestChannel) {
+							ws.send(
+								JSON.stringify({
+									channel: requestChannel,
+									error: error.message,
+								})
+							);
+						} else {
+							ws.close(1003, JSON.stringify({ error: error.message }));
+						}
 						return;
 					}
 
@@ -149,12 +166,17 @@ async function main() {
 
 					// Fetch and send last message
 					if (redisChannel.includes('orderbook')) {
+						const lastUpdateChannel = `last_update_${redisChannel}`;
 						const lastMessage = await lastMessageRetriever.client.get(
-							`last_update_${redisChannel}`
+							lastUpdateChannel
 						);
+
 						if (lastMessage !== null) {
 							ws.send(
-								JSON.stringify({ channel: redisChannel, data: lastMessage })
+								JSON.stringify({
+									channel: lastUpdateChannel,
+									data: lastMessage,
+								})
 							);
 						}
 					}
@@ -165,7 +187,17 @@ async function main() {
 					try {
 						redisChannel = getRedisChannelFromMessage(parsedMessage);
 					} catch (error) {
-						ws.send(JSON.stringify({ error: error.message }));
+						const requestChannel = safeGetRawChannelFromMessage(parsedMessage);
+						if (requestChannel) {
+							ws.send(
+								JSON.stringify({
+									channel: requestChannel,
+									error: error.message,
+								})
+							);
+						} else {
+							ws.close(1003, JSON.stringify({ error: error.message }));
+						}
 						return;
 					}
 					const subscribers = channelSubscribers.get(redisChannel);
