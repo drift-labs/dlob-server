@@ -1,4 +1,3 @@
-import { ObservableResult } from '@opentelemetry/api';
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
 import { logger } from '../utils/logger';
 import {
@@ -7,13 +6,7 @@ import {
 	MeterProvider,
 	View,
 } from '@opentelemetry/sdk-metrics-base';
-import {
-	commitHash,
-	driftEnv,
-	getEndpoint,
-	getSlotHealthCheckInfo,
-	wsEndpoint,
-} from '..';
+import { commitHash, driftEnv, getEndpoint, wsEndpoint } from '..';
 
 /**
  * Creates {count} buckets of size {increment} starting from {start}. Each bucket stores the count of values within its "size".
@@ -90,17 +83,6 @@ runtimeSpecsGauge.addCallback((obs) => {
 	});
 });
 
-let healthStatus: HEALTH_STATUS = HEALTH_STATUS.Ok;
-const healthStatusGauge = meter.createObservableGauge(
-	METRIC_TYPES.health_status,
-	{
-		description: 'Health status of this program',
-	}
-);
-healthStatusGauge.addCallback((obs: ObservableResult) => {
-	obs.observe(healthStatus, {});
-});
-
 const endpointResponseTimeHistogram = meter.createHistogram(
 	METRIC_TYPES.endpoint_response_times_histogram,
 	{
@@ -116,53 +98,9 @@ const responseStatusCounter = meter.createCounter(
 	}
 );
 
-const healthCheckInterval = 2000;
-let lastHealthCheckSlot = -1;
-let lastHealthCheckSlotUpdated = Date.now();
-const handleHealthCheck = async (req, res, next) => {
-	const { lastSlotReceived, lastSlotReceivedMutex } = getSlotHealthCheckInfo();
-
-	try {
-		if (req.url === '/health' || req.url === '/') {
-			// check if a slot was received recently
-			let healthySlotSubscriber = false;
-			await lastSlotReceivedMutex.runExclusive(async () => {
-				const slotChanged = lastSlotReceived > lastHealthCheckSlot;
-				const slotChangedRecently =
-					Date.now() - lastHealthCheckSlotUpdated < healthCheckInterval;
-				healthySlotSubscriber = slotChanged || slotChangedRecently;
-				logger.debug(
-					`Slotsubscriber health check: lastSlotReceived: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, slotChanged: ${slotChanged}, slotChangedRecently: ${slotChangedRecently}`
-				);
-				if (slotChanged) {
-					lastHealthCheckSlot = lastSlotReceived;
-					lastHealthCheckSlotUpdated = Date.now();
-				}
-			});
-			if (!healthySlotSubscriber) {
-				healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
-				logger.error(`SlotSubscriber is not healthy`);
-
-				res.writeHead(500);
-				res.end(`SlotSubscriber is not healthy`);
-				return;
-			}
-
-			// liveness check passed
-			healthStatus = HEALTH_STATUS.Ok;
-			res.writeHead(200);
-			res.end('OK');
-		} else {
-			res.writeHead(404);
-			res.end('Not found');
-		}
-	} catch (e) {
-		next(e);
-	}
-};
-
 export {
 	endpointResponseTimeHistogram,
 	responseStatusCounter,
-	handleHealthCheck,
+	meter,
+	METRIC_TYPES,
 };

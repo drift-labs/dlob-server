@@ -25,7 +25,6 @@ import {
 	DLOBSubscriber,
 	BulkAccountLoader,
 	getMarketsAndOraclesForSubscription,
-	SlotSubscriber,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -43,8 +42,9 @@ import {
 	validateDlobQuery,
 } from './utils/utils';
 import { handleResponseTime } from './core/middleware';
-import { handleHealthCheck } from './core/metrics';
 import { Mutex } from 'async-mutex';
+import { HEALTH_STATUS, METRIC_TYPES, meter } from './core/metrics';
+import { ObservableResult } from '@opentelemetry/api';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -55,7 +55,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 const ORDERBOOK_UPDATE_INTERVAL = 1000;
-let READY_STATE = 0;
+const HEALTH_CHECK_INTERVAL = 2000;
 
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -114,7 +114,11 @@ const endpoints = process.env.ENDPOINT.includes(',')
 			.replace(/^\[|\]$/g, '')
 			.split(/\s*,\s*/)
 	: [process.env.ENDPOINT as string];
-let exportedEndpoint: string = endpoints[0];
+if (!endpoints || endpoints.length === 0) {
+	throw new Error('ENDPOINT env variable is required');
+}
+let currentConnectionIndex = Math.floor(Math.random() * endpoints.length);
+let exportedEndpoint: string = endpoints[currentConnectionIndex];
 const wsEndpoint = process.env.WS_ENDPOINT;
 logger.info(`RPC endpoint: ${endpoints[0]}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
@@ -176,16 +180,14 @@ const main = async () => {
 	const { perpMarketIndexes, spotMarketIndexes, oracleInfos } =
 		getMarketsAndOraclesForSubscription(sdkConfig.ENV);
 
-	let currentConnectionIndex = 0;
 	let driftClient: DriftClient;
-	let endpointTimeout: NodeJS.Timeout;
 	let bulkAccountLoader: BulkAccountLoader;
 	let connection: Connection;
 	let userMap: UserMap;
 	let userStatsMap: UserStatsMap;
 	let dlobSubscriber: DLOBSubscriber;
 	let intervalId: NodeJS.Timer;
-	let slotSubscriber: SlotSubscriber;
+	let healthCheckIntervalId: NodeJS.Timer;
 	const wallet = new Wallet(new Keypair());
 
 	const initializeClientAndConnection = async (endpoint: string) => {
@@ -203,7 +205,6 @@ const main = async () => {
 		await userMap?.unsubscribe();
 		await dlobSubscriber?.unsubscribe();
 		await userStatsMap?.unsubscribe();
-		await slotSubscriber?.unsubscribe();
 		if (MARKET_SUBSCRIBERS) {
 			for (const marketIndex in MARKET_SUBSCRIBERS) {
 				const subscriber = MARKET_SUBSCRIBERS[marketIndex];
@@ -215,7 +216,6 @@ const main = async () => {
 				}
 			}
 		}
-		slotSubscriber?.eventEmitter.removeAllListeners();
 		driftClient?.eventEmitter.removeAllListeners();
 
 		// First create all of the new clients and connections
@@ -253,14 +253,12 @@ const main = async () => {
 			updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 		});
 		MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
-		slotSubscriber = new SlotSubscriber(connection);
 
 		try {
 			await driftClient.subscribe();
 			await userMap.subscribe();
 			await userStatsMap.subscribe();
 			await dlobSubscriber.subscribe();
-			await slotSubscriber.subscribe();
 			console.log('driftClient successfully subscribed');
 		} catch (e) {
 			console.log('driftClient failed to subscribe', e);
@@ -271,51 +269,35 @@ const main = async () => {
 			console.error(e);
 		});
 
-		slotSubscriber.eventEmitter.on('newSlot', (_slot) => {
-			if (endpointTimeout) {
-				clearTimeout(endpointTimeout);
-				endpointTimeout = setEndpointTimeout();
-			}
-		});
-		endpointTimeout = setEndpointTimeout();
-
 		intervalId = setInterval(async () => {
 			await lastSlotReceivedMutex.runExclusive(async () => {
 				lastSlotReceived = bulkAccountLoader.getSlot();
 			});
 		}, ORDERBOOK_UPDATE_INTERVAL);
 
-		READY_STATE = 1;
-	};
-
-	const setEndpointTimeout = (): NodeJS.Timeout => {
-		let timeoutValue = parseInt(process.env.ENDPOINT_UNHEALTHY_TIMEOUT);
-		if (!timeoutValue || isNaN(timeoutValue)) {
-			timeoutValue = 10000;
-		}
-
-		return setTimeout(async () => {
-			// First thing is to stop listening to slot subscribing so these dont get queued up
-			READY_STATE = 0;
-			slotSubscriber.eventEmitter.removeAllListeners();
-
-			clearTimeout(endpointTimeout);
-			console.log(`RPC connection unhealthy, rotating`);
-			currentConnectionIndex = (currentConnectionIndex + 1) % endpoints.length;
-			initializeClientAndConnection(endpoints[currentConnectionIndex]);
-		}, timeoutValue);
+		healthCheckIntervalId = setInterval(async () => {
+			const healthy = await getHealthCheckFromSlot();
+			if (!healthy) {
+				// Halt and clear the interval
+				clearInterval(healthCheckIntervalId);
+				logger.info(`RPC is not healthy, rotating`);
+				currentConnectionIndex =
+					(currentConnectionIndex + 1) % endpoints.length;
+				initializeClientAndConnection(endpoints[currentConnectionIndex]);
+			}
+		}, HEALTH_CHECK_INTERVAL);
 	};
 
 	await initializeClientAndConnection(endpoints[currentConnectionIndex]);
 
 	const dlobCoder = DLOBOrdersCoder.create();
 
+	// Middleware and app setup
 	const handleStartup = async (_req, res, _next) => {
 		if (
 			driftClient.isSubscribed &&
 			userMap.size() > 0 &&
-			userStatsMap.size() > 0 &&
-			READY_STATE
+			userStatsMap.size() > 0
 		) {
 			res.writeHead(200);
 			res.end('OK');
@@ -323,6 +305,65 @@ const main = async () => {
 			res.writeHead(500);
 			res.end('Not ready');
 		}
+	};
+
+	let lastHealthCheckSlot = -1;
+	let lastHealthCheckSlotUpdated = Date.now();
+	let healthStatus: HEALTH_STATUS = HEALTH_STATUS.Ok;
+	const healthStatusGauge = meter.createObservableGauge(
+		METRIC_TYPES.health_status,
+		{
+			description: 'Health status of this program',
+		}
+	);
+	healthStatusGauge.addCallback((obs: ObservableResult) => {
+		obs.observe(healthStatus, {});
+	});
+
+	const handleHealthCheck = async (req, res, next) => {
+		try {
+			if (req.url === '/health' || req.url === '/') {
+				// check if a slot was received recently
+				const healthySlotSubscriber = await getHealthCheckFromSlot();
+				if (!healthySlotSubscriber) {
+					healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
+					logger.error(`SlotSubscriber is not healthy`);
+					res.writeHead(500);
+					res.end(`SlotSubscriber is not healthy`);
+					return;
+				}
+
+				// liveness check passed
+				healthStatus = HEALTH_STATUS.Ok;
+				res.writeHead(200);
+				res.end('OK');
+			} else {
+				res.writeHead(404);
+				res.end('Not found');
+			}
+		} catch (e) {
+			next(e);
+		}
+	};
+
+	const getHealthCheckFromSlot = async (): Promise<boolean> => {
+		const { lastSlotReceived, lastSlotReceivedMutex } =
+			getSlotHealthCheckInfo();
+		let healthySlotSubscriber = false;
+		return await lastSlotReceivedMutex.runExclusive(async () => {
+			const slotChanged = lastSlotReceived > lastHealthCheckSlot;
+			const slotChangedRecently =
+				Date.now() - lastHealthCheckSlotUpdated < HEALTH_CHECK_INTERVAL;
+			healthySlotSubscriber = slotChanged || slotChangedRecently;
+			logger.debug(
+				`Slotsubscriber health check: lastSlotReceived: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, slotChanged: ${slotChanged}, slotChangedRecently: ${slotChangedRecently}`
+			);
+			if (slotChanged) {
+				lastHealthCheckSlot = lastSlotReceived;
+				lastHealthCheckSlotUpdated = Date.now();
+			}
+			return healthySlotSubscriber;
+		});
 	};
 
 	app.get('/health', handleHealthCheck);
