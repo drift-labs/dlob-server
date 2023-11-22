@@ -166,12 +166,17 @@ async function main() {
 
 					// Fetch and send last message
 					if (redisChannel.includes('orderbook')) {
+						const lastUpdateChannel = `last_update_${redisChannel}`;
 						const lastMessage = await lastMessageRetriever.client.get(
-							`last_update_${redisChannel}`
+							lastUpdateChannel
 						);
+
 						if (lastMessage !== null) {
 							ws.send(
-								JSON.stringify({ channel: redisChannel, data: lastMessage })
+								JSON.stringify({
+									channel: lastUpdateChannel,
+									data: lastMessage,
+								})
 							);
 						}
 					}
