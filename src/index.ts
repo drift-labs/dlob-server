@@ -12,7 +12,6 @@ import {
 	DriftClient,
 	initialize,
 	DriftEnv,
-	SlotSubscriber,
 	UserMap,
 	DLOBOrder,
 	DLOBOrders,
@@ -103,6 +102,13 @@ app.use((req, _res, next) => {
 
 app.use(errorHandler);
 const server = http.createServer(app);
+
+// Default keepalive is 5s, since the AWS ALB timeout is 60 seconds, clients
+// sometimes get 502s.
+// https://shuheikagawa.com/blog/2019/04/25/keep-alive-timeout/
+// https://stackoverflow.com/a/68922692
+server.keepAliveTimeout = 61 * 1000;
+server.headersTimeout = 65 * 1000;
 
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
@@ -212,11 +218,7 @@ const main = async () => {
 	await userMap.subscribe();
 	const userStatsMap = new UserStatsMap(driftClient, {
 		type: 'polling',
-		accountLoader: new BulkAccountLoader(
-			connection,
-			stateCommitment,
-			0
-		),
+		accountLoader: new BulkAccountLoader(connection, stateCommitment, 0),
 	});
 	await userStatsMap.subscribe();
 
