@@ -126,9 +126,11 @@ const handleHealthCheck = async (req, res, next) => {
 		if (req.url === '/health' || req.url === '/') {
 			// check if a slot was received recently
 			let healthySlotSubscriber = false;
+			let slotChanged = false;
+			let slotChangedRecently = false;
 			await lastSlotReceivedMutex.runExclusive(async () => {
-				const slotChanged = lastSlotReceived > lastHealthCheckSlot;
-				const slotChangedRecently =
+				slotChanged = lastSlotReceived > lastHealthCheckSlot;
+				slotChangedRecently =
 					Date.now() - lastHealthCheckSlotUpdated < healthCheckInterval;
 				healthySlotSubscriber = slotChanged || slotChangedRecently;
 				logger.debug(
@@ -142,6 +144,9 @@ const handleHealthCheck = async (req, res, next) => {
 			if (!healthySlotSubscriber) {
 				healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
 				logger.error(`SlotSubscriber is not healthy`);
+				logger.error(
+					`Slotsubscriber health check: lastSlotReceived: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, slotChanged: ${slotChanged}, slotChangedRecently: ${slotChangedRecently}`
+				);
 
 				res.writeHead(500);
 				res.end(`SlotSubscriber is not healthy`);
