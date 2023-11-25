@@ -131,11 +131,20 @@ async function main() {
 							ws.send(
 								JSON.stringify({
 									channel: requestChannel,
-									error: error.message,
+									error:
+										'Error subscribing to channel with data: ' +
+										JSON.stringify(parsedMessage),
 								})
 							);
 						} else {
-							ws.close(1003, JSON.stringify({ error: error.message }));
+							ws.close(
+								1003,
+								JSON.stringify({
+									error:
+										'Error subscribing to channel with data: ' +
+										JSON.stringify(parsedMessage),
+								})
+							);
 						}
 						return;
 					}
@@ -189,14 +198,24 @@ async function main() {
 					} catch (error) {
 						const requestChannel = safeGetRawChannelFromMessage(parsedMessage);
 						if (requestChannel) {
+							console.log('Error unsubscribing from channel:', error.message);
 							ws.send(
 								JSON.stringify({
 									channel: requestChannel,
-									error: error.message,
+									error:
+										'Error unsubscribing from channel with data: ' +
+										JSON.stringify(parsedMessage),
 								})
 							);
 						} else {
-							ws.close(1003, JSON.stringify({ error: error.message }));
+							ws.close(
+								1003,
+								JSON.stringify({
+									error:
+										'Error unsubscribing from channel with data: ' +
+										JSON.stringify(parsedMessage),
+								})
+							);
 						}
 						return;
 					}

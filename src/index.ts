@@ -212,11 +212,7 @@ const main = async () => {
 	await userMap.subscribe();
 	const userStatsMap = new UserStatsMap(driftClient, {
 		type: 'polling',
-		accountLoader: new BulkAccountLoader(
-			connection,
-			stateCommitment,
-			0
-		),
+		accountLoader: new BulkAccountLoader(connection, stateCommitment, 0),
 	});
 	await userStatsMap.subscribe();
 
