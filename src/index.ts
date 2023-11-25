@@ -52,7 +52,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
-const ORDERBOOK_UPDATE_INTERVAL = 1000;
+export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -205,9 +205,7 @@ const main = async () => {
 	});
 
 	setInterval(async () => {
-		await lastSlotReceivedMutex.runExclusive(async () => {
-			lastSlotReceived = bulkAccountLoader.getSlot();
-		});
+		lastSlotReceived = bulkAccountLoader.getSlot();
 	}, ORDERBOOK_UPDATE_INTERVAL);
 
 	const userMap = new UserMap(

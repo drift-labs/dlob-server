@@ -8,12 +8,14 @@ import {
 	View,
 } from '@opentelemetry/sdk-metrics-base';
 import {
+	ORDERBOOK_UPDATE_INTERVAL,
 	commitHash,
 	driftEnv,
 	endpoint,
 	getSlotHealthCheckInfo,
 	wsEndpoint,
 } from '..';
+import { E_ALREADY_LOCKED, tryAcquire } from 'async-mutex';
 
 /**
  * Creates {count} buckets of size {increment} starting from {start}. Each bucket stores the count of values within its "size".
@@ -116,53 +118,73 @@ const responseStatusCounter = meter.createCounter(
 	}
 );
 
-const healthCheckInterval = 2000;
+const healthCheckInterval = 2 * (ORDERBOOK_UPDATE_INTERVAL ?? 1000); // ORDERBOOK_UPDATE_INTERVAL is NaN here for some reason ... hardcode to 1000.
 let lastHealthCheckSlot = -1;
-let lastHealthCheckSlotUpdated = Date.now();
+let lastHealthCheckState = true; // true = healthy, false = unhealthy
+let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
+/**
+ * Middleware that checks if we are in general healthy by checking that the bulk account loader slot
+ * has changed recently.
+ *
+ * We may be hit by multiple sources performing health checks on us, so this middleware will latch
+ * to its health state and only update every `healthCheckInterval`.
+ */
 const handleHealthCheck = async (req, res, next) => {
-	const { lastSlotReceived, lastSlotReceivedMutex } = getSlotHealthCheckInfo();
-
-	try {
-		if (req.url === '/health' || req.url === '/') {
-			// check if a slot was received recently
-			let healthySlotSubscriber = false;
-			let slotChanged = false;
-			let slotChangedRecently = false;
-			await lastSlotReceivedMutex.runExclusive(async () => {
-				slotChanged = lastSlotReceived > lastHealthCheckSlot;
-				slotChangedRecently =
-					Date.now() - lastHealthCheckSlotUpdated < healthCheckInterval;
-				healthySlotSubscriber = slotChanged || slotChangedRecently;
-				logger.debug(
-					`Slotsubscriber health check: lastSlotReceived: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, slotChanged: ${slotChanged}, slotChangedRecently: ${slotChangedRecently}`
-				);
-				if (slotChanged) {
-					lastHealthCheckSlot = lastSlotReceived;
-					lastHealthCheckSlotUpdated = Date.now();
-				}
-			});
-			if (!healthySlotSubscriber) {
-				healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
-				logger.error(`SlotSubscriber is not healthy`);
-				logger.error(
-					`Slotsubscriber health check: lastSlotReceived: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, slotChanged: ${slotChanged}, slotChangedRecently: ${slotChangedRecently}`
-				);
-
-				res.writeHead(500);
-				res.end(`SlotSubscriber is not healthy`);
-				return;
-			}
-
-			// liveness check passed
-			healthStatus = HEALTH_STATUS.Ok;
+	if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
+		if (lastHealthCheckState) {
 			res.writeHead(200);
 			res.end('OK');
 		} else {
-			res.writeHead(404);
-			res.end('Not found');
+			res.writeHead(500);
+			res.end(`NOK`);
 		}
+		return;
+	}
+
+	const { lastSlotReceived, lastSlotReceivedMutex } = getSlotHealthCheckInfo();
+
+	try {
+		await tryAcquire(lastSlotReceivedMutex).runExclusive(async () => {
+			// healthy if slot has advanced since the last check
+			lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
+			if (!lastHealthCheckState) {
+				logger.error(
+					`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}`
+				);
+			}
+
+			lastHealthCheckSlot = lastSlotReceived;
+			lastHealthCheckPerformed = Date.now();
+		});
+
+		if (!lastHealthCheckState) {
+			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
+
+			res.writeHead(500);
+			res.end(`NOK`);
+			return;
+		}
+
+		healthStatus = HEALTH_STATUS.Ok;
+		res.writeHead(200);
+		res.end('OK');
 	} catch (e) {
-		next(e);
+		if (e === E_ALREADY_LOCKED) {
+			// someone else is updating the slot, just return the latched state
+			if (lastHealthCheckState) {
+				logger.error(`DlobServer is healthy (busy mutex)`);
+				res.writeHead(200);
+				res.end('OK');
+			} else {
+				logger.error(`DlobServer is not healthy (busy mutex)`);
+				res.writeHead(500);
+				res.end(`NOK`);
+			}
+		} else {
+			logger.error(`Error in health check: ${e.message}`);
+			console.error(e);
+			next(e);
+		}
 	}
 };
 
