@@ -2,7 +2,9 @@ import {
 	DriftClient,
 	DriftEnv,
 	L2OrderBook,
+	L3OrderBook,
 	MarketType,
+	OraclePriceData,
 	PerpMarkets,
 	PhoenixSubscriber,
 	PublicKey,
@@ -13,6 +15,7 @@ import {
 } from '@drift-labs/sdk';
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
+import FEATURE_FLAGS from './featureFlags';
 
 export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	for (const key of Object.keys(l2)) {
@@ -45,6 +48,67 @@ export const getOracleForMarket = (
 		return driftClient.getOracleDataForSpotMarket(marketIndex).price.toNumber();
 	} else if (isVariant(marketType, 'perp')) {
 		return driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
+	}
+};
+
+type SerializableOraclePriceData = {
+	price: string;
+	slot: string;
+	confidence: string;
+	hasSufficientNumberOfDataPoints: boolean;
+	twap?: string;
+	twapConfidence?: string;
+};
+
+const getSerializableOraclePriceData = (
+	oraclePriceData: OraclePriceData
+): SerializableOraclePriceData => {
+	return {
+		price: oraclePriceData.price?.toString?.(),
+		slot: oraclePriceData.slot?.toString?.(),
+		confidence: oraclePriceData.confidence?.toString?.(),
+		hasSufficientNumberOfDataPoints:
+			oraclePriceData.hasSufficientNumberOfDataPoints,
+		twap: oraclePriceData.twap?.toString?.(),
+		twapConfidence: oraclePriceData.twapConfidence?.toString?.(),
+	};
+};
+
+export const getOracleDataForMarket = (
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number
+): SerializableOraclePriceData => {
+	if (isVariant(marketType, 'spot')) {
+		return getSerializableOraclePriceData(
+			driftClient.getOracleDataForSpotMarket(marketIndex)
+		);
+	} else if (isVariant(marketType, 'perp')) {
+		return getSerializableOraclePriceData(
+			driftClient.getOracleDataForPerpMarket(marketIndex)
+		);
+	}
+};
+
+export const addOracletoResponse = (
+	response: L2OrderBook | L3OrderBook,
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number
+): void => {
+	if (FEATURE_FLAGS.OLD_ORACLE_PRICE_IN_L2) {
+		response['oracle'] = getOracleForMarket(
+			driftClient,
+			marketType,
+			marketIndex
+		);
+	}
+	if (FEATURE_FLAGS.NEW_ORACLE_DATA_IN_L2) {
+		response['oracleData'] = getOracleDataForMarket(
+			driftClient,
+			marketType,
+			marketIndex
+		);
 	}
 };
 

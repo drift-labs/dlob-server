@@ -11,9 +11,9 @@ import {
 	groupL2,
 	isVariant,
 } from '@drift-labs/sdk';
-import { getOracleForMarket, l2WithBNToStrings } from '../utils/utils';
-import { RedisClient } from '../utils/redisClient';
 import { driftEnv } from '../publishers/dlobPublisher';
+import { RedisClient } from '../utils/redisClient';
+import { addOracletoResponse, l2WithBNToStrings } from '../utils/utils';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -106,7 +106,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		l2Formatted['marketName'] = marketName?.toUpperCase();
 		l2Formatted['marketType'] = marketType?.toLowerCase();
 		l2Formatted['marketIndex'] = l2Args.marketIndex;
-		l2Formatted['oracle'] = getOracleForMarket(
+		addOracletoResponse(
+			l2Formatted,
 			this.driftClient,
 			l2Args.marketType,
 			l2Args.marketIndex
