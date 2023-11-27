@@ -16,7 +16,10 @@ import {
 	DLOBOrdersCoder,
 	DLOBSubscriber,
 	DriftClient,
+	DriftClientSubscriptionConfig,
 	DriftEnv,
+	SlotSource,
+	SlotSubscriber,
 	UserMap,
 	UserStatsMap,
 	Wallet,
@@ -214,7 +217,6 @@ const main = async () => {
 		programID: clearingHousePublicKey,
 		accountSubscription,
 		env: driftEnv,
-		userStats: true,
 	});
 
 	const dlobCoder = DLOBOrdersCoder.create();
@@ -229,23 +231,21 @@ const main = async () => {
 		lastSlotReceived = slotSource.getSlot();
 	}, ORDERBOOK_UPDATE_INTERVAL);
 
+	const userStatsMap = new UserStatsMap(driftClient);
+
 	logger.info(`Initializing userMap...`);
 	const initUserMapStart = Date.now();
 	const userMap = new UserMap(
 		driftClient,
 		driftClient.userAccountSubscriptionConfig,
-		false
+		false,
+		async (authorities) => {
+			await userStatsMap.sync(authorities);
+		},
+		{ hasOpenOrders: true }
 	);
 	await userMap.subscribe();
 	logger.info(`userMap initialized in ${Date.now() - initUserMapStart} ms`);
-
-	logger.info(`Initializing userStatsMap...`);
-	const initUserStatsMapStart = Date.now();
-	const userStatsMap = new UserStatsMap(driftClient, accountSubscription);
-	await userStatsMap.subscribe();
-	logger.info(
-		`userStatsMap initialized in ${Date.now() - initUserStatsMapStart} ms`
-	);
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
@@ -650,11 +650,11 @@ const main = async () => {
 				numVammOrders: parseInt((numVammOrders ?? '100') as string),
 				fallbackL2Generators: isSpot
 					? [
-							`${includePhoenix}`.toLowerCase() === 'true' &&
-								MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-							`${includeSerum}`.toLowerCase() === 'true' &&
-								MARKET_SUBSCRIBERS[normedMarketIndex].serum,
-					  ].filter((a) => !!a)
+						`${includePhoenix}`.toLowerCase() === 'true' &&
+						MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+						`${includeSerum}`.toLowerCase() === 'true' &&
+						MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+					].filter((a) => !!a)
 					: [],
 			});
 
@@ -768,11 +768,11 @@ const main = async () => {
 						: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
 					fallbackL2Generators: isSpot
 						? [
-								`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
-									MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-								`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
-									MARKET_SUBSCRIBERS[normedMarketIndex].serum,
-						  ].filter((a) => !!a)
+							`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
+							MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+							`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
+							MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+						].filter((a) => !!a)
 						: [],
 				});
 
