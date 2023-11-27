@@ -1,51 +1,48 @@
 import { program } from 'commander';
+import compression from 'compression';
+import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import compression from 'compression';
 import morgan from 'morgan';
-import cors from 'cors';
 
-import { Connection, Commitment, PublicKey, Keypair } from '@solana/web3.js';
+import { Commitment, Connection, Keypair, PublicKey } from '@solana/web3.js';
 
 import {
-	getVariant,
-	DriftClient,
-	initialize,
-	DriftEnv,
-	UserMap,
+	BN,
+	BulkAccountLoader,
+	DLOBNode,
 	DLOBOrder,
 	DLOBOrders,
 	DLOBOrdersCoder,
-	DLOBNode,
-	isVariant,
-	BN,
-	groupL2,
-	Wallet,
-	UserStatsMap,
 	DLOBSubscriber,
-	BulkAccountLoader,
-	DriftClientSubscriptionConfig,
-	SlotSubscriber,
-	SlotSource,
+	DriftClient,
+	DriftEnv,
+	UserMap,
+	UserStatsMap,
+	Wallet,
+	getVariant,
+	groupL2,
+	initialize,
+	isVariant,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
 
+import { Mutex } from 'async-mutex';
 import * as http from 'http';
+import { handleHealthCheck } from './core/metrics';
+import { handleResponseTime } from './core/middleware';
 import {
-	l2WithBNToStrings,
-	sleep,
-	getOracleForMarket,
-	normalizeBatchQueryParams,
 	SubscriberLookup,
+	addOracletoResponse,
 	errorHandler,
 	getPhoenixSubscriber,
 	getSerumSubscriber,
+	l2WithBNToStrings,
+	normalizeBatchQueryParams,
+	sleep,
 	validateDlobQuery,
 } from './utils/utils';
-import { handleResponseTime } from './core/middleware';
-import { handleHealthCheck } from './core/metrics';
-import { Mutex } from 'async-mutex';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -674,7 +671,8 @@ const main = async () => {
 					groupL2(l2, groupingBN, finalDepth)
 				);
 				if (`${includeOracle}`.toLowerCase() === 'true') {
-					l2Formatted['oracle'] = getOracleForMarket(
+					addOracletoResponse(
+						l2Formatted,
 						driftClient,
 						normedMarketType,
 						normedMarketIndex
@@ -687,7 +685,8 @@ const main = async () => {
 				// make the BNs into strings
 				const l2Formatted = l2WithBNToStrings(l2);
 				if (`${includeOracle}`.toLowerCase() === 'true') {
-					l2Formatted['oracle'] = getOracleForMarket(
+					addOracletoResponse(
+						l2Formatted,
 						driftClient,
 						normedMarketType,
 						normedMarketIndex
@@ -795,7 +794,8 @@ const main = async () => {
 						groupL2(l2, groupingBN, finalDepth)
 					);
 					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
-						l2Formatted['oracle'] = getOracleForMarket(
+						addOracletoResponse(
+							l2Formatted,
 							driftClient,
 							normedMarketType,
 							normedMarketIndex
@@ -806,7 +806,8 @@ const main = async () => {
 					// make the BNs into strings
 					const l2Formatted = l2WithBNToStrings(l2);
 					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
-						l2Formatted['oracle'] = getOracleForMarket(
+						addOracletoResponse(
+							l2Formatted,
 							driftClient,
 							normedMarketType,
 							normedMarketIndex
@@ -856,7 +857,8 @@ const main = async () => {
 			}
 
 			if (`${includeOracle}`.toLowerCase() === 'true') {
-				l3['oracle'] = getOracleForMarket(
+				addOracletoResponse(
+					l3,
 					driftClient,
 					normedMarketType,
 					normedMarketIndex
@@ -887,4 +889,4 @@ async function recursiveTryCatch(f: () => void) {
 
 recursiveTryCatch(() => main());
 
-export { sdkConfig, endpoint, wsEndpoint, driftEnv, commitHash, driftClient };
+export { commitHash, driftClient, driftEnv, endpoint, sdkConfig, wsEndpoint };
