@@ -74,7 +74,6 @@ const main = async () => {
 			accountLoader: bulkAccountLoader,
 		},
 		env: driftEnv,
-		userStats: true,
 	});
 
 	const slotSubscriber = new SlotSubscriber(connection, {});

@@ -650,11 +650,11 @@ const main = async () => {
 				numVammOrders: parseInt((numVammOrders ?? '100') as string),
 				fallbackL2Generators: isSpot
 					? [
-						`${includePhoenix}`.toLowerCase() === 'true' &&
-						MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-						`${includeSerum}`.toLowerCase() === 'true' &&
-						MARKET_SUBSCRIBERS[normedMarketIndex].serum,
-					].filter((a) => !!a)
+							`${includePhoenix}`.toLowerCase() === 'true' &&
+								MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+							`${includeSerum}`.toLowerCase() === 'true' &&
+								MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+					  ].filter((a) => !!a)
 					: [],
 			});
 
@@ -768,11 +768,11 @@ const main = async () => {
 						: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
 					fallbackL2Generators: isSpot
 						? [
-							`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
-							MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-							`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
-							MARKET_SUBSCRIBERS[normedMarketIndex].serum,
-						].filter((a) => !!a)
+								`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
+									MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+								`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
+									MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+						  ].filter((a) => !!a)
 						: [],
 				});
 
