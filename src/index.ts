@@ -66,7 +66,7 @@ const loadTestAllowed = process.env.ALLOW_LOAD_TEST?.toLowerCase() === 'true';
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
 const logHttp = morgan(logFormat, {
-	skip: (_req, res) => res.statusCode < 400,
+	skip: (_req, res) => res.statusCode <= 500,
 });
 
 let driftClient: DriftClient;
