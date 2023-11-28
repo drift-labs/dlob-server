@@ -18,6 +18,7 @@ import {
 	PRICE_PRECISION,
 	getVariant,
 	ZERO,
+	BN,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -74,7 +75,6 @@ const main = async () => {
 			accountLoader: bulkAccountLoader,
 		},
 		env: driftEnv,
-		userStats: true,
 	});
 
 	const slotSubscriber = new SlotSubscriber(connection, {});
@@ -147,7 +147,9 @@ const main = async () => {
 					),
 					taker: fill.taker?.toBase58(),
 					takerOrderId: fill.takerOrderId,
-					takerOrderDirection: getVariant(fill.takerOrderDirection),
+					takerOrderDirection: fill.takerOrderDirection
+						? getVariant(fill.takerOrderDirection)
+						: undefined,
 					takerOrderBaseAssetAmount: convertToNumber(
 						fill.takerOrderBaseAssetAmount,
 						BASE_PRECISION
@@ -183,7 +185,7 @@ const main = async () => {
 					action: 'fill',
 					actionExplanation: getVariant(fill.actionExplanation),
 					referrerReward: convertToNumber(
-						fill.referrerReward ?? ZERO,
+						new BN(fill.referrerReward ?? ZERO),
 						QUOTE_PRECISION
 					),
 				};

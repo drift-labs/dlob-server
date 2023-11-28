@@ -16,7 +16,10 @@ import {
 	DLOBOrdersCoder,
 	DLOBSubscriber,
 	DriftClient,
+	DriftClientSubscriptionConfig,
 	DriftEnv,
+	SlotSource,
+	SlotSubscriber,
 	UserMap,
 	UserStatsMap,
 	Wallet,
@@ -53,6 +56,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
+const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -117,6 +121,7 @@ const endpoint = process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
+logger.info(`useWebsocket: ${useWebsocket}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
 
@@ -171,32 +176,50 @@ const main = async () => {
 		commitment: stateCommitment,
 	});
 
-	const bulkAccountLoader = new BulkAccountLoader(
-		connection,
-		stateCommitment,
-		ORDERBOOK_UPDATE_INTERVAL
-	);
+	// only set when polling
+	let bulkAccountLoader: BulkAccountLoader | undefined;
+
+	// only set when using websockets
+	let slotSubscriber: SlotSubscriber | undefined;
+
+	let accountSubscription: DriftClientSubscriptionConfig;
+	let slotSource: SlotSource;
+
+	if (!useWebsocket) {
+		bulkAccountLoader = new BulkAccountLoader(
+			connection,
+			stateCommitment,
+			ORDERBOOK_UPDATE_INTERVAL
+		);
+
+		accountSubscription = {
+			type: 'polling',
+			accountLoader: bulkAccountLoader,
+		};
+		slotSource = {
+			getSlot: () => bulkAccountLoader!.getSlot(),
+		};
+	} else {
+		accountSubscription = {
+			type: 'websocket',
+			commitment: stateCommitment,
+		};
+		slotSubscriber = new SlotSubscriber(connection);
+		await slotSubscriber.subscribe();
+		slotSource = {
+			getSlot: () => slotSubscriber!.getSlot(),
+		};
+	}
 
 	driftClient = new DriftClient({
 		connection,
 		wallet,
 		programID: clearingHousePublicKey,
-		accountSubscription: {
-			type: 'polling',
-			accountLoader: bulkAccountLoader,
-		},
+		accountSubscription,
 		env: driftEnv,
-		userStats: true,
 	});
 
 	const dlobCoder = DLOBOrdersCoder.create();
-
-	const lamportsBalance = await connection.getBalance(wallet.publicKey);
-	logger.info(
-		`DriftClient ProgramId: ${driftClient.program.programId.toBase58()}`
-	);
-	logger.info(`Wallet pubkey: ${wallet.publicKey.toBase58()}`);
-	logger.info(` . SOL balance: ${lamportsBalance / 10 ** 9}`);
 
 	await driftClient.subscribe();
 	driftClient.eventEmitter.on('error', (e) => {
@@ -205,28 +228,37 @@ const main = async () => {
 	});
 
 	setInterval(async () => {
-		lastSlotReceived = bulkAccountLoader.getSlot();
+		lastSlotReceived = slotSource.getSlot();
 	}, ORDERBOOK_UPDATE_INTERVAL);
 
+	const userStatsMap = new UserStatsMap(driftClient);
+
+	logger.info(`Initializing userMap...`);
+	const initUserMapStart = Date.now();
 	const userMap = new UserMap(
 		driftClient,
 		driftClient.userAccountSubscriptionConfig,
-		false
+		false,
+		async (authorities) => {
+			await userStatsMap.sync(authorities);
+		},
+		{ hasOpenOrders: true }
 	);
 	await userMap.subscribe();
-	const userStatsMap = new UserStatsMap(driftClient, {
-		type: 'polling',
-		accountLoader: new BulkAccountLoader(connection, stateCommitment, 0),
-	});
-	await userStatsMap.subscribe();
+	logger.info(`userMap initialized in ${Date.now() - initUserMapStart} ms`);
 
+	logger.info(`Initializing DLOBSubscriber...`);
+	const initDlobSubscriberStart = Date.now();
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
 		dlobSource: userMap,
-		slotSource: bulkAccountLoader,
+		slotSource,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 	});
 	await dlobSubscriber.subscribe();
+	logger.info(
+		`DLOBSubscriber initialized in ${Date.now() - initDlobSubscriberStart} ms`
+	);
 
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
 
@@ -253,7 +285,7 @@ const main = async () => {
 			// object with userAccount key and orders object serialized
 			const orders: Array<any> = [];
 			const oracles: Array<any> = [];
-			const slot = bulkAccountLoader.getSlot();
+			const slot = slotSource.getSlot();
 
 			for (const market of driftClient.getPerpMarketAccounts()) {
 				const oracle = driftClient.getOracleDataForPerpMarket(
@@ -297,7 +329,7 @@ const main = async () => {
 	app.get('/orders/json', async (_req, res, next) => {
 		try {
 			// object with userAccount key and orders object serialized
-			const slot = bulkAccountLoader.getSlot();
+			const slot = slotSource.getSlot();
 			const orders: Array<any> = [];
 			const oracles: Array<any> = [];
 			for (const market of driftClient.getPerpMarketAccounts()) {
@@ -460,7 +492,7 @@ const main = async () => {
 
 			res.end(
 				JSON.stringify({
-					slot: bulkAccountLoader.getSlot(),
+					slot: slotSource.getSlot(),
 					data: dlobCoder.encode(dlobOrders).toString('base64'),
 				})
 			);
@@ -549,7 +581,7 @@ const main = async () => {
 						.getDLOB()
 						.getRestingLimitBids(
 							normedMarketIndex,
-							bulkAccountLoader.getSlot(),
+							slotSource.getSlot(),
 							normedMarketType,
 							oracle
 						)
@@ -560,7 +592,7 @@ const main = async () => {
 						.getDLOB()
 						.getRestingLimitAsks(
 							normedMarketIndex,
-							bulkAccountLoader.getSlot(),
+							slotSource.getSlot(),
 							normedMarketType,
 							oracle
 						)

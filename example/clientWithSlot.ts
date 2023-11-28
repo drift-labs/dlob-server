@@ -55,8 +55,8 @@ const driftClientPublicKey = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
 let lastSeenSlot = 0;
 
 /********** initializing driftClient as usual **********/
-var accountSubscription: DriftClientSubscriptionConfig;
-var logProviderConfig: LogProviderConfig;
+let accountSubscription: DriftClientSubscriptionConfig;
+let logProviderConfig: LogProviderConfig;
 if (useWebsocket) {
     accountSubscription = {
         type: 'websocket',
