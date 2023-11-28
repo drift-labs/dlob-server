@@ -238,14 +238,16 @@ const main = async () => {
 	const userMap = new UserMap(
 		driftClient,
 		driftClient.userAccountSubscriptionConfig,
-		false,
-		async (authorities) => {
-			await userStatsMap.sync(authorities);
-		},
-		{ hasOpenOrders: true }
+		false
 	);
 	await userMap.subscribe();
 	logger.info(`userMap initialized in ${Date.now() - initUserMapStart} ms`);
+
+	const initUserStatsMapStarts = Date.now();
+	await userStatsMap.sync(userMap.getUniqueAuthorities());
+	logger.info(
+		`userStatsMap initialized in ${Date.now() - initUserStatsMapStarts} ms`
+	);
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
