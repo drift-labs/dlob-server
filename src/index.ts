@@ -21,8 +21,8 @@ import {
 	SlotSource,
 	SlotSubscriber,
 	UserMap,
-	UserStatsMap,
 	Wallet,
+	getUserStatsAccountPublicKey,
 	getVariant,
 	groupL2,
 	initialize,
@@ -275,8 +275,6 @@ const main = async () => {
 		lastSlotReceived = slotSource.getSlot();
 	}, ORDERBOOK_UPDATE_INTERVAL);
 
-	const userStatsMap = new UserStatsMap(driftClient);
-
 	logger.info(`Initializing DLOB Provider...`);
 	const initUserMapStart = Date.now();
 	await dlobProvider.subscribe();
@@ -284,12 +282,6 @@ const main = async () => {
 		`dlob provider initialized in ${Date.now() - initUserMapStart} ms`
 	);
 	logger.info(`dlob provider size ${dlobProvider.size()}`);
-
-	const initUserStatsMapStarts = Date.now();
-	await userStatsMap.sync(dlobProvider.getUniqueAuthorities());
-	logger.info(
-		`userStatsMap initialized in ${Date.now() - initUserStatsMapStarts} ms`
-	);
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
@@ -307,11 +299,7 @@ const main = async () => {
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
 
 	const handleStartup = async (_req, res, _next) => {
-		if (
-			driftClient.isSubscribed &&
-			dlobProvider.size() > 0 &&
-			userStatsMap.size() > 0
-		) {
+		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
 			res.writeHead(200);
 			res.end('OK');
 		} else {
@@ -594,12 +582,12 @@ const main = async () => {
 								const userAccount = dlobProvider.getUserAccount(
 									side.userAccount
 								);
-								const userStats = await userStatsMap.mustGet(
-									userAccount.authority.toBase58()
-								);
 								topMakers.add([
 									userAccount,
-									userStats.userStatsAccountPublicKey.toBase58(),
+									getUserStatsAccountPublicKey(
+										driftClient.program.programId,
+										userAccount.authority
+									),
 								]);
 							} else {
 								topMakers.add(side.userAccount.toBase58());
