@@ -134,11 +134,10 @@ const handleHealthCheck = async (req, res, next) => {
 		if (lastHealthCheckState) {
 			res.writeHead(200);
 			res.end('OK');
-		} else {
-			res.writeHead(500);
-			res.end(`NOK`);
+			lastHealthCheckPerformed = Date.now();
+			return;
 		}
-		return;
+		// always check if last check was unhealthy (give it another chance to recover)
 	}
 
 	const { lastSlotReceived, lastSlotReceivedMutex } = getSlotHealthCheckInfo();
@@ -149,7 +148,9 @@ const handleHealthCheck = async (req, res, next) => {
 			lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
 			if (!lastHealthCheckState) {
 				logger.error(
-					`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}`
+					`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, timeSinceLastCheck: ${
+						Date.now() - lastHealthCheckPerformed
+					} ms`
 				);
 			}
 
