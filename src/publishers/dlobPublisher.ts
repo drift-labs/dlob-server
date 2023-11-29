@@ -9,13 +9,14 @@ import {
 	SlotSubscriber,
 	UserMap,
 	Wallet,
-	BulkAccountLoader,
+	BulkAccountLoader, OrderSubscriber, SlotSource,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
 import { DLOBSubscriberIO } from '../dlob-subscriber/DLOBSubscriberIO';
 import { RedisClient } from '../utils/redisClient';
+import {DLOBProvider, getDLOBProviderFromOrderSubscriber, getDLOBProviderFromUserMap} from "../dlobProvider";
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -37,6 +38,8 @@ setLogLevel(opts.debug ? 'debug' : 'info');
 
 const endpoint = process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
+const useOrderSubscriber = process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
+
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
@@ -68,8 +71,6 @@ const main = async () => {
 		env: driftEnv,
 	});
 
-	const slotSubscriber = new SlotSubscriber(connection, {});
-
 	const lamportsBalance = await connection.getBalance(wallet.publicKey);
 	logger.info(
 		`DriftClient ProgramId: ${driftClient.program.programId.toBase58()}`
@@ -83,22 +84,45 @@ const main = async () => {
 		logger.error(e);
 	});
 
-	await slotSubscriber.subscribe();
+	let slotSource: SlotSource;
+	let dlobProvider : DLOBProvider;
+	if (useOrderSubscriber) {
+		const orderSubscriber = new OrderSubscriber({
+			driftClient,
+			subscriptionConfig: {
+				type: "polling",
+				frequency: ORDERBOOK_UPDATE_INTERVAL
+			},
+		});
 
-	const userMap = new UserMap(
-		driftClient,
-		driftClient.userAccountSubscriptionConfig,
-		false
-	);
-	await userMap.subscribe();
+		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
+
+		slotSource = {
+			getSlot: () => orderSubscriber.getSlot(),
+		};
+	} else {
+		const userMap = new UserMap(
+			driftClient,
+			driftClient.userAccountSubscriptionConfig,
+			false
+		);
+
+		dlobProvider = getDLOBProviderFromUserMap(userMap);
+
+		slotSource = {
+			getSlot: () => bulkAccountLoader.getSlot(),
+		};
+	}
+
+	await dlobProvider.subscribe();
 
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
 
 	const dlobSubscriber = new DLOBSubscriberIO({
 		driftClient,
-		dlobSource: userMap,
-		slotSource: slotSubscriber,
+		dlobSource: dlobProvider,
+		slotSource,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 		redisClient,
 	});

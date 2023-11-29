@@ -276,6 +276,7 @@ const main = async () => {
 	const initUserMapStart = Date.now();
 	await dlobProvider.subscribe();
 	logger.info(`dlob provider initialized in ${Date.now() - initUserMapStart} ms`);
+	logger.info(`dlob provider size ${dlobProvider.size()}`);
 
 	const initUserStatsMapStarts = Date.now();
 	await userStatsMap.sync(dlobProvider.getUniqueAuthorities());
