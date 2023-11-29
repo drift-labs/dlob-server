@@ -27,6 +27,7 @@ import {
 	groupL2,
 	initialize,
 	isVariant,
+	OrderSubscriber,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -46,6 +47,11 @@ import {
 	sleep,
 	validateDlobQuery,
 } from './utils/utils';
+import {
+	DLOBProvider,
+	getDLOBProviderFromOrderSubscriber,
+	getDLOBProviderFromUserMap,
+} from './dlobProvider';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -57,6 +63,8 @@ const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
+const useOrderSubscriber =
+	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
 
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -196,6 +204,7 @@ const main = async () => {
 			type: 'polling',
 			accountLoader: bulkAccountLoader,
 		};
+
 		slotSource = {
 			getSlot: () => bulkAccountLoader!.getSlot(),
 		};
@@ -206,6 +215,7 @@ const main = async () => {
 		};
 		slotSubscriber = new SlotSubscriber(connection);
 		await slotSubscriber.subscribe();
+
 		slotSource = {
 			getSlot: () => slotSubscriber!.getSlot(),
 		};
@@ -219,6 +229,40 @@ const main = async () => {
 		env: driftEnv,
 	});
 
+	let dlobProvider: DLOBProvider;
+	if (useOrderSubscriber) {
+		let subscriptionConfig;
+		if (useWebsocket) {
+			subscriptionConfig = {
+				type: 'websocket',
+			};
+		} else {
+			subscriptionConfig = {
+				type: 'polling',
+				frequency: ORDERBOOK_UPDATE_INTERVAL,
+			};
+		}
+
+		const orderSubscriber = new OrderSubscriber({
+			driftClient,
+			subscriptionConfig,
+		});
+
+		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
+
+		slotSource = {
+			getSlot: () => orderSubscriber.getSlot(),
+		};
+	} else {
+		const userMap = new UserMap(
+			driftClient,
+			driftClient.userAccountSubscriptionConfig,
+			false
+		);
+
+		dlobProvider = getDLOBProviderFromUserMap(userMap);
+	}
+
 	const dlobCoder = DLOBOrdersCoder.create();
 
 	await driftClient.subscribe();
@@ -231,21 +275,19 @@ const main = async () => {
 		lastSlotReceived = slotSource.getSlot();
 	}, ORDERBOOK_UPDATE_INTERVAL);
 
-	logger.info(`Initializing userMap...`);
-	const initUserMapStart = Date.now();
-	const userMap = new UserMap(
-		driftClient,
-		driftClient.userAccountSubscriptionConfig,
-		false
+	logger.info(`Initializing DLOB Provider...`);
+	const initDLOBProviderStart = Date.now();
+	await dlobProvider.subscribe();
+	logger.info(
+		`dlob provider initialized in ${Date.now() - initDLOBProviderStart} ms`
 	);
-	await userMap.subscribe();
-	logger.info(`userMap initialized in ${Date.now() - initUserMapStart} ms`);
+	logger.info(`dlob provider size ${dlobProvider.size()}`);
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
-		dlobSource: userMap,
+		dlobSource: dlobProvider,
 		slotSource,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 	});
@@ -257,7 +299,7 @@ const main = async () => {
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
 
 	const handleStartup = async (_req, res, _next) => {
-		if (driftClient.isSubscribed && userMap.size() > 0) {
+		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
 			res.writeHead(200);
 			res.end('OK');
 		} else {
@@ -287,16 +329,14 @@ const main = async () => {
 				});
 			}
 
-			for (const user of userMap.values()) {
-				const userAccount = user.getUserAccount();
-
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
 					}
 
 					orders.push({
-						user: user.getUserAccountPublicKey().toBase58(),
+						user: publicKey.toBase58(),
 						order: order,
 					});
 				}
@@ -342,9 +382,7 @@ const main = async () => {
 				}
 				oracles.push(oracleHuman);
 			}
-			for (const user of userMap.values()) {
-				const userAccount = user.getUserAccount();
-
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
@@ -382,7 +420,7 @@ const main = async () => {
 					}
 
 					orders.push({
-						user: user.getUserAccountPublicKey().toBase58(),
+						user: publicKey.toBase58(),
 						order: orderHuman,
 					});
 				}
@@ -406,16 +444,14 @@ const main = async () => {
 		try {
 			const dlobOrders: DLOBOrders = [];
 
-			for (const user of userMap.values()) {
-				const userAccount = user.getUserAccount();
-
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
 					}
 
 					dlobOrders.push({
-						user: user.getUserAccountPublicKey(),
+						user: publicKey,
 						order,
 					} as DLOBOrder);
 				}
@@ -456,9 +492,7 @@ const main = async () => {
 
 			const dlobOrders: DLOBOrders = [];
 
-			for (const user of userMap.values()) {
-				const userAccount = user.getUserAccount();
-
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
@@ -474,7 +508,7 @@ const main = async () => {
 					}
 
 					dlobOrders.push({
-						user: user.getUserAccountPublicKey(),
+						user: publicKey,
 						order,
 					} as DLOBOrder);
 				}
@@ -545,13 +579,14 @@ const main = async () => {
 							continue;
 						} else {
 							if (`${includeUserStats}`.toLowerCase() === 'true') {
-								const userAccount = side.userAccount.toBase58();
-								await userMap.mustGet(userAccount);
+								const userAccount = dlobProvider.getUserAccount(
+									side.userAccount
+								);
 								topMakers.add([
 									userAccount,
 									getUserStatsAccountPublicKey(
 										driftClient.program.programId,
-										userMap.getUserAuthority(userAccount)
+										userAccount.authority
 									),
 								]);
 							} else {
