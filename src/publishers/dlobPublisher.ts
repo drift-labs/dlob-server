@@ -9,14 +9,20 @@ import {
 	SlotSubscriber,
 	UserMap,
 	Wallet,
-	BulkAccountLoader, OrderSubscriber, SlotSource,
+	BulkAccountLoader,
+	OrderSubscriber,
+	SlotSource,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
 import { DLOBSubscriberIO } from '../dlob-subscriber/DLOBSubscriberIO';
 import { RedisClient } from '../utils/redisClient';
-import {DLOBProvider, getDLOBProviderFromOrderSubscriber, getDLOBProviderFromUserMap} from "../dlobProvider";
+import {
+	DLOBProvider,
+	getDLOBProviderFromOrderSubscriber,
+	getDLOBProviderFromUserMap,
+} from '../dlobProvider';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -38,7 +44,8 @@ setLogLevel(opts.debug ? 'debug' : 'info');
 
 const endpoint = process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
-const useOrderSubscriber = process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
+const useOrderSubscriber =
+	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
 
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
@@ -85,13 +92,13 @@ const main = async () => {
 	});
 
 	let slotSource: SlotSource;
-	let dlobProvider : DLOBProvider;
+	let dlobProvider: DLOBProvider;
 	if (useOrderSubscriber) {
 		const orderSubscriber = new OrderSubscriber({
 			driftClient,
 			subscriptionConfig: {
-				type: "polling",
-				frequency: ORDERBOOK_UPDATE_INTERVAL
+				type: 'polling',
+				frequency: ORDERBOOK_UPDATE_INTERVAL,
 			},
 		});
 

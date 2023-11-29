@@ -47,7 +47,11 @@ import {
 	sleep,
 	validateDlobQuery,
 } from './utils/utils';
-import {DLOBProvider, getDLOBProviderFromOrderSubscriber, getDLOBProviderFromUserMap} from "./dlobProvider";
+import {
+	DLOBProvider,
+	getDLOBProviderFromOrderSubscriber,
+	getDLOBProviderFromUserMap,
+} from './dlobProvider';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -59,7 +63,8 @@ const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
-const useOrderSubscriber = process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
+const useOrderSubscriber =
+	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
 
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -224,17 +229,17 @@ const main = async () => {
 		env: driftEnv,
 	});
 
-	let dlobProvider : DLOBProvider;
+	let dlobProvider: DLOBProvider;
 	if (useOrderSubscriber) {
 		let subscriptionConfig;
 		if (useWebsocket) {
 			subscriptionConfig = {
-				type: "websocket",
+				type: 'websocket',
 			};
 		} else {
 			subscriptionConfig = {
-				type: "polling",
-				frequency: ORDERBOOK_UPDATE_INTERVAL
+				type: 'polling',
+				frequency: ORDERBOOK_UPDATE_INTERVAL,
 			};
 		}
 
@@ -275,7 +280,9 @@ const main = async () => {
 	logger.info(`Initializing DLOB Provider...`);
 	const initUserMapStart = Date.now();
 	await dlobProvider.subscribe();
-	logger.info(`dlob provider initialized in ${Date.now() - initUserMapStart} ms`);
+	logger.info(
+		`dlob provider initialized in ${Date.now() - initUserMapStart} ms`
+	);
 	logger.info(`dlob provider size ${dlobProvider.size()}`);
 
 	const initUserStatsMapStarts = Date.now();
@@ -334,7 +341,7 @@ const main = async () => {
 				});
 			}
 
-			for (const {userAccount, publicKey} of dlobProvider.getUserAccounts()) {
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
@@ -387,7 +394,7 @@ const main = async () => {
 				}
 				oracles.push(oracleHuman);
 			}
-			for (const {userAccount, publicKey} of dlobProvider.getUserAccounts()) {
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
@@ -449,7 +456,7 @@ const main = async () => {
 		try {
 			const dlobOrders: DLOBOrders = [];
 
-			for (const {userAccount, publicKey} of dlobProvider.getUserAccounts()) {
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
@@ -497,7 +504,7 @@ const main = async () => {
 
 			const dlobOrders: DLOBOrders = [];
 
-			for (const {userAccount, publicKey} of dlobProvider.getUserAccounts()) {
+			for (const { userAccount, publicKey } of dlobProvider.getUserAccounts()) {
 				for (const order of userAccount.orders) {
 					if (isVariant(order.status, 'init')) {
 						continue;
@@ -584,7 +591,9 @@ const main = async () => {
 							continue;
 						} else {
 							if (`${includeUserStats}`.toLowerCase() === 'true') {
-								const userAccount = dlobProvider.getUserAccount(side.userAccount);
+								const userAccount = dlobProvider.getUserAccount(
+									side.userAccount
+								);
 								const userStats = await userStatsMap.mustGet(
 									userAccount.authority.toBase58()
 								);

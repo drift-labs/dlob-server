@@ -1,16 +1,19 @@
-import {DLOB, OrderSubscriber, UserAccount, UserMap} from "@drift-labs/sdk";
-import {PublicKey} from "@solana/web3.js";
+import { DLOB, OrderSubscriber, UserAccount, UserMap } from '@drift-labs/sdk';
+import { PublicKey } from '@solana/web3.js';
 
 export type DLOBProvider = {
-	subscribe() : Promise<void>;
+	subscribe(): Promise<void>;
 	getDLOB(slot: number): Promise<DLOB>;
 	getUniqueAuthorities(): PublicKey[];
-	getUserAccounts(): Generator<{userAccount: UserAccount, publicKey: PublicKey}>;
+	getUserAccounts(): Generator<{
+		userAccount: UserAccount;
+		publicKey: PublicKey;
+	}>;
 	getUserAccount(publicKey: PublicKey): UserAccount | undefined;
 	size(): number;
-}
+};
 
-export function getDLOBProviderFromUserMap(userMap:UserMap) : DLOBProvider {
+export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
 	return {
 		subscribe: async () => {
 			await userMap.subscribe();
@@ -21,9 +24,12 @@ export function getDLOBProviderFromUserMap(userMap:UserMap) : DLOBProvider {
 		getUniqueAuthorities: () => {
 			return userMap.getUniqueAuthorities();
 		},
-		getUserAccounts: function*() {
+		getUserAccounts: function* () {
 			for (const user of userMap.values()) {
-				yield {userAccount: user.getUserAccount(), publicKey: user.getUserAccountPublicKey()};
+				yield {
+					userAccount: user.getUserAccount(),
+					publicKey: user.getUserAccountPublicKey(),
+				};
 			}
 		},
 		getUserAccount: (publicKey) => {
@@ -31,11 +37,13 @@ export function getDLOBProviderFromUserMap(userMap:UserMap) : DLOBProvider {
 		},
 		size: () => {
 			return userMap.size();
-		}
+		},
 	};
 }
 
-export function getDLOBProviderFromOrderSubscriber(orderSubscriber: OrderSubscriber) : DLOBProvider {
+export function getDLOBProviderFromOrderSubscriber(
+	orderSubscriber: OrderSubscriber
+): DLOBProvider {
 	return {
 		subscribe: async () => {
 			await orderSubscriber.subscribe();
@@ -50,16 +58,20 @@ export function getDLOBProviderFromOrderSubscriber(orderSubscriber: OrderSubscri
 			}
 			return Array.from(authorities.values());
 		},
-		getUserAccounts: function*() {
-			for (const [key, {userAccount}] of orderSubscriber.usersAccounts.entries()) {
-				yield {userAccount: userAccount, publicKey: new PublicKey(key)};
+		getUserAccounts: function* () {
+			for (const [
+				key,
+				{ userAccount },
+			] of orderSubscriber.usersAccounts.entries()) {
+				yield { userAccount: userAccount, publicKey: new PublicKey(key) };
 			}
 		},
 		getUserAccount: (publicKey) => {
-			return orderSubscriber.usersAccounts.get(publicKey.toString())?.userAccount;
+			return orderSubscriber.usersAccounts.get(publicKey.toString())
+				?.userAccount;
 		},
 		size(): number {
 			return orderSubscriber.usersAccounts.size;
-		}
+		},
 	};
 }
