@@ -6,7 +6,6 @@ import {
 	DriftClient,
 	initialize,
 	DriftEnv,
-	SlotSubscriber,
 	UserMap,
 	Wallet,
 	BulkAccountLoader,
