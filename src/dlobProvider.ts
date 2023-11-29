@@ -11,6 +11,7 @@ export type DLOBProvider = {
 	}>;
 	getUserAccount(publicKey: PublicKey): UserAccount | undefined;
 	size(): number;
+	fetch(): Promise<void>;
 };
 
 export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
@@ -37,6 +38,9 @@ export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
 		},
 		size: () => {
 			return userMap.size();
+		},
+		fetch: () => {
+			return userMap.sync();
 		},
 	};
 }
@@ -72,6 +76,9 @@ export function getDLOBProviderFromOrderSubscriber(
 		},
 		size(): number {
 			return orderSubscriber.usersAccounts.size;
+		},
+		fetch() {
+			return orderSubscriber.fetch();
 		},
 	};
 }
