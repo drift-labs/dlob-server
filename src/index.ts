@@ -21,8 +21,8 @@ import {
 	SlotSource,
 	SlotSubscriber,
 	UserMap,
-	UserStatsMap,
 	Wallet,
+	getUserStatsAccountPublicKey,
 	getVariant,
 	groupL2,
 	initialize,
@@ -231,8 +231,6 @@ const main = async () => {
 		lastSlotReceived = slotSource.getSlot();
 	}, ORDERBOOK_UPDATE_INTERVAL);
 
-	const userStatsMap = new UserStatsMap(driftClient);
-
 	logger.info(`Initializing userMap...`);
 	const initUserMapStart = Date.now();
 	const userMap = new UserMap(
@@ -242,12 +240,6 @@ const main = async () => {
 	);
 	await userMap.subscribe();
 	logger.info(`userMap initialized in ${Date.now() - initUserMapStart} ms`);
-
-	const initUserStatsMapStarts = Date.now();
-	await userStatsMap.sync(userMap.getUniqueAuthorities());
-	logger.info(
-		`userStatsMap initialized in ${Date.now() - initUserStatsMapStarts} ms`
-	);
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
@@ -265,11 +257,7 @@ const main = async () => {
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
 
 	const handleStartup = async (_req, res, _next) => {
-		if (
-			driftClient.isSubscribed &&
-			userMap.size() > 0 &&
-			userStatsMap.size() > 0
-		) {
+		if (driftClient.isSubscribed && userMap.size() > 0) {
 			res.writeHead(200);
 			res.end('OK');
 		} else {
@@ -559,12 +547,12 @@ const main = async () => {
 							if (`${includeUserStats}`.toLowerCase() === 'true') {
 								const userAccount = side.userAccount.toBase58();
 								await userMap.mustGet(userAccount);
-								const userStats = await userStatsMap.mustGet(
-									userMap.getUserAuthority(userAccount)!.toBase58()
-								);
 								topMakers.add([
 									userAccount,
-									userStats.userStatsAccountPublicKey.toBase58(),
+									getUserStatsAccountPublicKey(
+										driftClient.program.programId,
+										userMap.getUserAuthority(userAccount)
+									),
 								]);
 							} else {
 								topMakers.add(side.userAccount.toBase58());
