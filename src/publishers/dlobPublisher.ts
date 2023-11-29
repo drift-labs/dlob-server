@@ -11,6 +11,8 @@ import {
 	BulkAccountLoader,
 	OrderSubscriber,
 	SlotSource,
+	DriftClientSubscriptionConfig,
+	SlotSubscriber,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -24,6 +26,9 @@ import {
 } from '../dlobProvider';
 
 require('dotenv').config();
+const stateCommitment: Commitment = 'processed';
+const ORDERBOOK_UPDATE_INTERVAL = 1000;
+const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
@@ -32,10 +37,6 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
-
-const stateCommitment: Commitment = 'processed';
-const ORDERBOOK_UPDATE_INTERVAL = 1000;
-
 let driftClient: DriftClient;
 
 const opts = program.opts();
@@ -45,6 +46,7 @@ const endpoint = process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
 const useOrderSubscriber =
 	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
+const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
@@ -60,20 +62,48 @@ const main = async () => {
 		commitment: stateCommitment,
 	});
 
-	const bulkAccountLoader = new BulkAccountLoader(
-		connection,
-		stateCommitment,
-		ORDERBOOK_UPDATE_INTERVAL
-	);
+	// only set when polling
+	let bulkAccountLoader: BulkAccountLoader | undefined;
+
+	// only set when using websockets
+	let slotSubscriber: SlotSubscriber | undefined;
+
+	let accountSubscription: DriftClientSubscriptionConfig;
+	let slotSource: SlotSource;
+
+	if (!useWebsocket) {
+		bulkAccountLoader = new BulkAccountLoader(
+			connection,
+			stateCommitment,
+			ORDERBOOK_UPDATE_INTERVAL
+		);
+
+		accountSubscription = {
+			type: 'polling',
+			accountLoader: bulkAccountLoader,
+		};
+
+		slotSource = {
+			getSlot: () => bulkAccountLoader!.getSlot(),
+		};
+	} else {
+		accountSubscription = {
+			type: 'websocket',
+			commitment: stateCommitment,
+		};
+		slotSubscriber = new SlotSubscriber(connection);
+		await slotSubscriber.subscribe();
+
+		slotSource = {
+			getSlot: () => slotSubscriber!.getSlot(),
+		};
+	}
 
 	driftClient = new DriftClient({
 		connection,
 		wallet,
 		programID: clearingHousePublicKey,
-		accountSubscription: {
-			type: 'polling',
-			accountLoader: bulkAccountLoader,
-		},
+		accountSubscription,
 		env: driftEnv,
 	});
 
@@ -90,15 +120,23 @@ const main = async () => {
 		logger.error(e);
 	});
 
-	let slotSource: SlotSource;
 	let dlobProvider: DLOBProvider;
 	if (useOrderSubscriber) {
-		const orderSubscriber = new OrderSubscriber({
-			driftClient,
-			subscriptionConfig: {
+		let subscriptionConfig;
+		if (useWebsocket) {
+			subscriptionConfig = {
+				type: 'websocket',
+			};
+		} else {
+			subscriptionConfig = {
 				type: 'polling',
 				frequency: ORDERBOOK_UPDATE_INTERVAL,
-			},
+			};
+		}
+
+		const orderSubscriber = new OrderSubscriber({
+			driftClient,
+			subscriptionConfig,
 		});
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
@@ -114,10 +152,6 @@ const main = async () => {
 		);
 
 		dlobProvider = getDLOBProviderFromUserMap(userMap);
-
-		slotSource = {
-			getSlot: () => bulkAccountLoader.getSlot(),
-		};
 	}
 
 	await dlobProvider.subscribe();
@@ -133,6 +167,11 @@ const main = async () => {
 		redisClient,
 	});
 	await dlobSubscriber.subscribe();
+	if (useWebsocket) {
+		setInterval(async () => {
+			await dlobProvider.fetch();
+		}, WS_FALLBACK_FETCH_INTERVAL);
+	}
 
 	console.log('DLOBSubscriber Publishing Messages');
 };

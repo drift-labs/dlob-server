@@ -62,6 +62,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
+const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const useOrderSubscriber =
 	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
@@ -282,6 +283,11 @@ const main = async () => {
 		`dlob provider initialized in ${Date.now() - initDLOBProviderStart} ms`
 	);
 	logger.info(`dlob provider size ${dlobProvider.size()}`);
+	if (useWebsocket) {
+		setInterval(async () => {
+			await dlobProvider.fetch();
+		}, WS_FALLBACK_FETCH_INTERVAL);
+	}
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
