@@ -276,10 +276,10 @@ const main = async () => {
 	}, ORDERBOOK_UPDATE_INTERVAL);
 
 	logger.info(`Initializing DLOB Provider...`);
-	const initUserMapStart = Date.now();
+	const initDLOBProviderStart = Date.now();
 	await dlobProvider.subscribe();
 	logger.info(
-		`dlob provider initialized in ${Date.now() - initUserMapStart} ms`
+		`dlob provider initialized in ${Date.now() - initDLOBProviderStart} ms`
 	);
 	logger.info(`dlob provider size ${dlobProvider.size()}`);
 
