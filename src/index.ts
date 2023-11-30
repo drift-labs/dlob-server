@@ -229,11 +229,13 @@ const main = async () => {
 		if (useWebsocket) {
 			subscriptionConfig = {
 				type: 'websocket',
+				commitment: stateCommitment,
 			};
 		} else {
 			subscriptionConfig = {
 				type: 'polling',
 				frequency: ORDERBOOK_UPDATE_INTERVAL,
+				commitment: stateCommitment,
 			};
 		}
 
