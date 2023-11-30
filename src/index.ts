@@ -127,11 +127,12 @@ setLogLevel(opts.debug ? 'debug' : 'info');
 
 const endpoint = process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
-logger.info(`RPC endpoint: ${endpoint}`);
-logger.info(`WS endpoint:  ${wsEndpoint}`);
-logger.info(`useWebsocket: ${useWebsocket}`);
-logger.info(`DriftEnv:     ${driftEnv}`);
-logger.info(`Commit:       ${commitHash}`);
+logger.info(`RPC endpoint:       ${endpoint}`);
+logger.info(`WS endpoint:        ${wsEndpoint}`);
+logger.info(`useWebsocket:       ${useWebsocket}`);
+logger.info(`useOrderSubscriber: ${useOrderSubscriber}`);
+logger.info(`DriftEnv:           ${driftEnv}`);
+logger.info(`Commit:             ${commitHash}`);
 
 let MARKET_SUBSCRIBERS: SubscriberLookup = {};
 
