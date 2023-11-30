@@ -28,6 +28,7 @@ import {
 	initialize,
 	isVariant,
 	OrderSubscriber,
+	UserAccount,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -52,6 +53,7 @@ import {
 	getDLOBProviderFromOrderSubscriber,
 	getDLOBProviderFromUserMap,
 } from './dlobProvider';
+import { Worker } from 'node:worker_threads';
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -62,7 +64,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
-const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
+// const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const useOrderSubscriber =
 	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
@@ -277,15 +279,19 @@ const main = async () => {
 	logger.info(`dlob provider size ${dlobProvider.size()}`);
 
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
-		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
-			setTimeout(() => {
-				dlobProvider.fetch().then(() => {
-					// eslint-disable-next-line @typescript-eslint/no-unused-vars
-					recursiveFetch();
-				});
-			}, delay);
+		const worker = new Worker('./lib/decodeWorker.js');
+		const bc = new BroadcastChannel('fetch-updates');
+		worker.postMessage({
+			endpoint,
+			wsEndpoint,
+			source: 'orderSubscriber',
+			interval: 1000,
+		});
+		bc.onmessage = (event) => {
+			const userAccounts = event.data['userAccounts'] as UserAccount[];
+			console.log((userAccounts[0] as UserAccount).orders[0]);
+			console.log(JSON.stringify((userAccounts[0] as UserAccount).orders[0]));
 		};
-		recursiveFetch();
 	}
 
 	logger.info(`Initializing DLOBSubscriber...`);
