@@ -32,7 +32,6 @@ import {
 
 import { logger, setLogLevel } from './utils/logger';
 
-import { Mutex } from 'async-mutex';
 import * as http from 'http';
 import { handleHealthCheck } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
@@ -135,13 +134,6 @@ logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
 
 let MARKET_SUBSCRIBERS: SubscriberLookup = {};
-
-const lastSlotReceivedMutex = new Mutex();
-let lastSlotReceived: number;
-
-export const getSlotHealthCheckInfo = () => {
-	return { lastSlotReceived, lastSlotReceivedMutex };
-};
 
 const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	const markets: SubscriberLookup = {};
@@ -272,10 +264,6 @@ const main = async () => {
 		logger.error(e);
 	});
 
-	setInterval(async () => {
-		lastSlotReceived = slotSource.getSlot();
-	}, ORDERBOOK_UPDATE_INTERVAL);
-
 	logger.info(`Initializing DLOB Provider...`);
 	const initDLOBProviderStart = Date.now();
 	await dlobProvider.subscribe();
@@ -284,9 +272,15 @@ const main = async () => {
 	);
 	logger.info(`dlob provider size ${dlobProvider.size()}`);
 	if (useWebsocket) {
-		setInterval(async () => {
-			await dlobProvider.fetch();
-		}, WS_FALLBACK_FETCH_INTERVAL);
+		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
+			setTimeout(() => {
+				dlobProvider.fetch().then(() => {
+					// eslint-disable-next-line @typescript-eslint/no-unused-vars
+					recursiveFetch();
+				});
+			}, delay);
+		};
+		recursiveFetch();
 	}
 
 	logger.info(`Initializing DLOBSubscriber...`);
@@ -302,7 +296,14 @@ const main = async () => {
 		`DLOBSubscriber initialized in ${Date.now() - initDlobSubscriberStart} ms`
 	);
 
+	logger.info(`Initializing all market subscribers...`);
+	const initAllMarketSubscribersStart = Date.now();
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
+	logger.info(
+		`All market subscribers initialized in ${
+			Date.now() - initAllMarketSubscribersStart
+		} ms`
+	);
 
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
@@ -314,9 +315,9 @@ const main = async () => {
 		}
 	};
 
-	app.get('/health', handleHealthCheck);
+	app.get('/health', handleHealthCheck(slotSource));
 	app.get('/startup', handleStartup);
-	app.get('/', handleHealthCheck);
+	app.get('/', handleHealthCheck(slotSource));
 
 	app.get('/orders/json/raw', async (_req, res, next) => {
 		try {

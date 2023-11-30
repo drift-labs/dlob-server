@@ -12,10 +12,9 @@ import {
 	commitHash,
 	driftEnv,
 	endpoint,
-	getSlotHealthCheckInfo,
 	wsEndpoint,
 } from '..';
-import { E_ALREADY_LOCKED, tryAcquire } from 'async-mutex';
+import { SlotSource } from '@drift-labs/sdk';
 
 /**
  * Creates {count} buckets of size {increment} starting from {start}. Each bucket stores the count of values within its "size".
@@ -129,34 +128,31 @@ let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
  * We may be hit by multiple sources performing health checks on us, so this middleware will latch
  * to its health state and only update every `healthCheckInterval`.
  */
-const handleHealthCheck = async (req, res, next) => {
-	if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
-		if (lastHealthCheckState) {
-			res.writeHead(200);
-			res.end('OK');
-			lastHealthCheckPerformed = Date.now();
-			return;
-		}
-		// always check if last check was unhealthy (give it another chance to recover)
-	}
-
-	const { lastSlotReceived, lastSlotReceivedMutex } = getSlotHealthCheckInfo();
-
-	try {
-		await tryAcquire(lastSlotReceivedMutex).runExclusive(async () => {
-			// healthy if slot has advanced since the last check
-			lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
-			if (!lastHealthCheckState) {
-				logger.error(
-					`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, timeSinceLastCheck: ${
-						Date.now() - lastHealthCheckPerformed
-					} ms`
-				);
+const handleHealthCheck = (slotSource: SlotSource) => {
+	return async (_req, res, _next) => {
+		if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
+			if (lastHealthCheckState) {
+				res.writeHead(200);
+				res.end('OK');
+				lastHealthCheckPerformed = Date.now();
+				return;
 			}
+			// always check if last check was unhealthy (give it another chance to recover)
+		}
 
-			lastHealthCheckSlot = lastSlotReceived;
-			lastHealthCheckPerformed = Date.now();
-		});
+		// healthy if slot has advanced since the last check
+		const lastSlotReceived = slotSource.getSlot();
+		lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
+		if (!lastHealthCheckState) {
+			logger.error(
+				`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, timeSinceLastCheck: ${
+					Date.now() - lastHealthCheckPerformed
+				} ms`
+			);
+		}
+
+		lastHealthCheckSlot = lastSlotReceived;
+		lastHealthCheckPerformed = Date.now();
 
 		if (!lastHealthCheckState) {
 			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
@@ -169,24 +165,7 @@ const handleHealthCheck = async (req, res, next) => {
 		healthStatus = HEALTH_STATUS.Ok;
 		res.writeHead(200);
 		res.end('OK');
-	} catch (e) {
-		if (e === E_ALREADY_LOCKED) {
-			// someone else is updating the slot, just return the latched state
-			if (lastHealthCheckState) {
-				logger.error(`DlobServer is healthy (busy mutex)`);
-				res.writeHead(200);
-				res.end('OK');
-			} else {
-				logger.error(`DlobServer is not healthy (busy mutex)`);
-				res.writeHead(500);
-				res.end(`NOK`);
-			}
-		} else {
-			logger.error(`Error in health check: ${e.message}`);
-			console.error(e);
-			next(e);
-		}
-	}
+	};
 };
 
 export {
