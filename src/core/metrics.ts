@@ -37,7 +37,7 @@ enum METRIC_TYPES {
 	runtime_specs = 'runtime_specs',
 	endpoint_response_times_histogram = 'endpoint_response_times_histogram',
 	endpoint_response_status = 'endpoint_response_status',
-	gpa_fetch_duration = 'endpoint_response_status',
+	gpa_fetch_duration = 'gpa_fetch_duration',
 	health_status = 'health_status',
 }
 
