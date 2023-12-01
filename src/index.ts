@@ -33,7 +33,7 @@ import {
 import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
-import { handleHealthCheck } from './core/metrics';
+import { gpaFetchDurationHistogram, handleHealthCheck } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
 	SubscriberLookup,
@@ -279,7 +279,9 @@ const main = async () => {
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
 		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
 			setTimeout(() => {
+				const startFetch = Date.now();
 				dlobProvider.fetch().then(() => {
+					gpaFetchDurationHistogram.record(Date.now() - startFetch);
 					// eslint-disable-next-line @typescript-eslint/no-unused-vars
 					recursiveFetch();
 				});

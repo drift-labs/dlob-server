@@ -37,6 +37,7 @@ enum METRIC_TYPES {
 	runtime_specs = 'runtime_specs',
 	endpoint_response_times_histogram = 'endpoint_response_times_histogram',
 	endpoint_response_status = 'endpoint_response_status',
+	gpa_fetch_duration = 'endpoint_response_status',
 	health_status = 'health_status',
 }
 
@@ -69,6 +70,12 @@ const meterProvider = new MeterProvider({
 			instrumentType: InstrumentType.HISTOGRAM,
 			meterName,
 			aggregation: createHistogramBuckets(0, 20, 30),
+		}),
+		new View({
+			instrumentName: METRIC_TYPES.gpa_fetch_duration,
+			instrumentType: InstrumentType.HISTOGRAM,
+			meterName,
+			aggregation: createHistogramBuckets(0, 500, 20),
 		}),
 	],
 });
@@ -106,6 +113,13 @@ const endpointResponseTimeHistogram = meter.createHistogram(
 	METRIC_TYPES.endpoint_response_times_histogram,
 	{
 		description: 'Duration of endpoint responses',
+		unit: 'ms',
+	}
+);
+const gpaFetchDurationHistogram = meter.createHistogram(
+	METRIC_TYPES.gpa_fetch_duration,
+	{
+		description: 'Duration of GPA fetches',
 		unit: 'ms',
 	}
 );
@@ -170,6 +184,7 @@ const handleHealthCheck = (slotSource: SlotSource) => {
 
 export {
 	endpointResponseTimeHistogram,
+	gpaFetchDurationHistogram,
 	responseStatusCounter,
 	handleHealthCheck,
 };
