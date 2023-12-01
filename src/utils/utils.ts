@@ -102,6 +102,9 @@ export const addOracletoResponse = (
 			marketType,
 			marketIndex
 		);
+		if (response['oracle'] == 0) {
+			logger.info(`oracle price is 0 for ${marketType}-${marketIndex}`);
+		}
 	}
 	if (FEATURE_FLAGS.NEW_ORACLE_DATA_IN_L2) {
 		response['oracleData'] = getOracleDataForMarket(
@@ -109,6 +112,12 @@ export const addOracletoResponse = (
 			marketType,
 			marketIndex
 		);
+		if (!response['oracleData'].price) {
+			logger.info(`oracle price is undefined for ${marketType}-${marketIndex}`);
+		}
+		if (Number(response['oracleData'].price) == 0) {
+			logger.info(`oracle price is 0 for ${marketType}-${marketIndex}`);
+		}
 	}
 };
 
