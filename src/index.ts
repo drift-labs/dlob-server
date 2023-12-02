@@ -331,9 +331,12 @@ const main = async () => {
 		}
 	};
 
-	app.get('/health', handleHealthCheck(slotSource));
+	app.get(
+		'/health',
+		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSource)
+	);
 	app.get('/startup', handleStartup);
-	app.get('/', handleHealthCheck(slotSource));
+	app.get('/', handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSource));
 
 	if (FEATURE_FLAGS.ENABLE_ORDERS_ENDPOINTS) {
 		app.get('/orders/json/raw', async (_req, res, next) => {

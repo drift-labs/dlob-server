@@ -135,14 +135,23 @@ const healthCheckInterval = 2 * (ORDERBOOK_UPDATE_INTERVAL ?? 1000); // ORDERBOO
 let lastHealthCheckSlot = -1;
 let lastHealthCheckState = true; // true = healthy, false = unhealthy
 let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
+let lastTimeHealthy = Date.now() - healthCheckInterval;
+
 /**
  * Middleware that checks if we are in general healthy by checking that the bulk account loader slot
  * has changed recently.
  *
  * We may be hit by multiple sources performing health checks on us, so this middleware will latch
  * to its health state and only update every `healthCheckInterval`.
+ *
+ * A grace period is also used to only report unhealthy if we have been unhealthy for a certain
+ * amount of time. This prevents reporting unhealthy even if we are just in the middle of a
+ * bulk account load.
  */
-const handleHealthCheck = (slotSource: SlotSource) => {
+const handleHealthCheck = (
+	healthCheckGracePeriod: number,
+	slotSource: SlotSource
+) => {
 	return async (_req, res, _next) => {
 		if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
 			if (lastHealthCheckState) {
@@ -163,12 +172,17 @@ const handleHealthCheck = (slotSource: SlotSource) => {
 					Date.now() - lastHealthCheckPerformed
 				} ms`
 			);
+		} else {
+			lastTimeHealthy = Date.now();
 		}
 
 		lastHealthCheckSlot = lastSlotReceived;
 		lastHealthCheckPerformed = Date.now();
 
-		if (!lastHealthCheckState) {
+		if (
+			!lastHealthCheckState &&
+			Date.now() - lastTimeHealthy > healthCheckGracePeriod
+		) {
 			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
 
 			res.writeHead(500);
