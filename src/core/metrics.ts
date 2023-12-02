@@ -165,12 +165,16 @@ const handleHealthCheck = (
 
 		// healthy if slot has advanced since the last check
 		const lastSlotReceived = slotSource.getSlot();
+		const inGracePeriod =
+			Date.now() - lastTimeHealthy <= healthCheckGracePeriod;
 		lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
 		if (!lastHealthCheckState) {
 			logger.error(
 				`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, timeSinceLastCheck: ${
 					Date.now() - lastHealthCheckPerformed
-				} ms`
+				} ms, sinceLastTimeHealthy: ${
+					Date.now() - lastTimeHealthy
+				} ms, inGracePeriod: ${inGracePeriod}`
 			);
 		} else {
 			lastTimeHealthy = Date.now();
@@ -179,10 +183,7 @@ const handleHealthCheck = (
 		lastHealthCheckSlot = lastSlotReceived;
 		lastHealthCheckPerformed = Date.now();
 
-		if (
-			!lastHealthCheckState &&
-			Date.now() - lastTimeHealthy > healthCheckGracePeriod
-		) {
+		if (!lastHealthCheckState && !inGracePeriod) {
 			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
 
 			res.writeHead(500);
