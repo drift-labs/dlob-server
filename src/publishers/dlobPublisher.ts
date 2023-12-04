@@ -13,6 +13,7 @@ import {
 	SlotSource,
 	DriftClientSubscriptionConfig,
 	SlotSubscriber,
+	isVariant,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -70,23 +71,32 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 		};
 
 		if (market.phoenixMarket) {
-			const phoenixSubscriber = getPhoenixSubscriber(
-				driftClient,
-				market,
-				sdkConfig
-			);
-			await phoenixSubscriber.subscribe();
-			markets[market.marketIndex].phoenix = phoenixSubscriber;
+			const phoenixConfigAccount =
+				await driftClient.getPhoenixV1FulfillmentConfig(market.phoenixMarket);
+			if (isVariant(phoenixConfigAccount.status, 'enabled')) {
+				const phoenixSubscriber = getPhoenixSubscriber(
+					driftClient,
+					market,
+					sdkConfig
+				);
+				await phoenixSubscriber.subscribe();
+				markets[market.marketIndex].phoenix = phoenixSubscriber;
+			}
 		}
 
 		if (market.serumMarket) {
-			const serumSubscriber = getSerumSubscriber(
-				driftClient,
-				market,
-				sdkConfig
+			const serumConfigAccount = await driftClient.getSerumV3FulfillmentConfig(
+				market.serumMarket
 			);
-			await serumSubscriber.subscribe();
-			markets[market.marketIndex].serum = serumSubscriber;
+			if (isVariant(serumConfigAccount.status, 'enabled')) {
+				const serumSubscriber = getSerumSubscriber(
+					driftClient,
+					market,
+					sdkConfig
+				);
+				await serumSubscriber.subscribe();
+				markets[market.marketIndex].serum = serumSubscriber;
+			}
 		}
 	}
 
