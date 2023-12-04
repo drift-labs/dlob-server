@@ -13,7 +13,11 @@ import {
 } from '@drift-labs/sdk';
 import { driftEnv } from '../publishers/dlobPublisher';
 import { RedisClient } from '../utils/redisClient';
-import { addOracletoResponse, l2WithBNToStrings } from '../utils/utils';
+import {
+	SubscriberLookup,
+	addOracletoResponse,
+	l2WithBNToStrings,
+} from '../utils/utils';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -32,7 +36,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
 	redisClient: RedisClient;
 
-	constructor(config: DLOBSubscriptionConfig & { redisClient: RedisClient }) {
+	constructor(
+		config: DLOBSubscriptionConfig & {
+			redisClient: RedisClient;
+			spotMarketSubscribers: SubscriberLookup;
+		}
+	) {
 		super(config);
 		this.redisClient = config.redisClient;
 
@@ -67,7 +76,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				depth: -1,
 				includeVamm: false,
 				updateOnChange: true,
-				fallbackL2Generators: [],
+				fallbackL2Generators: [
+					config.spotMarketSubscribers[market.marketIndex].phoenix,
+					config.spotMarketSubscribers[market.marketIndex].serum,
+				].filter((a) => !!a),
 			});
 		}
 	}
