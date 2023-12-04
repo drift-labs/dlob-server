@@ -16,7 +16,12 @@ import {
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
-import { sleep } from '../utils/utils';
+import {
+	SubscriberLookup,
+	getPhoenixSubscriber,
+	getSerumSubscriber,
+	sleep,
+} from '../utils/utils';
 import { DLOBSubscriberIO } from '../dlob-subscriber/DLOBSubscriberIO';
 import { RedisClient } from '../utils/redisClient';
 import {
@@ -52,6 +57,41 @@ logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
+
+let MARKET_SUBSCRIBERS: SubscriberLookup = {};
+
+const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
+	const markets: SubscriberLookup = {};
+
+	for (const market of sdkConfig.SPOT_MARKETS) {
+		markets[market.marketIndex] = {
+			phoenix: undefined,
+			serum: undefined,
+		};
+
+		if (market.phoenixMarket) {
+			const phoenixSubscriber = getPhoenixSubscriber(
+				driftClient,
+				market,
+				sdkConfig
+			);
+			await phoenixSubscriber.subscribe();
+			markets[market.marketIndex].phoenix = phoenixSubscriber;
+		}
+
+		if (market.serumMarket) {
+			const serumSubscriber = getSerumSubscriber(
+				driftClient,
+				market,
+				sdkConfig
+			);
+			await serumSubscriber.subscribe();
+			markets[market.marketIndex].serum = serumSubscriber;
+		}
+	}
+
+	return markets;
+};
 
 const main = async () => {
 	const wallet = new Wallet(new Keypair());
@@ -120,6 +160,15 @@ const main = async () => {
 		logger.error(e);
 	});
 
+	logger.info(`Initializing all market subscribers...`);
+	const initAllMarketSubscribersStart = Date.now();
+	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
+	logger.info(
+		`All market subscribers initialized in ${
+			Date.now() - initAllMarketSubscribersStart
+		} ms`
+	);
+
 	let dlobProvider: DLOBProvider;
 	if (useOrderSubscriber) {
 		let subscriptionConfig;
@@ -167,6 +216,7 @@ const main = async () => {
 		slotSource,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 		redisClient,
+		spotMarketSubscribers: MARKET_SUBSCRIBERS,
 	});
 	await dlobSubscriber.subscribe();
 	if (useWebsocket) {
