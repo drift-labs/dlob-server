@@ -289,11 +289,19 @@ const main = async () => {
 		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
 			setTimeout(() => {
 				const startFetch = Date.now();
-				dlobProvider.fetch().then(() => {
-					gpaFetchDurationHistogram.record(Date.now() - startFetch);
-					// eslint-disable-next-line @typescript-eslint/no-unused-vars
-					recursiveFetch();
-				});
+				dlobProvider
+					.fetch()
+					.then(() => {
+						gpaFetchDurationHistogram.record(Date.now() - startFetch);
+					})
+					.catch((e) => {
+						logger.error('Failed to fetch GPA');
+						console.log(e);
+					})
+					.finally(() => {
+						// eslint-disable-next-line @typescript-eslint/no-unused-vars
+						recursiveFetch();
+					});
 			}, delay);
 		};
 		recursiveFetch();

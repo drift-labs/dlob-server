@@ -30,6 +30,7 @@ import {
 	getDLOBProviderFromOrderSubscriber,
 	getDLOBProviderFromUserMap,
 } from '../dlobProvider';
+import FEATURE_FLAGS from '../utils/featureFlags';
 
 require('dotenv').config();
 const stateCommitment: Commitment = 'processed';
@@ -229,10 +230,22 @@ const main = async () => {
 		spotMarketSubscribers: MARKET_SUBSCRIBERS,
 	});
 	await dlobSubscriber.subscribe();
-	if (useWebsocket) {
-		setInterval(async () => {
-			await dlobProvider.fetch();
-		}, WS_FALLBACK_FETCH_INTERVAL);
+	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
+		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
+			setTimeout(() => {
+				dlobProvider
+					.fetch()
+					.catch((e) => {
+						logger.error('Failed to fetch GPA');
+						console.log(e);
+					})
+					.finally(() => {
+						// eslint-disable-next-line @typescript-eslint/no-unused-vars
+						recursiveFetch();
+					});
+			}, delay);
+		};
+		recursiveFetch();
 	}
 
 	console.log('DLOBSubscriber Publishing Messages');
