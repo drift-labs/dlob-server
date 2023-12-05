@@ -293,11 +293,12 @@ const main = async () => {
 					.fetch()
 					.then(() => {
 						gpaFetchDurationHistogram.record(Date.now() - startFetch);
-						// eslint-disable-next-line @typescript-eslint/no-unused-vars
-						recursiveFetch();
 					})
 					.catch(() => {
 						logger.error('Failed to fetch GPA');
+					})
+					.finally(() => {
+						// eslint-disable-next-line @typescript-eslint/no-unused-vars
 						recursiveFetch();
 					});
 			}, delay);
