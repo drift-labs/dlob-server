@@ -294,8 +294,9 @@ const main = async () => {
 					.then(() => {
 						gpaFetchDurationHistogram.record(Date.now() - startFetch);
 					})
-					.catch(() => {
+					.catch((e) => {
 						logger.error('Failed to fetch GPA');
+						console.log(e);
 					})
 					.finally(() => {
 						// eslint-disable-next-line @typescript-eslint/no-unused-vars
