@@ -260,11 +260,16 @@ const main = async () => {
 			getSlot: () => orderSubscriber.getSlot(),
 		};
 	} else {
-		const userMap = new UserMap(
+		const userMap = new UserMap({
 			driftClient,
-			driftClient.userAccountSubscriptionConfig,
-			false
-		);
+			subscriptionConfig: {
+				type: 'websocket',
+				resubTimeoutMs: 30_000,
+				commitment: stateCommitment,
+			},
+			skipInitialLoad: false,
+			includeIdle: false,
+		});
 
 		dlobProvider = getDLOBProviderFromUserMap(userMap);
 	}

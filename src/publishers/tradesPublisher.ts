@@ -94,11 +94,16 @@ const main = async () => {
 
 	await slotSubscriber.subscribe();
 
-	const userMap = new UserMap(
+	const userMap = new UserMap({
 		driftClient,
-		driftClient.userAccountSubscriptionConfig,
-		false
-	);
+		subscriptionConfig: {
+			type: 'websocket',
+			resubTimeoutMs: 30_000,
+			commitment: stateCommitment,
+		},
+		skipInitialLoad: false,
+		includeIdle: false,
+	});
 	await userMap.subscribe();
 
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
