@@ -27,14 +27,16 @@ import { DLOBSubscriberIO } from '../dlob-subscriber/DLOBSubscriberIO';
 import { RedisClient } from '../utils/redisClient';
 import {
 	DLOBProvider,
+	getDLOBProviderFromGrpcOrderSubscriber,
 	getDLOBProviderFromOrderSubscriber,
 	getDLOBProviderFromUserMap,
 } from '../dlobProvider';
 import FEATURE_FLAGS from '../utils/featureFlags';
+import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
 
 require('dotenv').config();
 const stateCommitment: Commitment = 'processed';
-const ORDERBOOK_UPDATE_INTERVAL = 1000;
+const ORDERBOOK_UPDATE_INTERVAL = 400;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
@@ -49,10 +51,15 @@ let driftClient: DriftClient;
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
 
-const endpoint = process.env.ENDPOINT;
+const token = process.env.TOKEN;
+const endpoint = token
+	? process.env.ENDPOINT + `/${token}`
+	: process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
 const useOrderSubscriber =
 	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
+
+const useGrpc = process.env.USE_GRPC?.toLowerCase() === 'true';
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 
 logger.info(`RPC endpoint: ${endpoint}`);
@@ -126,7 +133,7 @@ const main = async () => {
 		bulkAccountLoader = new BulkAccountLoader(
 			connection,
 			stateCommitment,
-			ORDERBOOK_UPDATE_INTERVAL
+			ORDERBOOK_UPDATE_INTERVAL < 1000 ? 1000 : ORDERBOOK_UPDATE_INTERVAL
 		);
 
 		accountSubscription = {
@@ -206,6 +213,13 @@ const main = async () => {
 		slotSource = {
 			getSlot: () => orderSubscriber.getSlot(),
 		};
+	} else if (useGrpc) {
+		const grpcOrderSubscriber = new GeyserOrderSubscriber(driftClient, {
+			endpoint: endpoint,
+			token: token,
+		});
+
+		dlobProvider = getDLOBProviderFromGrpcOrderSubscriber(grpcOrderSubscriber);
 	} else {
 		const userMap = new UserMap({
 			driftClient,

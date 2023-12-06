@@ -66,7 +66,6 @@ const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const useOrderSubscriber =
 	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
-
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
 	: 1;
