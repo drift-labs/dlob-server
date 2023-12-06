@@ -260,11 +260,16 @@ const main = async () => {
 			getSlot: () => orderSubscriber.getSlot(),
 		};
 	} else {
-		const userMap = new UserMap(
+		const userMap = new UserMap({
 			driftClient,
-			driftClient.userAccountSubscriptionConfig,
-			false
-		);
+			subscriptionConfig: {
+				type: 'websocket',
+				resubTimeoutMs: 30_000,
+				commitment: stateCommitment,
+			},
+			skipInitialLoad: false,
+			includeIdle: false,
+		});
 
 		dlobProvider = getDLOBProviderFromUserMap(userMap);
 	}
@@ -289,11 +294,19 @@ const main = async () => {
 		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
 			setTimeout(() => {
 				const startFetch = Date.now();
-				dlobProvider.fetch().then(() => {
-					gpaFetchDurationHistogram.record(Date.now() - startFetch);
-					// eslint-disable-next-line @typescript-eslint/no-unused-vars
-					recursiveFetch();
-				});
+				dlobProvider
+					.fetch()
+					.then(() => {
+						gpaFetchDurationHistogram.record(Date.now() - startFetch);
+					})
+					.catch((e) => {
+						logger.error('Failed to fetch GPA');
+						console.log(e);
+					})
+					.finally(() => {
+						// eslint-disable-next-line @typescript-eslint/no-unused-vars
+						recursiveFetch();
+					});
 			}, delay);
 		};
 		recursiveFetch();
