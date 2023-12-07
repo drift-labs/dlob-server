@@ -5,12 +5,12 @@ export const FEATURE_FLAGS = {
 
 	// enables old orders endpoint, disabled by default since the response is too big now
 	ENABLE_ORDERS_ENDPOINTS: process.env.ENABLE_ORDERS_ENDPOINTS
-		? process.env.ENABLE_ORDERS_ENDPOINTS.toLowerCase()
+		? process.env.ENABLE_ORDERS_ENDPOINTS.toLowerCase() === 'true'
 		: false,
 
 	// disables periodically refreshing userAccounts via gPA
 	DISABLE_GPA_REFRESH: process.env.DISABLE_GPA_REFRESH
-		? process.env.DISABLE_GPA_REFRESH.toLowerCase()
+		? process.env.DISABLE_GPA_REFRESH.toLowerCase() === 'true'
 		: false,
 };
 
