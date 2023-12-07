@@ -97,9 +97,11 @@ async function main() {
 
 	redisClient.client.on('message', (subscribedChannel, message) => {
 		const subscribers = channelSubscribers.get(subscribedChannel);
-		subscribers.forEach((ws) => {
-			ws.send(JSON.stringify({ channel: subscribedChannel, data: message }));
-		});
+		if (subscribers) {
+			subscribers.forEach((ws) => {
+				ws.send(JSON.stringify({ channel: subscribedChannel, data: message }));
+			});
+		}
 	});
 
 	redisClient.client.on('error', (error) => {
@@ -180,7 +182,7 @@ async function main() {
 							lastUpdateChannel
 						);
 
-						if (lastMessage !== null) {
+						if (lastMessage) {
 							ws.send(
 								JSON.stringify({
 									channel: lastUpdateChannel,
