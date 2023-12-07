@@ -28,12 +28,18 @@ import {
 	initialize,
 	isVariant,
 	OrderSubscriber,
+	UserAccount,
+	Order,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
-import { gpaFetchDurationHistogram, handleHealthCheck } from './core/metrics';
+import {
+	gpaFetchDurationHistogram,
+	handleHealthCheck,
+	setLastReceivedWsMsgTs,
+} from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
 	SubscriberLookup,
@@ -252,6 +258,20 @@ const main = async () => {
 			driftClient,
 			subscriptionConfig,
 		});
+		orderSubscriber.eventEmitter.on(
+			'onUpdate',
+			(
+				_account: UserAccount,
+				_updatedOrders: Order[],
+				_pubkey: PublicKey,
+				_slot: number,
+				dataType: 'raw' | 'decoded'
+			) => {
+				if (dataType === 'decoded') {
+					setLastReceivedWsMsgTs(Date.now());
+				}
+			}
+		);
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
 
