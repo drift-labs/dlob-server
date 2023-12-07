@@ -220,6 +220,10 @@ const main = async () => {
 		});
 
 		dlobProvider = getDLOBProviderFromGrpcOrderSubscriber(grpcOrderSubscriber);
+
+		slotSource = {
+			getSlot: () => grpcOrderSubscriber.getSlot(),
+		};
 	} else {
 		const userMap = new UserMap({
 			driftClient,

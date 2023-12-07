@@ -39,6 +39,7 @@ enum METRIC_TYPES {
 	endpoint_response_status = 'endpoint_response_status',
 	gpa_fetch_duration = 'gpa_fetch_duration',
 	last_ws_message_received_ts = 'last_ws_message_received_ts',
+	current_system_ts = 'current_system_ts',
 	health_status = 'health_status',
 }
 
@@ -122,6 +123,16 @@ const lastWsReceivedTsGauge = meter.createObservableGauge(
 );
 lastWsReceivedTsGauge.addCallback((obs: ObservableResult) => {
 	obs.observe(lastWsMsgReceivedTs, {});
+});
+
+const currentSystemTsGauge = meter.createObservableGauge(
+	METRIC_TYPES.current_system_ts,
+	{
+		description: 'Timestamp of system at time of metric collection',
+	}
+);
+currentSystemTsGauge.addCallback((obs: ObservableResult) => {
+	obs.observe(Date.now(), {});
 });
 
 const endpointResponseTimeHistogram = meter.createHistogram(
