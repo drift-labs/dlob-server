@@ -57,11 +57,12 @@ export function getDLOBProviderFromOrderSubscriber(
 			return await orderSubscriber.getDLOB(slot);
 		},
 		getUniqueAuthorities: () => {
-			const authorities = new Set<PublicKey>();
+			const authorities = new Set<string>();
 			for (const { userAccount } of orderSubscriber.usersAccounts.values()) {
-				authorities.add(userAccount.authority);
+				authorities.add(userAccount.authority.toBase58());
 			}
-			return Array.from(authorities.values());
+			const pubkeys = Array.from(authorities).map((a) => new PublicKey(a));
+			return pubkeys;
 		},
 		getUserAccounts: function* () {
 			for (const [
@@ -95,11 +96,12 @@ export function getDLOBProviderFromGrpcOrderSubscriber(
 			return await orderSubscriber.getDLOB(slot);
 		},
 		getUniqueAuthorities: () => {
-			const authorities = new Set<PublicKey>();
+			const authorities = new Set<string>();
 			for (const { userAccount } of orderSubscriber.usersAccounts.values()) {
-				authorities.add(userAccount.authority);
+				authorities.add(userAccount.authority.toBase58());
 			}
-			return Array.from(authorities.values());
+			const pubkeys = Array.from(authorities).map((a) => new PublicKey(a));
+			return pubkeys;
 		},
 		getUserAccounts: function* () {
 			for (const [
