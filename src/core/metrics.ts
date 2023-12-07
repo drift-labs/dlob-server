@@ -38,6 +38,7 @@ enum METRIC_TYPES {
 	endpoint_response_times_histogram = 'endpoint_response_times_histogram',
 	endpoint_response_status = 'endpoint_response_status',
 	gpa_fetch_duration = 'gpa_fetch_duration',
+	last_ws_message_received_ts = 'last_ws_message_received_ts',
 	health_status = 'health_status',
 }
 
@@ -107,6 +108,20 @@ const healthStatusGauge = meter.createObservableGauge(
 );
 healthStatusGauge.addCallback((obs: ObservableResult) => {
 	obs.observe(healthStatus, {});
+});
+
+let lastWsMsgReceivedTs = 0;
+const setLastReceivedWsMsgTs = (ts: number) => {
+	lastWsMsgReceivedTs = ts;
+};
+const lastWsReceivedTsGauge = meter.createObservableGauge(
+	METRIC_TYPES.last_ws_message_received_ts,
+	{
+		description: 'Timestamp of last received websocket message',
+	}
+);
+lastWsReceivedTsGauge.addCallback((obs: ObservableResult) => {
+	obs.observe(lastWsMsgReceivedTs, {});
 });
 
 const endpointResponseTimeHistogram = meter.createHistogram(
@@ -202,4 +217,5 @@ export {
 	gpaFetchDurationHistogram,
 	responseStatusCounter,
 	handleHealthCheck,
+	setLastReceivedWsMsgTs,
 };
