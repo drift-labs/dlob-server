@@ -259,17 +259,9 @@ const main = async () => {
 			subscriptionConfig,
 		});
 		orderSubscriber.eventEmitter.on(
-			'onUpdate',
-			(
-				_account: UserAccount,
-				_updatedOrders: Order[],
-				_pubkey: PublicKey,
-				_slot: number,
-				dataType: 'raw' | 'decoded'
-			) => {
-				if (dataType === 'decoded') {
-					setLastReceivedWsMsgTs(Date.now());
-				}
+			'updateReceived',
+			(_pubkey: PublicKey, _slot: number, _dataType: 'raw' | 'decoded') => {
+				setLastReceivedWsMsgTs(Date.now());
 			}
 		);
 
