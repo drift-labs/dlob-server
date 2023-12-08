@@ -38,6 +38,7 @@ import * as http from 'http';
 import {
 	gpaFetchDurationHistogram,
 	handleHealthCheck,
+	setLastAccountUpdatesPerSecond,
 	setLastReceivedWsMsgTs,
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
@@ -254,6 +255,7 @@ const main = async () => {
 			};
 		}
 
+		let updatesPerTenSecond = 0;
 		const orderSubscriber = new OrderSubscriber({
 			driftClient,
 			subscriptionConfig,
@@ -262,8 +264,13 @@ const main = async () => {
 			'updateReceived',
 			(_pubkey: PublicKey, _slot: number, _dataType: 'raw' | 'decoded') => {
 				setLastReceivedWsMsgTs(Date.now());
+				updatesPerTenSecond++;
 			}
 		);
+		setInterval(() => {
+			setLastAccountUpdatesPerSecond(updatesPerTenSecond / 10);
+			updatesPerTenSecond = 0;
+		}, 10_000);
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
 
