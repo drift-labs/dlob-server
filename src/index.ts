@@ -38,7 +38,7 @@ import * as http from 'http';
 import {
 	gpaFetchDurationHistogram,
 	handleHealthCheck,
-	setLastAccountUpdatesPerSecond,
+	accountUpdatesCounter,
 	setLastReceivedWsMsgTs,
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
@@ -255,7 +255,7 @@ const main = async () => {
 			};
 		}
 
-		let updatesPerTenSecond = 0;
+		let updatesReceivedTotal = 0;
 		const orderSubscriber = new OrderSubscriber({
 			driftClient,
 			subscriptionConfig,
@@ -264,13 +264,10 @@ const main = async () => {
 			'updateReceived',
 			(_pubkey: PublicKey, _slot: number, _dataType: 'raw' | 'decoded') => {
 				setLastReceivedWsMsgTs(Date.now());
-				updatesPerTenSecond++;
+				updatesReceivedTotal++;
+				accountUpdatesCounter.add(1);
 			}
 		);
-		setInterval(() => {
-			setLastAccountUpdatesPerSecond(updatesPerTenSecond / 10);
-			updatesPerTenSecond = 0;
-		}, 10_000);
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
 
@@ -308,6 +305,9 @@ const main = async () => {
 	);
 	logger.info(`dlob provider size ${dlobProvider.size()}`);
 
+	logger.info(
+		`GPA refresh?: ${useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH}`
+	);
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
 		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
 			setTimeout(() => {
@@ -479,9 +479,11 @@ const main = async () => {
 							auctionEndPrice: order.auctionEndPrice.toString(),
 							maxTs: order.maxTs.toString(),
 						};
-						if (order.quoteAssetAmount) {
+						if (order.quoteAssetAmountFilled) {
 							orderHuman['quoteAssetAmount'] =
-								order.quoteAssetAmount.toString();
+								order.quoteAssetAmountFilled.toString();
+							orderHuman['quoteAssetAmountFilled'] =
+								order.quoteAssetAmountFilled.toString();
 						}
 
 						orders.push({

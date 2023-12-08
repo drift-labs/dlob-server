@@ -39,7 +39,7 @@ enum METRIC_TYPES {
 	endpoint_response_status = 'endpoint_response_status',
 	gpa_fetch_duration = 'gpa_fetch_duration',
 	last_ws_message_received_ts = 'last_ws_message_received_ts',
-	account_updates_per_sec = 'account_updates_per_sec',
+	account_updates_count = 'account_updates_count',
 	current_system_ts = 'current_system_ts',
 	health_status = 'health_status',
 }
@@ -126,19 +126,12 @@ lastWsReceivedTsGauge.addCallback((obs: ObservableResult) => {
 	obs.observe(lastWsMsgReceivedTs, {});
 });
 
-let lastAccountUpdatesPerSecond = 0;
-const setAccountUpdatesPerSecond = (updatesPerSecond: number) => {
-	lastAccountUpdatesPerSecond = updatesPerSecond;
-};
-const accountUpdatesPerSecondGauge = meter.createObservableGauge(
-	METRIC_TYPES.account_updates_per_sec,
+const accountUpdatesCounter = meter.createCounter(
+	METRIC_TYPES.account_updates_count,
 	{
-		description: 'Updates per second, the last second',
+		description: 'Total accounts update',
 	}
 );
-accountUpdatesPerSecondGauge.addCallback((obs: ObservableResult) => {
-	obs.observe(lastAccountUpdatesPerSecond, {});
-});
 
 const currentSystemTsGauge = meter.createObservableGauge(
 	METRIC_TYPES.current_system_ts,
@@ -244,5 +237,5 @@ export {
 	responseStatusCounter,
 	handleHealthCheck,
 	setLastReceivedWsMsgTs,
-	setAccountUpdatesPerSecond as setLastAccountUpdatesPerSecond,
+	accountUpdatesCounter,
 };
