@@ -62,8 +62,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				marketType: MarketType.PERP,
 				marketName: market.symbol,
 				depth: -1,
-				includeVamm: true,
 				numVammOrders: 100,
+				includeVamm: true,
 				updateOnChange: true,
 				fallbackL2Generators: [],
 			});
@@ -124,13 +124,39 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
+
+		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
+			bids: l2Formatted.bids.slice(0, 100),
+			asks: l2Formatted.asks.slice(0, 100),
+		});
+		const l2Formatted_depth20 = Object.assign({}, l2Formatted, {
+			bids: l2Formatted.bids.slice(0, 20),
+			asks: l2Formatted.asks.slice(0, 20),
+		});
+		const l2Formatted_depth5 = Object.assign({}, l2Formatted, {
+			bids: l2Formatted.bids.slice(0, 5),
+			asks: l2Formatted.asks.slice(0, 5),
+		});
+
 		this.redisClient.client.publish(
 			`orderbook_${marketType}_${l2Args.marketIndex}`,
 			JSON.stringify(l2Formatted)
 		);
 		this.redisClient.client.set(
 			`last_update_orderbook_${marketType}_${l2Args.marketIndex}`,
-			JSON.stringify(l2Formatted)
+			JSON.stringify(l2Formatted_depth100)
+		);
+		this.redisClient.client.set(
+			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_100`,
+			JSON.stringify(l2Formatted_depth100)
+		);
+		this.redisClient.client.set(
+			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_20`,
+			JSON.stringify(l2Formatted_depth20)
+		);
+		this.redisClient.client.set(
+			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_5`,
+			JSON.stringify(l2Formatted_depth5)
 		);
 	}
 }

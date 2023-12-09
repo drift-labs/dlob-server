@@ -28,8 +28,6 @@ import {
 	initialize,
 	isVariant,
 	OrderSubscriber,
-	UserAccount,
-	Order,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -59,8 +57,14 @@ import {
 	getDLOBProviderFromOrderSubscriber,
 	getDLOBProviderFromUserMap,
 } from './dlobProvider';
+import { RedisClient } from './utils/redisClient';
 
 require('dotenv').config();
+
+const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+const REDIS_PORT = process.env.REDIS_PORT || '6379';
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
 //@ts-ignore
@@ -342,6 +346,10 @@ const main = async () => {
 	logger.info(
 		`DLOBSubscriber initialized in ${Date.now() - initDlobSubscriberStart} ms`
 	);
+
+	logger.info('Connecting to redis');
+	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
+	await redisClient.connect();
 
 	logger.info(`Initializing all market subscribers...`);
 	const initAllMarketSubscribersStart = Date.now();
@@ -742,6 +750,55 @@ const main = async () => {
 				adjustedDepth = '-1';
 			}
 
+			let l2Formatted: any;
+			if (
+				!isSpot &&
+				`${includeVamm}`.toLowerCase() === 'true' &&
+				`${includeOracle}`.toLowerCase().toLowerCase() === 'true' &&
+				!grouping
+			) {
+				if (parseInt(adjustedDepth as string) === 5) {
+					l2Formatted = await redisClient.client.get(
+						`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
+					);
+				} else if (parseInt(adjustedDepth as string) === 20) {
+					l2Formatted = await redisClient.client.get(
+						`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
+					);
+				} else if (parseInt(adjustedDepth as string) === 100) {
+					l2Formatted = await redisClient.client.get(
+						`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
+					);
+				}
+			} else if (
+				isSpot &&
+				`${includeSerum}`.toLowerCase() === 'true' &&
+				`${includePhoenix}`.toLowerCase() === 'true' &&
+				`${includeOracle}`.toLowerCase() === 'true' &&
+				!grouping
+			) {
+				if (parseInt(adjustedDepth as string) === 5) {
+					l2Formatted = await redisClient.client.get(
+						`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
+					);
+				} else if (parseInt(adjustedDepth as string) === 20) {
+					l2Formatted = await redisClient.client.get(
+						`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
+					);
+				} else if (parseInt(adjustedDepth as string) === 100) {
+					console.log('100');
+					l2Formatted = await redisClient.client.get(
+						`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
+					);
+				}
+			}
+
+			if (l2Formatted) {
+				res.writeHead(200);
+				res.end(JSON.stringify(l2Formatted));
+				return;
+			}
+
 			const l2 = dlobSubscriber.getL2({
 				marketIndex: normedMarketIndex,
 				marketType: normedMarketType,
@@ -783,7 +840,7 @@ const main = async () => {
 				res.end(JSON.stringify(l2Formatted));
 			} else {
 				// make the BNs into strings
-				const l2Formatted = l2WithBNToStrings(l2);
+				l2Formatted = l2WithBNToStrings(l2);
 				if (`${includeOracle}`.toLowerCase() === 'true') {
 					addOracletoResponse(
 						l2Formatted,
@@ -792,10 +849,10 @@ const main = async () => {
 						normedMarketIndex
 					);
 				}
-
-				res.writeHead(200);
-				res.end(JSON.stringify(l2Formatted));
 			}
+
+			res.writeHead(200);
+			res.end(JSON.stringify(l2Formatted));
 		} catch (err) {
 			next(err);
 		}
@@ -836,86 +893,132 @@ const main = async () => {
 				return;
 			}
 
-			const l2s = normedParams.map((normedParam) => {
-				const { normedMarketType, normedMarketIndex, error } =
-					validateDlobQuery(
-						driftClient,
-						driftEnv,
-						normedParam['marketType'] as string,
-						normedParam['marketIndex'] as string,
-						normedParam['marketName'] as string
-					);
-				if (error) {
-					res.status(400).send(`Bad Request: ${error}`);
-					return;
-				}
-
-				const isSpot = isVariant(normedMarketType, 'spot');
-
-				let adjustedDepth = normedParam['depth'] ?? '10';
-				if (normedParam['grouping'] !== undefined) {
-					// If grouping is also supplied, we want the entire book depth.
-					// we will apply depth after grouping
-					adjustedDepth = '-1';
-				}
-
-				const l2 = dlobSubscriber.getL2({
-					marketIndex: normedMarketIndex,
-					marketType: normedMarketType,
-					depth: parseInt(adjustedDepth as string),
-					includeVamm: isSpot
-						? false
-						: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
-					fallbackL2Generators: isSpot
-						? [
-								`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
-									MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-								`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
-									MARKET_SUBSCRIBERS[normedMarketIndex].serum,
-						  ].filter((a) => !!a)
-						: [],
-				});
-
-				if (normedParam['grouping']) {
-					const finalDepth = normedParam['depth']
-						? parseInt(normedParam['depth'] as string)
-						: 10;
-					if (isNaN(parseInt(normedParam['grouping'] as string))) {
-						res
-							.status(400)
-							.send('Bad Request: grouping must be a number if supplied');
+			const l2s = await Promise.all(
+				normedParams.map(async (normedParam) => {
+					const { normedMarketType, normedMarketIndex, error } =
+						validateDlobQuery(
+							driftClient,
+							driftEnv,
+							normedParam['marketType'] as string,
+							normedParam['marketIndex'] as string,
+							normedParam['marketName'] as string
+						);
+					if (error) {
+						res.status(400).send(`Bad Request: ${error}`);
 						return;
 					}
-					const groupingBN = new BN(
-						parseInt(normedParam['grouping'] as string)
-					);
 
-					const l2Formatted = l2WithBNToStrings(
-						groupL2(l2, groupingBN, finalDepth)
-					);
-					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
-						addOracletoResponse(
-							l2Formatted,
-							driftClient,
-							normedMarketType,
-							normedMarketIndex
+					const isSpot = isVariant(normedMarketType, 'spot');
+
+					let adjustedDepth = normedParam['depth'] ?? '10';
+					if (normedParam['grouping'] !== undefined) {
+						// If grouping is also supplied, we want the entire book depth.
+						// we will apply depth after grouping
+						adjustedDepth = '-1';
+					}
+
+					let l2Formatted: any;
+					if (
+						marketType === 'perp' &&
+						normedParam['includeVamm'].toLowerCase() === 'true' &&
+						normedParam['includeOracle'].toLowerCase() === 'true' &&
+						!normedParam['grouping']
+					) {
+						if (parseInt(adjustedDepth as string) === 5) {
+							l2Formatted = await redisClient.client.get(
+								`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
+							);
+						} else if (parseInt(adjustedDepth as string) === 20) {
+							l2Formatted = await redisClient.client.get(
+								`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
+							);
+						} else if (parseInt(adjustedDepth as string) === 100) {
+							l2Formatted = await redisClient.client.get(
+								`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
+							);
+						}
+					} else if (
+						marketType === 'spot' &&
+						normedParam['includePhoenix'].toLowerCase() === 'true' &&
+						normedParam['includeSerum'].toLowerCase() === 'true' &&
+						!normedParam['grouping']
+					) {
+						if (parseInt(adjustedDepth as string) === 5) {
+							l2Formatted = await redisClient.client.get(
+								`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
+							);
+						} else if (parseInt(adjustedDepth as string) === 20) {
+							l2Formatted = await redisClient.client.get(
+								`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
+							);
+						} else if (parseInt(adjustedDepth as string) === 100) {
+							l2Formatted = await redisClient.client.get(
+								`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
+							);
+						}
+					}
+
+					if (l2Formatted) {
+						return l2Formatted;
+					}
+
+					const l2 = dlobSubscriber.getL2({
+						marketIndex: normedMarketIndex,
+						marketType: normedMarketType,
+						depth: parseInt(adjustedDepth as string),
+						includeVamm: isSpot
+							? false
+							: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
+						fallbackL2Generators: isSpot
+							? [
+									`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
+										MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
+									`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
+										MARKET_SUBSCRIBERS[normedMarketIndex].serum,
+							  ].filter((a) => !!a)
+							: [],
+					});
+
+					if (normedParam['grouping']) {
+						const finalDepth = normedParam['depth']
+							? parseInt(normedParam['depth'] as string)
+							: 10;
+						if (isNaN(parseInt(normedParam['grouping'] as string))) {
+							res
+								.status(400)
+								.send('Bad Request: grouping must be a number if supplied');
+							return;
+						}
+						const groupingBN = new BN(
+							parseInt(normedParam['grouping'] as string)
 						);
+
+						l2Formatted = l2WithBNToStrings(
+							groupL2(l2, groupingBN, finalDepth)
+						);
+						if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
+							addOracletoResponse(
+								l2Formatted,
+								driftClient,
+								normedMarketType,
+								normedMarketIndex
+							);
+						}
+					} else {
+						// make the BNs into strings
+						l2Formatted = l2WithBNToStrings(l2);
+						if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
+							addOracletoResponse(
+								l2Formatted,
+								driftClient,
+								normedMarketType,
+								normedMarketIndex
+							);
+						}
 					}
 					return l2Formatted;
-				} else {
-					// make the BNs into strings
-					const l2Formatted = l2WithBNToStrings(l2);
-					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
-						addOracletoResponse(
-							l2Formatted,
-							driftClient,
-							normedMarketType,
-							normedMarketIndex
-						);
-					}
-					return l2Formatted;
-				}
-			});
+				})
+			);
 
 			res.writeHead(200);
 			res.end(JSON.stringify({ l2s }));
