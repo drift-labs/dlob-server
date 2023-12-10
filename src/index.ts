@@ -37,7 +37,9 @@ import {
 	gpaFetchDurationHistogram,
 	handleHealthCheck,
 	accountUpdatesCounter,
+	cacheHitCounter,
 	setLastReceivedWsMsgTs,
+	cacheMissCounter,
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
@@ -768,22 +770,10 @@ const main = async () => {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
 						);
-						if (
-							Math.abs(
-								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-							) < 10
-						)
-							l2Formatted = redisL2;
 					} else if (parseInt(adjustedDepth as string) === 20) {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
 						);
-						if (
-							Math.abs(
-								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-							) < 10
-						)
-							l2Formatted = redisL2;
 					} else if (parseInt(adjustedDepth as string) === 100) {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
@@ -791,9 +781,7 @@ const main = async () => {
 					}
 					if (
 						redisL2 &&
-						Math.abs(
-							parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-						) < 10
+						slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
 					)
 						l2Formatted = redisL2;
 				} else if (
@@ -808,22 +796,10 @@ const main = async () => {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
 						);
-						if (
-							Math.abs(
-								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-							) < 10
-						)
-							l2Formatted = redisL2;
 					} else if (parseInt(adjustedDepth as string) === 20) {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
 						);
-						if (
-							Math.abs(
-								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-							) < 10
-						)
-							l2Formatted = redisL2;
 					} else if (parseInt(adjustedDepth as string) === 100) {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
@@ -831,14 +807,13 @@ const main = async () => {
 					}
 					if (
 						redisL2 &&
-						Math.abs(
-							parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-						) < 10
+						slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
 					)
 						l2Formatted = redisL2;
 				}
 
 				if (l2Formatted) {
+					cacheHitCounter.add(1);
 					res.writeHead(200);
 					res.end(JSON.stringify(l2Formatted));
 					return;
@@ -896,7 +871,7 @@ const main = async () => {
 					);
 				}
 			}
-
+			cacheMissCounter.add(1);
 			res.writeHead(200);
 			res.end(JSON.stringify(l2Formatted));
 		} catch (err) {
@@ -976,27 +951,20 @@ const main = async () => {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
 								);
-								if (
-									Math.abs(
-										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-									) < 10
-								)
-									l2Formatted = redisL2;
 							} else if (parseInt(adjustedDepth as string) === 20) {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
 								);
-								if (
-									Math.abs(
-										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-									) < 10
-								)
-									l2Formatted = redisL2;
 							} else if (parseInt(adjustedDepth as string) === 100) {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
 								);
 							}
+							if (
+								redisL2 &&
+								slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
+							)
+								l2Formatted = redisL2;
 						} else if (
 							marketType === 'spot' &&
 							normedParam['includePhoenix'].toLowerCase() === 'true' &&
@@ -1008,22 +976,10 @@ const main = async () => {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
 								);
-								if (
-									Math.abs(
-										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-									) < 10
-								)
-									l2Formatted = redisL2;
 							} else if (parseInt(adjustedDepth as string) === 20) {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
 								);
-								if (
-									Math.abs(
-										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-									) < 10
-								)
-									l2Formatted = redisL2;
 							} else if (parseInt(adjustedDepth as string) === 100) {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
@@ -1031,14 +987,13 @@ const main = async () => {
 							}
 							if (
 								redisL2 &&
-								Math.abs(
-									parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
-								) < 10
+								slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
 							)
 								l2Formatted = redisL2;
 						}
 
 						if (l2Formatted) {
+							cacheHitCounter.add(1);
 							return l2Formatted;
 						}
 					}
@@ -1097,6 +1052,7 @@ const main = async () => {
 							);
 						}
 					}
+					cacheMissCounter.add(1);
 					return l2Formatted;
 				})
 			);
