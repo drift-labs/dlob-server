@@ -81,6 +81,7 @@ const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
 	: 1;
 const loadTestAllowed = process.env.ALLOW_LOAD_TEST?.toLowerCase() === 'true';
+const useRedis = process.env.USE_REDIS?.toLowerCase() === 'true';
 
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
@@ -268,6 +269,7 @@ const main = async () => {
 			'updateReceived',
 			(_pubkey: PublicKey, _slot: number, _dataType: 'raw' | 'decoded') => {
 				setLastReceivedWsMsgTs(Date.now());
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 				updatesReceivedTotal++;
 				accountUpdatesCounter.add(1);
 			}
@@ -347,9 +349,12 @@ const main = async () => {
 		`DLOBSubscriber initialized in ${Date.now() - initDlobSubscriberStart} ms`
 	);
 
-	logger.info('Connecting to redis');
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
-	await redisClient.connect();
+	let redisClient: RedisClient;
+	if (useRedis) {
+		logger.info('Connecting to redis');
+		redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
+		await redisClient.connect();
+	}
 
 	logger.info(`Initializing all market subscribers...`);
 	const initAllMarketSubscribersStart = Date.now();
@@ -751,52 +756,93 @@ const main = async () => {
 			}
 
 			let l2Formatted: any;
-			if (
-				!isSpot &&
-				`${includeVamm}`.toLowerCase() === 'true' &&
-				`${includeOracle}`.toLowerCase().toLowerCase() === 'true' &&
-				!grouping
-			) {
-				if (parseInt(adjustedDepth as string) === 5) {
-					l2Formatted = await redisClient.client.get(
-						`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
-					);
-				} else if (parseInt(adjustedDepth as string) === 20) {
-					l2Formatted = await redisClient.client.get(
-						`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
-					);
-				} else if (parseInt(adjustedDepth as string) === 100) {
-					l2Formatted = await redisClient.client.get(
-						`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
-					);
+			if (useRedis) {
+				if (
+					!isSpot &&
+					`${includeVamm}`.toLowerCase() === 'true' &&
+					`${includeOracle}`.toLowerCase().toLowerCase() === 'true' &&
+					!grouping
+				) {
+					let redisL2: string;
+					if (parseInt(adjustedDepth as string) === 5) {
+						redisL2 = await redisClient.client.get(
+							`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
+						);
+						if (
+							Math.abs(
+								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+							) < 10
+						)
+							l2Formatted = redisL2;
+					} else if (parseInt(adjustedDepth as string) === 20) {
+						redisL2 = await redisClient.client.get(
+							`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
+						);
+						if (
+							Math.abs(
+								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+							) < 10
+						)
+							l2Formatted = redisL2;
+					} else if (parseInt(adjustedDepth as string) === 100) {
+						redisL2 = await redisClient.client.get(
+							`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
+						);
+					}
+					if (
+						redisL2 &&
+						Math.abs(
+							parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+						) < 10
+					)
+						l2Formatted = redisL2;
+				} else if (
+					isSpot &&
+					`${includeSerum}`.toLowerCase() === 'true' &&
+					`${includePhoenix}`.toLowerCase() === 'true' &&
+					`${includeOracle}`.toLowerCase() === 'true' &&
+					!grouping
+				) {
+					let redisL2: string;
+					if (parseInt(adjustedDepth as string) === 5) {
+						redisL2 = await redisClient.client.get(
+							`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
+						);
+						if (
+							Math.abs(
+								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+							) < 10
+						)
+							l2Formatted = redisL2;
+					} else if (parseInt(adjustedDepth as string) === 20) {
+						redisL2 = await redisClient.client.get(
+							`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
+						);
+						if (
+							Math.abs(
+								parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+							) < 10
+						)
+							l2Formatted = redisL2;
+					} else if (parseInt(adjustedDepth as string) === 100) {
+						redisL2 = await redisClient.client.get(
+							`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
+						);
+					}
+					if (
+						redisL2 &&
+						Math.abs(
+							parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+						) < 10
+					)
+						l2Formatted = redisL2;
 				}
-			} else if (
-				isSpot &&
-				`${includeSerum}`.toLowerCase() === 'true' &&
-				`${includePhoenix}`.toLowerCase() === 'true' &&
-				`${includeOracle}`.toLowerCase() === 'true' &&
-				!grouping
-			) {
-				if (parseInt(adjustedDepth as string) === 5) {
-					l2Formatted = await redisClient.client.get(
-						`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
-					);
-				} else if (parseInt(adjustedDepth as string) === 20) {
-					l2Formatted = await redisClient.client.get(
-						`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
-					);
-				} else if (parseInt(adjustedDepth as string) === 100) {
-					console.log('100');
-					l2Formatted = await redisClient.client.get(
-						`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
-					);
-				}
-			}
 
-			if (l2Formatted) {
-				res.writeHead(200);
-				res.end(JSON.stringify(l2Formatted));
-				return;
+				if (l2Formatted) {
+					res.writeHead(200);
+					res.end(JSON.stringify(l2Formatted));
+					return;
+				}
 			}
 
 			const l2 = dlobSubscriber.getL2({
@@ -918,48 +964,83 @@ const main = async () => {
 					}
 
 					let l2Formatted: any;
-					if (
-						marketType === 'perp' &&
-						normedParam['includeVamm'].toLowerCase() === 'true' &&
-						normedParam['includeOracle'].toLowerCase() === 'true' &&
-						!normedParam['grouping']
-					) {
-						if (parseInt(adjustedDepth as string) === 5) {
-							l2Formatted = await redisClient.client.get(
-								`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
-							);
-						} else if (parseInt(adjustedDepth as string) === 20) {
-							l2Formatted = await redisClient.client.get(
-								`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
-							);
-						} else if (parseInt(adjustedDepth as string) === 100) {
-							l2Formatted = await redisClient.client.get(
-								`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
-							);
+					if (useRedis) {
+						if (
+							marketType === 'perp' &&
+							normedParam['includeVamm'].toLowerCase() === 'true' &&
+							normedParam['includeOracle'].toLowerCase() === 'true' &&
+							!normedParam['grouping']
+						) {
+							let redisL2: string;
+							if (parseInt(adjustedDepth as string) === 5) {
+								redisL2 = await redisClient.client.get(
+									`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
+								);
+								if (
+									Math.abs(
+										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+									) < 10
+								)
+									l2Formatted = redisL2;
+							} else if (parseInt(adjustedDepth as string) === 20) {
+								redisL2 = await redisClient.client.get(
+									`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
+								);
+								if (
+									Math.abs(
+										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+									) < 10
+								)
+									l2Formatted = redisL2;
+							} else if (parseInt(adjustedDepth as string) === 100) {
+								redisL2 = await redisClient.client.get(
+									`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
+								);
+							}
+						} else if (
+							marketType === 'spot' &&
+							normedParam['includePhoenix'].toLowerCase() === 'true' &&
+							normedParam['includeSerum'].toLowerCase() === 'true' &&
+							!normedParam['grouping']
+						) {
+							let redisL2: string;
+							if (parseInt(adjustedDepth as string) === 5) {
+								redisL2 = await redisClient.client.get(
+									`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
+								);
+								if (
+									Math.abs(
+										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+									) < 10
+								)
+									l2Formatted = redisL2;
+							} else if (parseInt(adjustedDepth as string) === 20) {
+								redisL2 = await redisClient.client.get(
+									`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
+								);
+								if (
+									Math.abs(
+										parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+									) < 10
+								)
+									l2Formatted = redisL2;
+							} else if (parseInt(adjustedDepth as string) === 100) {
+								redisL2 = await redisClient.client.get(
+									`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
+								);
+							}
+							if (
+								redisL2 &&
+								Math.abs(
+									parseInt(JSON.parse(redisL2).slot) - slotSource.getSlot()
+								) < 10
+							)
+								l2Formatted = redisL2;
 						}
-					} else if (
-						marketType === 'spot' &&
-						normedParam['includePhoenix'].toLowerCase() === 'true' &&
-						normedParam['includeSerum'].toLowerCase() === 'true' &&
-						!normedParam['grouping']
-					) {
-						if (parseInt(adjustedDepth as string) === 5) {
-							l2Formatted = await redisClient.client.get(
-								`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
-							);
-						} else if (parseInt(adjustedDepth as string) === 20) {
-							l2Formatted = await redisClient.client.get(
-								`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
-							);
-						} else if (parseInt(adjustedDepth as string) === 100) {
-							l2Formatted = await redisClient.client.get(
-								`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
-							);
-						}
-					}
 
-					if (l2Formatted) {
-						return l2Formatted;
+						if (l2Formatted) {
+							return l2Formatted;
+						}
 					}
 
 					const l2 = dlobSubscriber.getL2({
