@@ -815,7 +815,7 @@ const main = async () => {
 				if (l2Formatted) {
 					cacheHitCounter.add(1);
 					res.writeHead(200);
-					res.end(JSON.stringify(l2Formatted));
+					res.end(l2Formatted);
 					return;
 				}
 			}
@@ -960,11 +960,11 @@ const main = async () => {
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
 								);
 							}
-							if (
-								redisL2 &&
-								slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
-							)
-								l2Formatted = redisL2;
+							if (redisL2) {
+								const parsedRedisL2 = JSON.parse(redisL2);
+								if (slotSource.getSlot() - parseInt(parsedRedisL2.slot) < 10)
+									l2Formatted = parsedRedisL2;
+							}
 						} else if (
 							marketType === 'spot' &&
 							normedParam['includePhoenix'].toLowerCase() === 'true' &&
@@ -985,11 +985,11 @@ const main = async () => {
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
 								);
 							}
-							if (
-								redisL2 &&
-								slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
-							)
-								l2Formatted = redisL2;
+							if (redisL2) {
+								const parsedRedisL2 = JSON.parse(redisL2);
+								if (slotSource.getSlot() - parseInt(parsedRedisL2.slot) < 10)
+									l2Formatted = parsedRedisL2;
+							}
 						}
 
 						if (l2Formatted) {
