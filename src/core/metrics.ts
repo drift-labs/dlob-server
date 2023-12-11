@@ -132,10 +132,6 @@ const cacheHitCounter = meter.createCounter(METRIC_TYPES.cache_hit_count, {
 	description: 'Total redis cache hits',
 });
 
-const cacheMissCounter = meter.createCounter(METRIC_TYPES.cache_miss_count, {
-	description: 'Total redis cache misses',
-});
-
 const accountUpdatesCounter = meter.createCounter(
 	METRIC_TYPES.account_updates_count,
 	{
@@ -249,5 +245,4 @@ export {
 	setLastReceivedWsMsgTs,
 	accountUpdatesCounter,
 	cacheHitCounter,
-	cacheMissCounter,
 };

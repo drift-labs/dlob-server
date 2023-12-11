@@ -39,7 +39,6 @@ import {
 	accountUpdatesCounter,
 	cacheHitCounter,
 	setLastReceivedWsMsgTs,
-	cacheMissCounter,
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
@@ -813,7 +812,9 @@ const main = async () => {
 				}
 
 				if (l2Formatted) {
-					cacheHitCounter.add(1);
+					cacheHitCounter.add(1, {
+						miss: false,
+					});
 					res.writeHead(200);
 					res.end(l2Formatted);
 					return;
@@ -871,7 +872,9 @@ const main = async () => {
 					);
 				}
 			}
-			cacheMissCounter.add(1);
+			cacheHitCounter.add(1, {
+				miss: true,
+			});
 			res.writeHead(200);
 			res.end(JSON.stringify(l2Formatted));
 		} catch (err) {
@@ -993,7 +996,9 @@ const main = async () => {
 						}
 
 						if (l2Formatted) {
-							cacheHitCounter.add(1);
+							cacheHitCounter.add(1, {
+								miss: false,
+							});
 							return l2Formatted;
 						}
 					}
@@ -1052,7 +1057,9 @@ const main = async () => {
 							);
 						}
 					}
-					cacheMissCounter.add(1);
+					cacheHitCounter.add(1, {
+						miss: true,
+					});
 					return l2Formatted;
 				})
 			);
