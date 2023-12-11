@@ -857,9 +857,6 @@ const main = async () => {
 						normedMarketIndex
 					);
 				}
-
-				res.writeHead(200);
-				res.end(JSON.stringify(l2Formatted));
 			} else {
 				// make the BNs into strings
 				l2Formatted = l2WithBNToStrings(l2);
