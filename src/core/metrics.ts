@@ -40,6 +40,8 @@ enum METRIC_TYPES {
 	gpa_fetch_duration = 'gpa_fetch_duration',
 	last_ws_message_received_ts = 'last_ws_message_received_ts',
 	account_updates_count = 'account_updates_count',
+	cache_hit_count = 'cache_hit_count',
+	cache_miss_count = 'cache_miss_count',
 	current_system_ts = 'current_system_ts',
 	health_status = 'health_status',
 }
@@ -124,6 +126,14 @@ const lastWsReceivedTsGauge = meter.createObservableGauge(
 );
 lastWsReceivedTsGauge.addCallback((obs: ObservableResult) => {
 	obs.observe(lastWsMsgReceivedTs, {});
+});
+
+const cacheHitCounter = meter.createCounter(METRIC_TYPES.cache_hit_count, {
+	description: 'Total redis cache hits',
+});
+
+const cacheMissCounter = meter.createCounter(METRIC_TYPES.cache_miss_count, {
+	description: 'Total redis cache misses',
 });
 
 const accountUpdatesCounter = meter.createCounter(
@@ -238,4 +248,6 @@ export {
 	handleHealthCheck,
 	setLastReceivedWsMsgTs,
 	accountUpdatesCounter,
+	cacheHitCounter,
+	cacheMissCounter,
 };
