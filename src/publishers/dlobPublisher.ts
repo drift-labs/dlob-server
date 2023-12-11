@@ -36,8 +36,6 @@ import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
 
 require('dotenv').config();
 const stateCommitment: Commitment = 'processed';
-const ORDERBOOK_UPDATE_INTERVAL = 400;
-const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
@@ -61,6 +59,9 @@ const useOrderSubscriber =
 
 const useGrpc = process.env.USE_GRPC?.toLowerCase() === 'true';
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
+
+const ORDERBOOK_UPDATE_INTERVAL = useGrpc ? 500 : 1000;
+const WS_FALLBACK_FETCH_INTERVAL = 10_000;
 
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
@@ -148,6 +149,7 @@ const main = async () => {
 		accountSubscription = {
 			type: 'websocket',
 			commitment: stateCommitment,
+			resubTimeoutMs: 30_000,
 		};
 		slotSubscriber = new SlotSubscriber(connection);
 		await slotSubscriber.subscribe();

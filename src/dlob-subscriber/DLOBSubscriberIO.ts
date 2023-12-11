@@ -18,6 +18,7 @@ import {
 	addOracletoResponse,
 	l2WithBNToStrings,
 } from '../utils/utils';
+import { logger } from '../utils/logger';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -62,8 +63,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				marketType: MarketType.PERP,
 				marketName: market.symbol,
 				depth: -1,
-				includeVamm: true,
 				numVammOrders: 100,
+				includeVamm: true,
 				updateOnChange: true,
 				fallbackL2Generators: [],
 			});
@@ -87,7 +88,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	override async updateDLOB(): Promise<void> {
 		await super.updateDLOB();
 		for (const l2Args of this.marketL2Args) {
-			this.getL2AndSendMsg(l2Args);
+			try {
+				this.getL2AndSendMsg(l2Args);
+			} catch (error) {
+				logger.error(error);
+				console.log(`Error getting L2 ${l2Args.marketName}`);
+			}
 		}
 	}
 
@@ -124,13 +130,39 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
+
+		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
+			bids: l2Formatted.bids.slice(0, 100),
+			asks: l2Formatted.asks.slice(0, 100),
+		});
+		const l2Formatted_depth20 = Object.assign({}, l2Formatted, {
+			bids: l2Formatted.bids.slice(0, 20),
+			asks: l2Formatted.asks.slice(0, 20),
+		});
+		const l2Formatted_depth5 = Object.assign({}, l2Formatted, {
+			bids: l2Formatted.bids.slice(0, 5),
+			asks: l2Formatted.asks.slice(0, 5),
+		});
+
 		this.redisClient.client.publish(
 			`orderbook_${marketType}_${l2Args.marketIndex}`,
 			JSON.stringify(l2Formatted)
 		);
 		this.redisClient.client.set(
 			`last_update_orderbook_${marketType}_${l2Args.marketIndex}`,
-			JSON.stringify(l2Formatted)
+			JSON.stringify(l2Formatted_depth100)
+		);
+		this.redisClient.client.set(
+			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_100`,
+			JSON.stringify(l2Formatted_depth100)
+		);
+		this.redisClient.client.set(
+			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_20`,
+			JSON.stringify(l2Formatted_depth20)
+		);
+		this.redisClient.client.set(
+			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_5`,
+			JSON.stringify(l2Formatted_depth5)
 		);
 	}
 }
