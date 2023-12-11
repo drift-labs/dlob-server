@@ -18,6 +18,7 @@ import {
 	addOracletoResponse,
 	l2WithBNToStrings,
 } from '../utils/utils';
+import { logger } from '../utils/logger';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -87,7 +88,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	override async updateDLOB(): Promise<void> {
 		await super.updateDLOB();
 		for (const l2Args of this.marketL2Args) {
-			this.getL2AndSendMsg(l2Args);
+			try {
+				this.getL2AndSendMsg(l2Args);
+			} catch (error) {
+				logger.error(error);
+				console.log(`Error getting L2 ${l2Args.marketName}`);
+			}
 		}
 	}
 

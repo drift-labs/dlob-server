@@ -233,31 +233,9 @@ async function main() {
 			}
 		});
 
-		// Ping/pong connection timeout
-		let pongTimeoutId;
-		let isAlive = true;
-		const pingIntervalId = setInterval(() => {
-			isAlive = false;
-			pongTimeoutId = setTimeout(() => {
-				if (!isAlive) {
-					console.log('Disconnecting because of ping/pong timeout');
-					ws.terminate();
-				}
-			}, 5000); // 5 seconds to wait for a pong
-			ws.ping();
-		}, 30000);
-
-		// Listen for pong messages
-		ws.on('pong', () => {
-			isAlive = true;
-			clearTimeout(pongTimeoutId);
-		});
-
 		// Handle disconnection
 		ws.on('close', () => {
 			// Clear any existing intervals and timeouts
-			clearInterval(pingIntervalId);
-			clearTimeout(pongTimeoutId);
 			channelSubscribers.forEach((subscribers, channel) => {
 				if (subscribers.delete(ws) && subscribers.size === 0) {
 					redisClient.client.unsubscribe(channel);
