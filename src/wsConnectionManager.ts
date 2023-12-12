@@ -110,6 +110,7 @@ async function main() {
 
 	wss.on('connection', (ws: WebSocket) => {
 		console.log('Client connected');
+		console.log('Number of active connections:', wss.clients.size);
 		wsConnectionsGauge.inc();
 
 		ws.on('message', async (msg) => {
@@ -235,6 +236,7 @@ async function main() {
 
 		// Handle disconnection
 		ws.on('close', () => {
+			console.log('Client disconnected');
 			// Clear any existing intervals and timeouts
 			channelSubscribers.forEach((subscribers, channel) => {
 				if (subscribers.delete(ws) && subscribers.size === 0) {
@@ -243,6 +245,7 @@ async function main() {
 					subscribedChannels.delete(channel);
 				}
 			});
+			console.log('Number of active connections:', wss.clients.size);
 			wsConnectionsGauge.dec();
 		});
 
