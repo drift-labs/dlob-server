@@ -257,6 +257,13 @@ async function main() {
 		ws.on('error', (error) => {
 			console.error('Socket error:', error);
 		});
+
+		// Set interval to send heartbeat every 5 seconds
+		setInterval(() => {
+			ws.send(JSON.stringify({ 
+				channel: 'heartbeat' 
+			}));
+		}, 5000);
 	});
 
 	server.listen(WS_PORT, () => {

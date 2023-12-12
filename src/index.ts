@@ -941,7 +941,7 @@ const main = async () => {
 					let l2Formatted: any;
 					if (useRedis) {
 						if (
-							marketType === 'perp' &&
+							!isSpot &&
 							normedParam['includeVamm'].toLowerCase() === 'true' &&
 							normedParam['includeOracle'].toLowerCase() === 'true' &&
 							!normedParam['grouping']
@@ -966,7 +966,7 @@ const main = async () => {
 									l2Formatted = parsedRedisL2;
 							}
 						} else if (
-							marketType === 'spot' &&
+							isSpot &&
 							normedParam['includePhoenix'].toLowerCase() === 'true' &&
 							normedParam['includeSerum'].toLowerCase() === 'true' &&
 							!normedParam['grouping']
