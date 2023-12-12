@@ -103,7 +103,7 @@ async function main() {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		if (subscribers) {
 			subscribers.forEach((ws) => {
-				if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 20)
+				if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 100)
 					ws.send(
 						JSON.stringify({ channel: subscribedChannel, data: message })
 					);
@@ -288,7 +288,7 @@ async function main() {
 			set = new Set([...set, ...wsSet]);
 		}
 		for (const ws of set) {
-			if (ws.bufferedAmount > 500) {
+			if (ws.bufferedAmount > 100) {
 				ws.close();
 			}
 		}
