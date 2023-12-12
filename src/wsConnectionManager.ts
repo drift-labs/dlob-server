@@ -99,7 +99,10 @@ async function main() {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		if (subscribers) {
 			subscribers.forEach((ws) => {
-				ws.send(JSON.stringify({ channel: subscribedChannel, data: message }));
+				if (ws.readyState === WebSocket.OPEN)
+					ws.send(
+						JSON.stringify({ channel: subscribedChannel, data: message })
+					);
 			});
 		}
 	});
@@ -110,7 +113,6 @@ async function main() {
 
 	wss.on('connection', (ws: WebSocket) => {
 		console.log('Client connected');
-		console.log('Number of active connections:', wss.clients.size);
 		wsConnectionsGauge.inc();
 
 		ws.on('message', async (msg) => {
@@ -245,7 +247,6 @@ async function main() {
 					subscribedChannels.delete(channel);
 				}
 			});
-			console.log('Number of active connections:', wss.clients.size);
 			wsConnectionsGauge.dec();
 		});
 
