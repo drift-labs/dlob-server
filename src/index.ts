@@ -168,7 +168,16 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 					sdkConfig
 				);
 				await phoenixSubscriber.subscribe();
-				markets[market.marketIndex].phoenix = phoenixSubscriber;
+				// Test get L2 to know if we should add
+				try {
+					phoenixSubscriber.getL2Asks();
+					phoenixSubscriber.getL2Bids();
+					markets[market.marketIndex].phoenix = phoenixSubscriber;
+				} catch (e) {
+					logger.info(
+						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
+					);
+				}
 			}
 		}
 
@@ -183,7 +192,15 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 					sdkConfig
 				);
 				await serumSubscriber.subscribe();
-				markets[market.marketIndex].serum = serumSubscriber;
+				try {
+					serumSubscriber.getL2Asks();
+					serumSubscriber.getL2Bids();
+					markets[market.marketIndex].serum = serumSubscriber;
+				} catch (e) {
+					logger.info(
+						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
+					);
+				}
 			}
 		}
 	}
