@@ -260,9 +260,11 @@ async function main() {
 
 		// Set interval to send heartbeat every 5 seconds
 		setInterval(() => {
-			ws.send(JSON.stringify({ 
-				channel: 'heartbeat' 
-			}));
+			ws.send(
+				JSON.stringify({
+					channel: 'heartbeat',
+				})
+			);
 		}, 5000);
 	});
 
