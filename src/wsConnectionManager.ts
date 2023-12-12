@@ -23,7 +23,11 @@ const wsConnectionsGauge = new Gauge({
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+	server,
+	path: '/ws',
+	perMessageDeflate: false,
+});
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
