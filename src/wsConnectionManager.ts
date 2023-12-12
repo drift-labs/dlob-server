@@ -23,7 +23,11 @@ const wsConnectionsGauge = new Gauge({
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({
+	server,
+	path: '/ws',
+	perMessageDeflate: false,
+});
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
@@ -99,7 +103,10 @@ async function main() {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		if (subscribers) {
 			subscribers.forEach((ws) => {
-				ws.send(JSON.stringify({ channel: subscribedChannel, data: message }));
+				if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 20)
+					ws.send(
+						JSON.stringify({ channel: subscribedChannel, data: message })
+					);
 			});
 		}
 	});
@@ -235,6 +242,7 @@ async function main() {
 
 		// Handle disconnection
 		ws.on('close', () => {
+			console.log('Client disconnected');
 			// Clear any existing intervals and timeouts
 			channelSubscribers.forEach((subscribers, channel) => {
 				if (subscribers.delete(ws) && subscribers.size === 0) {
@@ -263,11 +271,20 @@ async function main() {
 	server.on('error', (error) => {
 		console.error('Server error:', error);
 	});
-}
 
-process.on('unhandledRejection', (reason, promise) => {
-	console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+	// Periodic check for bad clients and disconnect them to alleviate backpressure
+	setInterval(() => {
+		let set = new Set<WebSocket>();
+		for (const [_channel, wsSet] of channelSubscribers) {
+			set = new Set([...set, ...wsSet]);
+		}
+		for (const ws of set) {
+			if (ws.bufferedAmount > 500) {
+				ws.close();
+			}
+		}
+	}, 5000);
+}
 
 async function recursiveTryCatch(f: () => void) {
 	try {

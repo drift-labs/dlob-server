@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@coral-xyz/anchor": "^0.29.0",
-    "@drift-labs/sdk": "2.52.0-beta.0",
+    "@drift-labs/sdk": "2.52.0-beta.1",
     "@opentelemetry/api": "^1.1.0",
     "@opentelemetry/auto-instrumentations-node": "^0.31.1",
     "@opentelemetry/exporter-prometheus": "^0.31.0",
@@ -56,6 +56,7 @@
     "dlob-publish": "ts-node src/publishers/dlobPublisher.ts",
     "trades-publish": "ts-node src/publishers/tradesPublisher.ts",
     "ws-manager": "ts-node src/wsConnectionManager.ts",
+    "ws-manager:inspect": "yarn build && node --inspect ./lib/wsConnectionManager.js",
     "dev:inspect": "yarn build && node --inspect ./lib/index.js",
     "dev:debug": "yarn build && node --inspect-brk --inspect=2230 ./lib/index.js",
     "example": "ts-node example/client.ts",
