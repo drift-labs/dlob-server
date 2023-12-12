@@ -56,6 +56,7 @@
     "dlob-publish": "ts-node src/publishers/dlobPublisher.ts",
     "trades-publish": "ts-node src/publishers/tradesPublisher.ts",
     "ws-manager": "ts-node src/wsConnectionManager.ts",
+    "ws-manager:inspect": "yarn build && node --inspect ./lib/wsConnectionManager.js",
     "dev:inspect": "yarn build && node --inspect ./lib/index.js",
     "dev:debug": "yarn build && node --inspect-brk --inspect=2230 ./lib/index.js",
     "example": "ts-node example/client.ts",
