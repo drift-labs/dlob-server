@@ -34,7 +34,6 @@ export const getRedisClient = (
 				return false;
 			},
 			maxRetriesPerRequest: null, // unlimited retries
-			enableOfflineQueue: false,
 		});
 
 		redisClient.on('connect', () => {
