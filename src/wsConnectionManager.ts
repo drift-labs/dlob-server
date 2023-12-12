@@ -103,7 +103,7 @@ async function main() {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		if (subscribers) {
 			subscribers.forEach((ws) => {
-				if (ws.readyState === WebSocket.OPEN)
+				if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 20)
 					ws.send(
 						JSON.stringify({ channel: subscribedChannel, data: message })
 					);
@@ -271,6 +271,19 @@ async function main() {
 	server.on('error', (error) => {
 		console.error('Server error:', error);
 	});
+
+	// Periodic check for bad clients and disconnect them to alleviate backpressure
+	setInterval(() => {
+		let set = new Set<WebSocket>();
+		for (const [_channel, wsSet] of channelSubscribers) {
+			set = new Set([...set, ...wsSet]);
+		}
+		for (const ws of set) {
+			if (ws.bufferedAmount > 500) {
+				ws.close();
+			}
+		}
+	}, 5000);
 }
 
 async function recursiveTryCatch(f: () => void) {
