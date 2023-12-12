@@ -273,10 +273,6 @@ async function main() {
 	});
 }
 
-process.on('unhandledRejection', (reason, promise) => {
-	console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
 async function recursiveTryCatch(f: () => void) {
 	try {
 		await f();
