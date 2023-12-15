@@ -99,6 +99,17 @@ app.use((req, _res, next) => {
 	next();
 });
 
+// strip off /ui, if the request comes from the UI
+app.use((req, _res, next) => {
+	if (req.url.startsWith('/ui')) {
+		req.url = req.url.replace('/ui', '');
+		if (req.url === '') {
+			req.url = '/';
+		}
+	}
+	next();
+});
+
 app.use(errorHandler);
 const server = http.createServer(app);
 
