@@ -7,13 +7,6 @@ import {
 	MeterProvider,
 	View,
 } from '@opentelemetry/sdk-metrics-base';
-import {
-	ORDERBOOK_UPDATE_INTERVAL,
-	commitHash,
-	driftEnv,
-	endpoint,
-	wsEndpoint,
-} from '..';
 import { SlotSource } from '@drift-labs/sdk';
 
 /**
@@ -93,15 +86,6 @@ const runtimeSpecsGauge = meter.createObservableGauge(
 		description: 'Runtime sepcification of this program',
 	}
 );
-const bootTimeMs = Date.now();
-runtimeSpecsGauge.addCallback((obs) => {
-	obs.observe(bootTimeMs, {
-		commit: commitHash,
-		driftEnv,
-		rpcEndpoint: endpoint,
-		wsEndpoint: wsEndpoint,
-	});
-});
 
 let healthStatus: HEALTH_STATUS = HEALTH_STATUS.Ok;
 const healthStatusGauge = meter.createObservableGauge(
@@ -171,7 +155,7 @@ const responseStatusCounter = meter.createCounter(
 	}
 );
 
-const healthCheckInterval = 2 * (ORDERBOOK_UPDATE_INTERVAL ?? 1000); // ORDERBOOK_UPDATE_INTERVAL is NaN here for some reason ... hardcode to 1000.
+const healthCheckInterval = 2000;
 let lastHealthCheckSlot = -1;
 let lastHealthCheckState = true; // true = healthy, false = unhealthy
 let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
@@ -245,4 +229,5 @@ export {
 	setLastReceivedWsMsgTs,
 	accountUpdatesCounter,
 	cacheHitCounter,
+	runtimeSpecsGauge,
 };
