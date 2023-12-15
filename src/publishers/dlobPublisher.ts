@@ -60,7 +60,8 @@ const useOrderSubscriber =
 const useGrpc = process.env.USE_GRPC?.toLowerCase() === 'true';
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 
-const ORDERBOOK_UPDATE_INTERVAL = 1000;
+const ORDERBOOK_UPDATE_INTERVAL =
+	parseInt(process.env.ORDERBOOK_UPDATE_INTERVAL) || 1000;
 const WS_FALLBACK_FETCH_INTERVAL = 10_000;
 
 logger.info(`RPC endpoint: ${endpoint}`);
