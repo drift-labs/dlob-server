@@ -39,6 +39,7 @@ import {
 	accountUpdatesCounter,
 	cacheHitCounter,
 	setLastReceivedWsMsgTs,
+	runtimeSpecsGauge,
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
@@ -125,6 +126,17 @@ app.use((req, _res, next) => {
 	next();
 });
 
+// Metrics defined here
+const bootTimeMs = Date.now();
+runtimeSpecsGauge.addCallback((obs) => {
+	obs.observe(bootTimeMs, {
+		commit: commitHash,
+		driftEnv,
+		rpcEndpoint: endpoint,
+		wsEndpoint: wsEndpoint,
+	});
+});
+
 app.use(errorHandler);
 const server = http.createServer(app);
 
@@ -168,7 +180,16 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 					sdkConfig
 				);
 				await phoenixSubscriber.subscribe();
-				markets[market.marketIndex].phoenix = phoenixSubscriber;
+				// Test get L2 to know if we should add
+				try {
+					phoenixSubscriber.getL2Asks();
+					phoenixSubscriber.getL2Bids();
+					markets[market.marketIndex].phoenix = phoenixSubscriber;
+				} catch (e) {
+					logger.info(
+						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
+					);
+				}
 			}
 		}
 
@@ -183,7 +204,15 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 					sdkConfig
 				);
 				await serumSubscriber.subscribe();
-				markets[market.marketIndex].serum = serumSubscriber;
+				try {
+					serumSubscriber.getL2Asks();
+					serumSubscriber.getL2Bids();
+					markets[market.marketIndex].serum = serumSubscriber;
+				} catch (e) {
+					logger.info(
+						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
+					);
+				}
 			}
 		}
 	}
@@ -760,8 +789,8 @@ const main = async () => {
 			if (useRedis) {
 				if (
 					!isSpot &&
-					`${includeVamm}`.toLowerCase() === 'true' &&
-					`${includeOracle}`.toLowerCase().toLowerCase() === 'true' &&
+					`${includeVamm}`?.toLowerCase() === 'true' &&
+					`${includeOracle}`?.toLowerCase() === 'true' &&
 					!grouping
 				) {
 					let redisL2: string;
@@ -785,9 +814,9 @@ const main = async () => {
 						l2Formatted = redisL2;
 				} else if (
 					isSpot &&
-					`${includeSerum}`.toLowerCase() === 'true' &&
-					`${includePhoenix}`.toLowerCase() === 'true' &&
-					`${includeOracle}`.toLowerCase() === 'true' &&
+					`${includeSerum}`?.toLowerCase() === 'true' &&
+					`${includePhoenix}`?.toLowerCase() === 'true' &&
+					`${includeOracle}`?.toLowerCase() === 'true' &&
 					!grouping
 				) {
 					let redisL2: string;
@@ -942,8 +971,8 @@ const main = async () => {
 					if (useRedis) {
 						if (
 							!isSpot &&
-							normedParam['includeVamm'].toLowerCase() === 'true' &&
-							normedParam['includeOracle'].toLowerCase() === 'true' &&
+							normedParam['includeVamm']?.toLowerCase() === 'true' &&
+							normedParam['includeOracle']?.toLowerCase() === 'true' &&
 							!normedParam['grouping']
 						) {
 							let redisL2: string;
@@ -967,8 +996,8 @@ const main = async () => {
 							}
 						} else if (
 							isSpot &&
-							normedParam['includePhoenix'].toLowerCase() === 'true' &&
-							normedParam['includeSerum'].toLowerCase() === 'true' &&
+							normedParam['includePhoenix']?.toLowerCase() === 'true' &&
+							normedParam['includeSerum']?.toLowerCase() === 'true' &&
 							!normedParam['grouping']
 						) {
 							let redisL2: string;
