@@ -167,6 +167,7 @@ const main = async () => {
 		accountSubscription = {
 			type: 'websocket',
 			commitment: stateCommitment,
+			resubTimeoutMs: 30_000,
 		};
 		slotSubscriber = new SlotSubscriber(connection);
 		await slotSubscriber.subscribe();
