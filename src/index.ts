@@ -39,6 +39,7 @@ import {
 	accountUpdatesCounter,
 	cacheHitCounter,
 	setLastReceivedWsMsgTs,
+	runtimeSpecsGauge,
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
@@ -123,6 +124,17 @@ app.use((req, _res, next) => {
 		}
 	}
 	next();
+});
+
+// Metrics defined here
+const bootTimeMs = Date.now();
+runtimeSpecsGauge.addCallback((obs) => {
+	obs.observe(bootTimeMs, {
+		commit: commitHash,
+		driftEnv,
+		rpcEndpoint: endpoint,
+		wsEndpoint: wsEndpoint,
+	});
 });
 
 app.use(errorHandler);

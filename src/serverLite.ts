@@ -10,7 +10,11 @@ import { Commitment, Connection } from '@solana/web3.js';
 import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
-import { handleHealthCheck, cacheHitCounter } from './core/metrics';
+import {
+	handleHealthCheck,
+	cacheHitCounter,
+	runtimeSpecsGauge,
+} from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import { errorHandler, normalizeBatchQueryParams, sleep } from './utils/utils';
 import { RedisClient } from './utils/redisClient';
@@ -21,6 +25,7 @@ import {
 	SlotSubscriber,
 	SpotMarkets,
 	isVariant,
+	initialize,
 } from '@drift-labs/sdk';
 
 require('dotenv').config();
@@ -71,6 +76,17 @@ app.use(
 		},
 	})
 );
+
+// Metrics defined here
+const bootTimeMs = Date.now();
+runtimeSpecsGauge.addCallback((obs) => {
+	obs.observe(bootTimeMs, {
+		commit: commitHash,
+		driftEnv,
+		rpcEndpoint: endpoint,
+		wsEndpoint: wsEndpoint,
+	});
+});
 
 // strip off /dlob, if the request comes from exchange history server LB
 app.use((req, _res, next) => {
@@ -183,7 +199,7 @@ const main = async () => {
 				if (redisL2) {
 					slotDiff =
 						slotSubscriber.getSlot() - parseInt(JSON.parse(redisL2).slot);
-					if (slotDiff < 20) {
+					if (slotDiff < SLOT_STALENESS_TOLERANCE) {
 						l2Formatted = redisL2;
 					}
 				}
@@ -211,7 +227,7 @@ const main = async () => {
 				if (redisL2) {
 					slotDiff =
 						slotSubscriber.getSlot() - parseInt(JSON.parse(redisL2).slot);
-					if (slotDiff < 20) {
+					if (slotDiff < SLOT_STALENESS_TOLERANCE) {
 						l2Formatted = redisL2;
 					}
 				}
@@ -228,6 +244,9 @@ const main = async () => {
 				if (slotDiff) {
 					res.writeHead(500);
 					res.end(`Slot too stale : ${slotDiff}`);
+				} else {
+					res.writeHead(400);
+					res.end(`Bad Request: no cached L2 found`);
 				}
 			}
 		} catch (err) {
