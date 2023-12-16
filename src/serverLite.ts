@@ -153,6 +153,17 @@ const main = async () => {
 		handleHealthCheck(2 * SLOT_STALENESS_TOLERANCE * 400, slotSubscriber)
 	);
 
+	const handleStartup = async (_req, res, _next) => {
+		if (redisClient.connected) {
+			res.writeHead(200);
+			res.end('OK');
+		} else {
+			res.writeHead(500);
+			res.end('Not ready');
+		}
+	};
+	app.get('/startup', handleStartup);
+
 	app.get('/l2', async (req, res, next) => {
 		try {
 			const {
