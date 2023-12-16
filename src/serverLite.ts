@@ -200,8 +200,8 @@ const main = async () => {
 			let slotDiff: number;
 			if (
 				!isSpot &&
-				`${includeVamm}`.toLowerCase() === 'true' &&
-				`${includeOracle}`.toLowerCase().toLowerCase() === 'true' &&
+				`${includeVamm}`?.toLowerCase() === 'true' &&
+				`${includeOracle}`?.toLowerCase().toLowerCase() === 'true' &&
 				!grouping
 			) {
 				let redisL2: string;
@@ -227,9 +227,9 @@ const main = async () => {
 				}
 			} else if (
 				isSpot &&
-				`${includeSerum}`.toLowerCase() === 'true' &&
-				`${includePhoenix}`.toLowerCase() === 'true' &&
-				`${includeOracle}`.toLowerCase() === 'true' &&
+				`${includeSerum}`?.toLowerCase() === 'true' &&
+				`${includePhoenix}`?.toLowerCase() === 'true' &&
+				`${includeOracle}`?.toLowerCase() === 'true' &&
 				!grouping
 			) {
 				let redisL2: string;
@@ -336,8 +336,8 @@ const main = async () => {
 					let l2Formatted: any;
 					if (
 						!isSpot &&
-						normedParam['includeVamm'].toLowerCase() === 'true' &&
-						normedParam['includeOracle'].toLowerCase() === 'true' &&
+						normedParam['includeVamm']?.toLowerCase() === 'true' &&
+						normedParam['includeOracle']?.toLowerCase() === 'true' &&
 						!normedParam['grouping']
 					) {
 						let redisL2: string;
@@ -364,8 +364,8 @@ const main = async () => {
 						}
 					} else if (
 						isSpot &&
-						normedParam['includePhoenix'].toLowerCase() === 'true' &&
-						normedParam['includeSerum'].toLowerCase() === 'true' &&
+						normedParam['includePhoenix']?.toLowerCase() === 'true' &&
+						normedParam['includeSerum']?.toLowerCase() === 'true' &&
 						!normedParam['grouping']
 					) {
 						let redisL2: string;
