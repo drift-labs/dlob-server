@@ -144,6 +144,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			asks: l2Formatted.asks.slice(0, 5),
 		});
 
+		const orderSubscriberSlot = this.slotSource.getSlot();
+		const dlobOracleSlot = l2Formatted['oracle']['slot'];
+		if (Math.abs(orderSubscriberSlot - dlobOracleSlot) > 50) {
+			noticeSlack('dlobsubscirber kiling itstelf slot breakokren')
+			process.exit(420);
+		}
+
 		this.redisClient.client.publish(
 			`orderbook_${marketType}_${l2Args.marketIndex}`,
 			JSON.stringify(l2Formatted)
