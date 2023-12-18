@@ -20,7 +20,6 @@ import {
 	DriftEnv,
 	SlotSource,
 	SlotSubscriber,
-	UserMap,
 	Wallet,
 	getUserStatsAccountPublicKey,
 	getVariant,
@@ -34,7 +33,6 @@ import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
 import {
-	gpaFetchDurationHistogram,
 	handleHealthCheck,
 	accountUpdatesCounter,
 	cacheHitCounter,
@@ -57,7 +55,6 @@ import FEATURE_FLAGS from './utils/featureFlags';
 import {
 	DLOBProvider,
 	getDLOBProviderFromOrderSubscriber,
-	getDLOBProviderFromUserMap,
 } from './dlobProvider';
 import { RedisClient } from './utils/redisClient';
 
@@ -249,10 +246,7 @@ const main = async () => {
 			type: 'polling',
 			accountLoader: bulkAccountLoader,
 		};
-
-		slotSource = {
-			getSlot: () => bulkAccountLoader!.getSlot(),
-		};
+		slotSource = bulkAccountLoader;
 	} else {
 		accountSubscription = {
 			type: 'websocket',
@@ -260,10 +254,6 @@ const main = async () => {
 		};
 		slotSubscriber = new SlotSubscriber(connection);
 		await slotSubscriber.subscribe();
-
-		slotSource = {
-			getSlot: () => slotSubscriber!.getSlot(),
-		};
 	}
 
 	driftClient = new DriftClient({
@@ -281,6 +271,7 @@ const main = async () => {
 			subscriptionConfig = {
 				type: 'websocket',
 				commitment: stateCommitment,
+				resyncIntervalMs: WS_FALLBACK_FETCH_INTERVAL,
 			};
 		} else {
 			subscriptionConfig = {
@@ -306,23 +297,7 @@ const main = async () => {
 		);
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
-
-		slotSource = {
-			getSlot: () => orderSubscriber.getSlot(),
-		};
-	} else {
-		const userMap = new UserMap({
-			driftClient,
-			subscriptionConfig: {
-				type: 'websocket',
-				resubTimeoutMs: 30_000,
-				commitment: stateCommitment,
-			},
-			skipInitialLoad: false,
-			includeIdle: false,
-		});
-
-		dlobProvider = getDLOBProviderFromUserMap(userMap);
+		slotSource = dlobProvider;
 	}
 
 	const dlobCoder = DLOBOrdersCoder.create();
@@ -344,27 +319,6 @@ const main = async () => {
 	logger.info(
 		`GPA refresh?: ${useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH}`
 	);
-	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
-		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
-			setTimeout(() => {
-				const startFetch = Date.now();
-				dlobProvider
-					.fetch()
-					.then(() => {
-						gpaFetchDurationHistogram.record(Date.now() - startFetch);
-					})
-					.catch((e) => {
-						logger.error('Failed to fetch GPA');
-						console.log(e);
-					})
-					.finally(() => {
-						// eslint-disable-next-line @typescript-eslint/no-unused-vars
-						recursiveFetch();
-					});
-			}, delay);
-		};
-		recursiveFetch();
-	}
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
