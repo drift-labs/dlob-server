@@ -18,9 +18,7 @@ import {
 	DriftClient,
 	DriftClientSubscriptionConfig,
 	DriftEnv,
-	SlotSource,
 	SlotSubscriber,
-	UserMap,
 	Wallet,
 	getUserStatsAccountPublicKey,
 	getVariant,
@@ -34,7 +32,6 @@ import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
 import {
-	gpaFetchDurationHistogram,
 	handleHealthCheck,
 	accountUpdatesCounter,
 	cacheHitCounter,
@@ -54,11 +51,7 @@ import {
 	validateDlobQuery,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
-import {
-	DLOBProvider,
-	getDLOBProviderFromOrderSubscriber,
-	getDLOBProviderFromUserMap,
-} from './dlobProvider';
+import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { RedisClient } from './utils/redisClient';
 
 require('dotenv').config();
@@ -77,8 +70,6 @@ const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
-const useOrderSubscriber =
-	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
 	: 1;
@@ -155,7 +146,6 @@ const wsEndpoint = process.env.WS_ENDPOINT;
 logger.info(`RPC endpoint:       ${endpoint}`);
 logger.info(`WS endpoint:        ${wsEndpoint}`);
 logger.info(`useWebsocket:       ${useWebsocket}`);
-logger.info(`useOrderSubscriber: ${useOrderSubscriber}`);
 logger.info(`DriftEnv:           ${driftEnv}`);
 logger.info(`Commit:             ${commitHash}`);
 
@@ -236,7 +226,6 @@ const main = async () => {
 	let slotSubscriber: SlotSubscriber | undefined;
 
 	let accountSubscription: DriftClientSubscriptionConfig;
-	let slotSource: SlotSource;
 
 	if (!useWebsocket) {
 		bulkAccountLoader = new BulkAccountLoader(
@@ -249,10 +238,6 @@ const main = async () => {
 			type: 'polling',
 			accountLoader: bulkAccountLoader,
 		};
-
-		slotSource = {
-			getSlot: () => bulkAccountLoader!.getSlot(),
-		};
 	} else {
 		accountSubscription = {
 			type: 'websocket',
@@ -260,10 +245,6 @@ const main = async () => {
 		};
 		slotSubscriber = new SlotSubscriber(connection);
 		await slotSubscriber.subscribe();
-
-		slotSource = {
-			getSlot: () => slotSubscriber!.getSlot(),
-		};
 	}
 
 	driftClient = new DriftClient({
@@ -274,56 +255,37 @@ const main = async () => {
 		env: driftEnv,
 	});
 
-	let dlobProvider: DLOBProvider;
-	if (useOrderSubscriber) {
-		let subscriptionConfig;
-		if (useWebsocket) {
-			subscriptionConfig = {
-				type: 'websocket',
-				commitment: stateCommitment,
-			};
-		} else {
-			subscriptionConfig = {
-				type: 'polling',
-				frequency: ORDERBOOK_UPDATE_INTERVAL,
-				commitment: stateCommitment,
-			};
-		}
-
-		let updatesReceivedTotal = 0;
-		const orderSubscriber = new OrderSubscriber({
-			driftClient,
-			subscriptionConfig,
-		});
-		orderSubscriber.eventEmitter.on(
-			'updateReceived',
-			(_pubkey: PublicKey, _slot: number, _dataType: 'raw' | 'decoded') => {
-				setLastReceivedWsMsgTs(Date.now());
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-				updatesReceivedTotal++;
-				accountUpdatesCounter.add(1);
-			}
-		);
-
-		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
-
-		slotSource = {
-			getSlot: () => orderSubscriber.getSlot(),
+	let subscriptionConfig;
+	if (useWebsocket) {
+		subscriptionConfig = {
+			type: 'websocket',
+			commitment: stateCommitment,
+			resyncIntervalMs: WS_FALLBACK_FETCH_INTERVAL,
 		};
 	} else {
-		const userMap = new UserMap({
-			driftClient,
-			subscriptionConfig: {
-				type: 'websocket',
-				resubTimeoutMs: 30_000,
-				commitment: stateCommitment,
-			},
-			skipInitialLoad: false,
-			includeIdle: false,
-		});
-
-		dlobProvider = getDLOBProviderFromUserMap(userMap);
+		subscriptionConfig = {
+			type: 'polling',
+			frequency: ORDERBOOK_UPDATE_INTERVAL,
+			commitment: stateCommitment,
+		};
 	}
+
+	let updatesReceivedTotal = 0;
+	const orderSubscriber = new OrderSubscriber({
+		driftClient,
+		subscriptionConfig,
+	});
+	orderSubscriber.eventEmitter.on(
+		'updateReceived',
+		(_pubkey: PublicKey, _slot: number, _dataType: 'raw' | 'decoded') => {
+			setLastReceivedWsMsgTs(Date.now());
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			updatesReceivedTotal++;
+			accountUpdatesCounter.add(1);
+		}
+	);
+
+	const dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
 
 	const dlobCoder = DLOBOrdersCoder.create();
 
@@ -344,34 +306,13 @@ const main = async () => {
 	logger.info(
 		`GPA refresh?: ${useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH}`
 	);
-	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
-		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
-			setTimeout(() => {
-				const startFetch = Date.now();
-				dlobProvider
-					.fetch()
-					.then(() => {
-						gpaFetchDurationHistogram.record(Date.now() - startFetch);
-					})
-					.catch((e) => {
-						logger.error('Failed to fetch GPA');
-						console.log(e);
-					})
-					.finally(() => {
-						// eslint-disable-next-line @typescript-eslint/no-unused-vars
-						recursiveFetch();
-					});
-			}, delay);
-		};
-		recursiveFetch();
-	}
 
 	logger.info(`Initializing DLOBSubscriber...`);
 	const initDlobSubscriberStart = Date.now();
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
 		dlobSource: dlobProvider,
-		slotSource,
+		slotSource: dlobProvider,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 	});
 	await dlobSubscriber.subscribe();
@@ -407,10 +348,10 @@ const main = async () => {
 
 	app.get(
 		'/health',
-		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSource)
+		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider)
 	);
 	app.get('/startup', handleStartup);
-	app.get('/', handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSource));
+	app.get('/', handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider));
 
 	if (FEATURE_FLAGS.ENABLE_ORDERS_ENDPOINTS) {
 		app.get('/orders/json/raw', async (_req, res, next) => {
@@ -418,7 +359,7 @@ const main = async () => {
 				// object with userAccount key and orders object serialized
 				const orders: Array<any> = [];
 				const oracles: Array<any> = [];
-				const slot = slotSource.getSlot();
+				const slot = dlobProvider.getSlot();
 
 				for (const market of driftClient.getPerpMarketAccounts()) {
 					const oracle = driftClient.getOracleDataForPerpMarket(
@@ -463,7 +404,7 @@ const main = async () => {
 		app.get('/orders/json', async (_req, res, next) => {
 			try {
 				// object with userAccount key and orders object serialized
-				const slot = slotSource.getSlot();
+				const slot = dlobProvider.getSlot();
 				const orders: Array<any> = [];
 				const oracles: Array<any> = [];
 				for (const market of driftClient.getPerpMarketAccounts()) {
@@ -633,7 +574,7 @@ const main = async () => {
 
 				res.end(
 					JSON.stringify({
-						slot: slotSource.getSlot(),
+						slot: dlobProvider.getSlot(),
 						data: dlobCoder.encode(dlobOrders).toString('base64'),
 					})
 				);
@@ -724,7 +665,7 @@ const main = async () => {
 						.getDLOB()
 						.getRestingLimitBids(
 							normedMarketIndex,
-							slotSource.getSlot(),
+							dlobProvider.getSlot(),
 							normedMarketType,
 							oracle
 						)
@@ -735,7 +676,7 @@ const main = async () => {
 						.getDLOB()
 						.getRestingLimitAsks(
 							normedMarketIndex,
-							slotSource.getSlot(),
+							dlobProvider.getSlot(),
 							normedMarketType,
 							oracle
 						)
@@ -809,7 +750,7 @@ const main = async () => {
 					}
 					if (
 						redisL2 &&
-						slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
+						dlobProvider.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
 					)
 						l2Formatted = redisL2;
 				} else if (
@@ -835,7 +776,7 @@ const main = async () => {
 					}
 					if (
 						redisL2 &&
-						slotSource.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
+						dlobProvider.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
 					)
 						l2Formatted = redisL2;
 				}
@@ -991,7 +932,7 @@ const main = async () => {
 							}
 							if (redisL2) {
 								const parsedRedisL2 = JSON.parse(redisL2);
-								if (slotSource.getSlot() - parseInt(parsedRedisL2.slot) < 10)
+								if (dlobProvider.getSlot() - parseInt(parsedRedisL2.slot) < 10)
 									l2Formatted = parsedRedisL2;
 							}
 						} else if (
@@ -1016,7 +957,7 @@ const main = async () => {
 							}
 							if (redisL2) {
 								const parsedRedisL2 = JSON.parse(redisL2);
-								if (slotSource.getSlot() - parseInt(parsedRedisL2.slot) < 10)
+								if (dlobProvider.getSlot() - parseInt(parsedRedisL2.slot) < 10)
 									l2Formatted = parsedRedisL2;
 							}
 						}
