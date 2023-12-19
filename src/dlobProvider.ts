@@ -13,6 +13,7 @@ export type DLOBProvider = {
 	getUserAccount(publicKey: PublicKey): UserAccount | undefined;
 	size(): number;
 	fetch(): Promise<void>;
+	getSlot(): number;
 };
 
 export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
@@ -42,6 +43,9 @@ export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
 		},
 		fetch: () => {
 			return userMap.sync();
+		},
+		getSlot: () => {
+			return userMap.getSlot();
 		},
 	};
 }
@@ -82,6 +86,9 @@ export function getDLOBProviderFromOrderSubscriber(
 		fetch() {
 			return orderSubscriber.fetch();
 		},
+		getSlot: () => {
+			return orderSubscriber.getSlot();
+		},
 	};
 }
 
@@ -120,6 +127,9 @@ export function getDLOBProviderFromGrpcOrderSubscriber(
 		},
 		fetch() {
 			return orderSubscriber.fetch();
+		},
+		getSlot: () => {
+			return orderSubscriber.getSlot();
 		},
 	};
 }
