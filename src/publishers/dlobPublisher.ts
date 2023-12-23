@@ -14,6 +14,8 @@ import {
 	DriftClientSubscriptionConfig,
 	SlotSubscriber,
 	isVariant,
+	OracleInfo,
+	PerpMarketConfig,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -64,6 +66,16 @@ const ORDERBOOK_UPDATE_INTERVAL =
 	parseInt(process.env.ORDERBOOK_UPDATE_INTERVAL) || 1000;
 const WS_FALLBACK_FETCH_INTERVAL = 10_000;
 
+// comma separated list of perp market indexes to load: i.e. 0,1,2,3
+const PERP_MARKETS_TO_LOAD = process.env.PERP_MARKETS_TO_LOAD
+	? process.env.PERP_MARKETS_TO_LOAD.split(',').map((m) => parseInt(m))
+	: undefined;
+
+// comma separated list of spot market indexes to load: i.e. 0,1,2,3
+const SPOT_MARKETS_TO_LOAD = process.env.SPOT_MARKETS_TO_LOAD
+	? process.env.SPOT_MARKETS_TO_LOAD.split(',').map((m) => parseInt(m))
+	: undefined;
+
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
@@ -71,22 +83,89 @@ logger.info(`Commit:       ${commitHash}`);
 
 let MARKET_SUBSCRIBERS: SubscriberLookup = {};
 
+const getMarketsAndOraclesToLoad = (
+	sdkConfig: any
+): {
+	perpMarketIndexes?: number[];
+	spotMarketIndexes?: number[];
+	oracleInfos?: OracleInfo[];
+} => {
+	const oracleInfos: OracleInfo[] = [];
+	const oraclesTracked = new Set();
+	let perpMarketIndexes: number[] = [];
+	let spotMarketIndexes: number[] = [];
+
+	if (PERP_MARKETS_TO_LOAD!.length > 0) {
+		perpMarketIndexes = PERP_MARKETS_TO_LOAD;
+		logger.info(`DlobPublisher tracking perp markets: ${perpMarketIndexes}`);
+
+		for (const idx of perpMarketIndexes) {
+			const perpMarketConfig = sdkConfig.PERP_MARKETS[idx] as PerpMarketConfig;
+			if (!perpMarketConfig) {
+				throw new Error(`Perp market config for ${idx} not found`);
+			}
+			const oracleKey = perpMarketConfig.oracle.toBase58();
+			if (!oraclesTracked.has(oracleKey)) {
+				logger.info(`Tracking oracle ${oracleKey} for perp market ${idx}`);
+				oracleInfos.push({
+					publicKey: perpMarketConfig.oracle,
+					source: perpMarketConfig.oracleSource,
+				});
+				oraclesTracked.add(oracleKey);
+			}
+		}
+	}
+
+	if (SPOT_MARKETS_TO_LOAD!.length > 0) {
+		spotMarketIndexes = SPOT_MARKETS_TO_LOAD;
+		logger.info(`DlobPublisher tracking spot markets: ${spotMarketIndexes}`);
+
+		for (const idx of spotMarketIndexes) {
+			const spotMarketConfig = sdkConfig.PERP_MARKETS[idx] as PerpMarketConfig;
+			if (!spotMarketConfig) {
+				throw new Error(`Spot market config for ${idx} not found`);
+			}
+			const oracleKey = spotMarketConfig.oracle.toBase58();
+			if (!oraclesTracked.has(oracleKey)) {
+				logger.info(`Tracking oracle ${oracleKey} for spot market ${idx}`);
+				oracleInfos.push({
+					publicKey: spotMarketConfig.oracle,
+					source: spotMarketConfig.oracleSource,
+				});
+				oraclesTracked.add(oracleKey);
+			}
+		}
+	}
+
+	return {
+		perpMarketIndexes,
+		spotMarketIndexes,
+		oracleInfos,
+	};
+};
+
 const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	const markets: SubscriberLookup = {};
 
-	for (const market of sdkConfig.SPOT_MARKETS) {
+	for (const market of driftClient.getSpotMarketAccounts()) {
 		markets[market.marketIndex] = {
 			phoenix: undefined,
 			serum: undefined,
 		};
+		const marketConfig = sdkConfig.SPOT_MARKETS[market.marketIndex];
 
-		if (market.phoenixMarket) {
+		if (marketConfig.phoenixMarket) {
 			const phoenixConfigAccount =
-				await driftClient.getPhoenixV1FulfillmentConfig(market.phoenixMarket);
+				await driftClient.getPhoenixV1FulfillmentConfig(
+					marketConfig.phoenixMarket
+				);
 			if (isVariant(phoenixConfigAccount.status, 'enabled')) {
+				logger.info(
+					`Loading phoenix subscriber for spot market ${market.marketIndex}`
+				);
 				const phoenixSubscriber = getPhoenixSubscriber(
 					driftClient,
-					market,
+					marketConfig,
 					sdkConfig
 				);
 				await phoenixSubscriber.subscribe();
@@ -103,14 +182,17 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 			}
 		}
 
-		if (market.serumMarket) {
+		if (marketConfig.serumMarket) {
 			const serumConfigAccount = await driftClient.getSerumV3FulfillmentConfig(
-				market.serumMarket
+				marketConfig.serumMarket
 			);
 			if (isVariant(serumConfigAccount.status, 'enabled')) {
+				logger.info(
+					`Loading serum subscriber for spot market ${market.marketIndex}`
+				);
 				const serumSubscriber = getSerumSubscriber(
 					driftClient,
-					market,
+					marketConfig,
 					sdkConfig
 				);
 				await serumSubscriber.subscribe();
@@ -177,12 +259,17 @@ const main = async () => {
 		};
 	}
 
+	const { perpMarketIndexes, spotMarketIndexes, oracleInfos } =
+		getMarketsAndOraclesToLoad(sdkConfig);
 	driftClient = new DriftClient({
 		connection,
 		wallet,
 		programID: clearingHousePublicKey,
 		accountSubscription,
 		env: driftEnv,
+		perpMarketIndexes,
+		spotMarketIndexes,
+		oracleInfos,
 	});
 
 	const lamportsBalance = await connection.getBalance(wallet.publicKey);
