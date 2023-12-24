@@ -99,9 +99,22 @@ const getMarketsAndOraclesToLoad = (
 	const perpMarketInfos: wsMarketInfo[] = [];
 	const spotMarketInfos: wsMarketInfo[] = [];
 
-	const perpIndexes = PERP_MARKETS_TO_LOAD
-		? PERP_MARKETS_TO_LOAD
-		: sdkConfig.PERP_MARKETS.map((m) => m.marketIndex);
+	// only watch all markets if neither env vars are specified
+	const noMarketsSpecified = !PERP_MARKETS_TO_LOAD && !SPOT_MARKETS_TO_LOAD;
+
+	let perpIndexes = PERP_MARKETS_TO_LOAD;
+	if (!perpIndexes && noMarketsSpecified) {
+		perpIndexes = sdkConfig.PERP_MARKETS.map((m) => m.marketIndex);
+	} else {
+		perpIndexes = [];
+	}
+	let spotIndexes = SPOT_MARKETS_TO_LOAD;
+	if (!spotIndexes && noMarketsSpecified) {
+		spotIndexes = sdkConfig.SPOT_MARKETS.map((m) => m.marketIndex);
+	} else {
+		spotIndexes = [];
+	}
+
 	if (perpIndexes.length > 0) {
 		for (const idx of perpIndexes) {
 			const perpMarketConfig = sdkConfig.PERP_MARKETS[idx] as PerpMarketConfig;
@@ -127,9 +140,6 @@ const getMarketsAndOraclesToLoad = (
 		);
 	}
 
-	const spotIndexes = SPOT_MARKETS_TO_LOAD
-		? SPOT_MARKETS_TO_LOAD
-		: sdkConfig.SPOT_MARKETS.map((m) => m.marketIndex);
 	if (spotIndexes.length > 0) {
 		for (const idx of spotIndexes) {
 			const spotMarketConfig = sdkConfig.SPOT_MARKETS[idx] as SpotMarketConfig;
