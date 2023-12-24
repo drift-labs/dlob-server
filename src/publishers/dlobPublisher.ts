@@ -25,7 +25,10 @@ import {
 	getSerumSubscriber,
 	sleep,
 } from '../utils/utils';
-import { DLOBSubscriberIO } from '../dlob-subscriber/DLOBSubscriberIO';
+import {
+	DLOBSubscriberIO,
+	wsMarketInfo,
+} from '../dlob-subscriber/DLOBSubscriberIO';
 import { RedisClient } from '../utils/redisClient';
 import {
 	DLOBProvider,
@@ -86,20 +89,17 @@ let MARKET_SUBSCRIBERS: SubscriberLookup = {};
 const getMarketsAndOraclesToLoad = (
 	sdkConfig: any
 ): {
-	perpMarketIndexes?: number[];
-	spotMarketIndexes?: number[];
+	perpMarketInfos: wsMarketInfo[];
+	spotMarketInfos: wsMarketInfo[];
 	oracleInfos?: OracleInfo[];
 } => {
 	const oracleInfos: OracleInfo[] = [];
 	const oraclesTracked = new Set();
-	let perpMarketIndexes: number[] = [];
-	let spotMarketIndexes: number[] = [];
+	const perpMarketInfos: wsMarketInfo[] = [];
+	const spotMarketInfos: wsMarketInfo[] = [];
 
 	if (PERP_MARKETS_TO_LOAD!.length > 0) {
-		perpMarketIndexes = PERP_MARKETS_TO_LOAD;
-		logger.info(`DlobPublisher tracking perp markets: ${perpMarketIndexes}`);
-
-		for (const idx of perpMarketIndexes) {
+		for (const idx of PERP_MARKETS_TO_LOAD) {
 			const perpMarketConfig = sdkConfig.PERP_MARKETS[idx] as PerpMarketConfig;
 			if (!perpMarketConfig) {
 				throw new Error(`Perp market config for ${idx} not found`);
@@ -113,14 +113,18 @@ const getMarketsAndOraclesToLoad = (
 				});
 				oraclesTracked.add(oracleKey);
 			}
+			perpMarketInfos.push({
+				marketIndex: perpMarketConfig.marketIndex,
+				marketName: perpMarketConfig.symbol,
+			});
 		}
+		logger.info(
+			`DlobPublisher tracking perp markets: ${JSON.stringify(perpMarketInfos)}`
+		);
 	}
 
 	if (SPOT_MARKETS_TO_LOAD!.length > 0) {
-		spotMarketIndexes = SPOT_MARKETS_TO_LOAD;
-		logger.info(`DlobPublisher tracking spot markets: ${spotMarketIndexes}`);
-
-		for (const idx of spotMarketIndexes) {
+		for (const idx of SPOT_MARKETS_TO_LOAD) {
 			const spotMarketConfig = sdkConfig.PERP_MARKETS[idx] as PerpMarketConfig;
 			if (!spotMarketConfig) {
 				throw new Error(`Spot market config for ${idx} not found`);
@@ -134,12 +138,19 @@ const getMarketsAndOraclesToLoad = (
 				});
 				oraclesTracked.add(oracleKey);
 			}
+			spotMarketInfos.push({
+				marketIndex: spotMarketConfig.marketIndex,
+				marketName: spotMarketConfig.symbol,
+			});
 		}
+		logger.info(
+			`DlobPublisher tracking spot markets: ${JSON.stringify(spotMarketInfos)}`
+		);
 	}
 
 	return {
-		perpMarketIndexes,
-		spotMarketIndexes,
+		perpMarketInfos,
+		spotMarketInfos,
 		oracleInfos,
 	};
 };
@@ -259,7 +270,7 @@ const main = async () => {
 		};
 	}
 
-	const { perpMarketIndexes, spotMarketIndexes, oracleInfos } =
+	const { perpMarketInfos, spotMarketInfos, oracleInfos } =
 		getMarketsAndOraclesToLoad(sdkConfig);
 	driftClient = new DriftClient({
 		connection,
@@ -267,8 +278,8 @@ const main = async () => {
 		programID: clearingHousePublicKey,
 		accountSubscription,
 		env: driftEnv,
-		perpMarketIndexes,
-		spotMarketIndexes,
+		perpMarketIndexes: perpMarketInfos.map((m) => m.marketIndex),
+		spotMarketIndexes: spotMarketInfos.map((m) => m.marketIndex),
 		oracleInfos,
 	});
 
@@ -358,6 +369,8 @@ const main = async () => {
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 		redisClient,
 		spotMarketSubscribers: MARKET_SUBSCRIBERS,
+		perpMarketsInfos,
+		spotMarketsInfos,
 	});
 	await dlobSubscriber.subscribe();
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
