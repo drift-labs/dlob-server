@@ -41,8 +41,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	constructor(
 		config: DLOBSubscriptionConfig & {
 			redisClient: RedisClient;
-			perpMarketsInfos: wsMarketInfo[];
-			spotMarketsInfos: wsMarketInfo[];
+			perpMarketInfos: wsMarketInfo[];
+			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
 		}
 	) {
@@ -54,7 +54,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastSeenL2Formatted.set(MarketType.SPOT, new Map());
 		this.lastSeenL2Formatted.set(MarketType.PERP, new Map());
 
-		for (const market of config.perpMarketsInfos) {
+		for (const market of config.perpMarketInfos) {
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.PERP,
@@ -66,7 +66,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				fallbackL2Generators: [],
 			});
 		}
-		for (const market of config.spotMarketsInfos) {
+		for (const market of config.spotMarketInfos) {
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.SPOT,
@@ -88,7 +88,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			try {
 				this.getL2AndSendMsg(l2Args);
 			} catch (error) {
-				logger.error(error);
+				console.error(error);
 				console.log(`Error getting L2 ${l2Args.marketName}`);
 			}
 		}

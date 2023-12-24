@@ -16,6 +16,7 @@ import {
 	isVariant,
 	OracleInfo,
 	PerpMarketConfig,
+	SpotMarketConfig,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -98,8 +99,11 @@ const getMarketsAndOraclesToLoad = (
 	const perpMarketInfos: wsMarketInfo[] = [];
 	const spotMarketInfos: wsMarketInfo[] = [];
 
-	if (PERP_MARKETS_TO_LOAD!.length > 0) {
-		for (const idx of PERP_MARKETS_TO_LOAD) {
+	const perpIndexes = PERP_MARKETS_TO_LOAD
+		? PERP_MARKETS_TO_LOAD
+		: sdkConfig.PERP_MARKETS.map((m) => m.marketIndex);
+	if (perpIndexes.length > 0) {
+		for (const idx of perpIndexes) {
 			const perpMarketConfig = sdkConfig.PERP_MARKETS[idx] as PerpMarketConfig;
 			if (!perpMarketConfig) {
 				throw new Error(`Perp market config for ${idx} not found`);
@@ -123,9 +127,12 @@ const getMarketsAndOraclesToLoad = (
 		);
 	}
 
-	if (SPOT_MARKETS_TO_LOAD!.length > 0) {
-		for (const idx of SPOT_MARKETS_TO_LOAD) {
-			const spotMarketConfig = sdkConfig.PERP_MARKETS[idx] as PerpMarketConfig;
+	const spotIndexes = SPOT_MARKETS_TO_LOAD
+		? SPOT_MARKETS_TO_LOAD
+		: sdkConfig.SPOT_MARKETS.map((m) => m.marketIndex);
+	if (spotIndexes.length > 0) {
+		for (const idx of spotIndexes) {
+			const spotMarketConfig = sdkConfig.SPOT_MARKETS[idx] as SpotMarketConfig;
 			if (!spotMarketConfig) {
 				throw new Error(`Spot market config for ${idx} not found`);
 			}
@@ -369,8 +376,8 @@ const main = async () => {
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
 		redisClient,
 		spotMarketSubscribers: MARKET_SUBSCRIBERS,
-		perpMarketsInfos,
-		spotMarketsInfos,
+		perpMarketInfos,
+		spotMarketInfos,
 	});
 	await dlobSubscriber.subscribe();
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
