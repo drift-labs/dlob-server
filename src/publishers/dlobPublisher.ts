@@ -103,16 +103,20 @@ const getMarketsAndOraclesToLoad = (
 	const noMarketsSpecified = !PERP_MARKETS_TO_LOAD && !SPOT_MARKETS_TO_LOAD;
 
 	let perpIndexes = PERP_MARKETS_TO_LOAD;
-	if (!perpIndexes && noMarketsSpecified) {
-		perpIndexes = sdkConfig.PERP_MARKETS.map((m) => m.marketIndex);
-	} else {
-		perpIndexes = [];
+	if (!perpIndexes) {
+		if (noMarketsSpecified) {
+			perpIndexes = sdkConfig.PERP_MARKETS.map((m) => m.marketIndex);
+		} else {
+			perpIndexes = [];
+		}
 	}
 	let spotIndexes = SPOT_MARKETS_TO_LOAD;
-	if (!spotIndexes && noMarketsSpecified) {
-		spotIndexes = sdkConfig.SPOT_MARKETS.map((m) => m.marketIndex);
-	} else {
-		spotIndexes = [];
+	if (!spotIndexes) {
+		if (noMarketsSpecified) {
+			spotIndexes = sdkConfig.SPOT_MARKETS.map((m) => m.marketIndex);
+		} else {
+			spotIndexes = [];
+		}
 	}
 
 	if (perpIndexes.length > 0) {
