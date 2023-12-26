@@ -56,9 +56,24 @@ import { RedisClient } from './utils/redisClient';
 
 require('dotenv').config();
 
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = process.env.REDIS_PORT || '6379';
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+// Reading in Redis env vars
+const REDIS_HOSTS_ENV =  process.env.REDIS_HOSTS as string || 'localhost';
+const REDIS_HOSTS = REDIS_HOSTS_ENV.includes(',')
+	? REDIS_HOSTS_ENV.trim()
+			.replace(/^\[|\]$/g, '')
+			.split(/\s*,\s*/)
+	: [REDIS_HOSTS_ENV];
+
+const REDIS_PASSWORDS_ENV =  process.env.REDIS_HOSTS as string;
+const REDIS_PASSWORDS = REDIS_PASSWORDS_ENV.includes(',')
+	? REDIS_PASSWORDS_ENV.trim()
+			.replace(/^\[|\]$/g, '')
+			.split(/\s*,\s*/)
+	: [REDIS_PASSWORDS_ENV];
+if (REDIS_HOSTS.length !== REDIS_PASSWORDS.length) {
+	throw('REDIS_HOSTS and REDIS_PASSWORDS must be the same length');
+}
+const REDIS_PORT = '6379';
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
@@ -321,10 +336,17 @@ const main = async () => {
 	);
 
 	let redisClient: RedisClient;
+	const redisClients: Array<RedisClient> = [];
+	let redisClientMap: 
 	if (useRedis) {
 		logger.info('Connecting to redis');
-		redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
-		await redisClient.connect();
+		for (let i = 0; i < REDIS_HOSTS.length; i++) {
+			redisClients.push(
+				new RedisClient(REDIS_HOSTS[i], REDIS_PORT, REDIS_PASSWORDS[i])
+			);
+			await redisClients[i].connect();
+		}
+		redisClient = redisClients[0];
 	}
 
 	logger.info(`Initializing all market subscribers...`);
