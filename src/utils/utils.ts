@@ -39,6 +39,17 @@ export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function parsePositiveIntArray(
+	intArray: string,
+	separator = ','
+): number[] {
+	return intArray
+		.split(separator)
+		.map((s) => s.trim())
+		.map((s) => parseInt(s))
+		.filter((n) => !isNaN(n) && n > 0);
+}
+
 export const getOracleForMarket = (
 	driftClient: DriftClient,
 	marketType: MarketType,
