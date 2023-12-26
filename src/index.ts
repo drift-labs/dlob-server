@@ -57,23 +57,32 @@ import { RedisClient } from './utils/redisClient';
 require('dotenv').config();
 
 // Reading in Redis env vars
-const REDIS_HOSTS_ENV =  process.env.REDIS_HOSTS as string || 'localhost';
+const REDIS_HOSTS_ENV = (process.env.REDIS_HOSTS as string) || 'localhost';
 const REDIS_HOSTS = REDIS_HOSTS_ENV.includes(',')
 	? REDIS_HOSTS_ENV.trim()
 			.replace(/^\[|\]$/g, '')
 			.split(/\s*,\s*/)
 	: [REDIS_HOSTS_ENV];
 
-const REDIS_PASSWORDS_ENV =  process.env.REDIS_HOSTS as string;
+const REDIS_PASSWORDS_ENV = (process.env.REDIS_PASSWORDS as string) || '';
 const REDIS_PASSWORDS = REDIS_PASSWORDS_ENV.includes(',')
 	? REDIS_PASSWORDS_ENV.trim()
 			.replace(/^\[|\]$/g, '')
 			.split(/\s*,\s*/)
 	: [REDIS_PASSWORDS_ENV];
-if (REDIS_HOSTS.length !== REDIS_PASSWORDS.length) {
-	throw('REDIS_HOSTS and REDIS_PASSWORDS must be the same length');
+
+const REDIS_PORTS_ENV = (process.env.REDIS_PORTS as string) || '6379';
+const REDIS_PORTS = REDIS_PORTS_ENV.includes(',')
+	? REDIS_PORTS_ENV.trim()
+			.replace(/^\[|\]$/g, '')
+			.split(/\s*,\s*/)
+	: [REDIS_PORTS_ENV];
+if (
+	REDIS_PORTS.length !== REDIS_PASSWORDS.length ||
+	REDIS_PORTS.length !== REDIS_HOSTS.length
+) {
+	throw 'REDIS_HOSTS and REDIS_PASSWORDS and REDIS_PORTS must be the same length';
 }
-const REDIS_PORT = '6379';
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
@@ -84,6 +93,8 @@ const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
+const SLOT_STALENESS_TOLERANCE =
+	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 20;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -335,18 +346,39 @@ const main = async () => {
 		`DLOBSubscriber initialized in ${Date.now() - initDlobSubscriberStart} ms`
 	);
 
-	let redisClient: RedisClient;
 	const redisClients: Array<RedisClient> = [];
-	let redisClientMap: 
+	const spotMarketRedisMap: Map<
+		number,
+		{ client: RedisClient; clientIndex: number }
+	> = new Map();
+	const perpMarketRedisMap: Map<
+		number,
+		{ client: RedisClient; clientIndex: number }
+	> = new Map();
 	if (useRedis) {
 		logger.info('Connecting to redis');
 		for (let i = 0; i < REDIS_HOSTS.length; i++) {
 			redisClients.push(
-				new RedisClient(REDIS_HOSTS[i], REDIS_PORT, REDIS_PASSWORDS[i])
+				new RedisClient(
+					REDIS_HOSTS[i],
+					REDIS_PORTS[i],
+					REDIS_PASSWORDS[i] || undefined
+				)
 			);
 			await redisClients[i].connect();
 		}
-		redisClient = redisClients[0];
+		for (let i = 0; i < sdkConfig.SPOT_MARKETS.length; i++) {
+			spotMarketRedisMap.set(sdkConfig.SPOT_MARKETS[i].marketIndex, {
+				client: redisClients[0],
+				clientIndex: 0,
+			});
+		}
+		for (let i = 0; i < sdkConfig.PERP_MARKETS.length; i++) {
+			perpMarketRedisMap.set(sdkConfig.PERP_MARKETS[i].marketIndex, {
+				client: redisClients[0],
+				clientIndex: 0,
+			});
+		}
 	}
 
 	logger.info(`Initializing all market subscribers...`);
@@ -757,6 +789,7 @@ const main = async () => {
 					!grouping
 				) {
 					let redisL2: string;
+					const redisClient = perpMarketRedisMap.get(normedMarketIndex).client;
 					if (parseInt(adjustedDepth as string) === 5) {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
@@ -772,9 +805,22 @@ const main = async () => {
 					}
 					if (
 						redisL2 &&
-						dlobProvider.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
-					)
+						dlobProvider.getSlot() - parseInt(JSON.parse(redisL2).slot) <
+							SLOT_STALENESS_TOLERANCE
+					) {
 						l2Formatted = redisL2;
+					} else {
+						if (redisL2 && redisClients.length > 1) {
+							const nextClientIndex =
+								(perpMarketRedisMap.get(normedMarketIndex).clientIndex + 1) %
+								redisClients.length;
+							perpMarketRedisMap.set(normedMarketIndex, {
+								client: redisClients[nextClientIndex],
+								clientIndex: nextClientIndex,
+							});
+							console.log('Rotated redis client to index ', nextClientIndex);
+						}
+					}
 				} else if (
 					isSpot &&
 					`${includeSerum}`?.toLowerCase() === 'true' &&
@@ -783,6 +829,7 @@ const main = async () => {
 					!grouping
 				) {
 					let redisL2: string;
+					const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
 					if (parseInt(adjustedDepth as string) === 5) {
 						redisL2 = await redisClient.client.get(
 							`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
@@ -798,9 +845,22 @@ const main = async () => {
 					}
 					if (
 						redisL2 &&
-						dlobProvider.getSlot() - parseInt(JSON.parse(redisL2).slot) < 10
-					)
+						dlobProvider.getSlot() - parseInt(JSON.parse(redisL2).slot) <
+							SLOT_STALENESS_TOLERANCE
+					) {
 						l2Formatted = redisL2;
+					} else {
+						if (redisL2 && redisClients.length > 1) {
+							const nextClientIndex =
+								(spotMarketRedisMap.get(normedMarketIndex).clientIndex + 1) %
+								redisClients.length;
+							spotMarketRedisMap.set(normedMarketIndex, {
+								client: redisClients[nextClientIndex],
+								clientIndex: nextClientIndex,
+							});
+							console.log('Rotated redis client to index ', nextClientIndex);
+						}
+					}
 				}
 
 				if (l2Formatted) {
@@ -939,6 +999,8 @@ const main = async () => {
 							!normedParam['grouping']
 						) {
 							let redisL2: string;
+							const redisClient =
+								perpMarketRedisMap.get(normedMarketIndex).client;
 							if (parseInt(adjustedDepth as string) === 5) {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
@@ -954,8 +1016,27 @@ const main = async () => {
 							}
 							if (redisL2) {
 								const parsedRedisL2 = JSON.parse(redisL2);
-								if (dlobProvider.getSlot() - parseInt(parsedRedisL2.slot) < 10)
+								if (
+									dlobProvider.getSlot() - parseInt(parsedRedisL2.slot) <
+									SLOT_STALENESS_TOLERANCE
+								) {
 									l2Formatted = parsedRedisL2;
+								} else {
+									if (redisClients.length > 1) {
+										const nextClientIndex =
+											(perpMarketRedisMap.get(normedMarketIndex).clientIndex +
+												1) %
+											redisClients.length;
+										perpMarketRedisMap.set(normedMarketIndex, {
+											client: redisClients[nextClientIndex],
+											clientIndex: nextClientIndex,
+										});
+										console.log(
+											'Rotated redis client to index ',
+											nextClientIndex
+										);
+									}
+								}
 							}
 						} else if (
 							isSpot &&
@@ -964,6 +1045,8 @@ const main = async () => {
 							!normedParam['grouping']
 						) {
 							let redisL2: string;
+							const redisClient =
+								spotMarketRedisMap.get(normedMarketIndex).client;
 							if (parseInt(adjustedDepth as string) === 5) {
 								redisL2 = await redisClient.client.get(
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
@@ -979,8 +1062,27 @@ const main = async () => {
 							}
 							if (redisL2) {
 								const parsedRedisL2 = JSON.parse(redisL2);
-								if (dlobProvider.getSlot() - parseInt(parsedRedisL2.slot) < 10)
+								if (
+									dlobProvider.getSlot() - parseInt(parsedRedisL2.slot) <
+									SLOT_STALENESS_TOLERANCE
+								) {
 									l2Formatted = parsedRedisL2;
+								} else {
+									if (redisClients.length > 1) {
+										const nextClientIndex =
+											(spotMarketRedisMap.get(normedMarketIndex).clientIndex +
+												1) %
+											redisClients.length;
+										spotMarketRedisMap.set(normedMarketIndex, {
+											client: redisClients[nextClientIndex],
+											clientIndex: nextClientIndex,
+										});
+										console.log(
+											'Rotated redis client to index ',
+											nextClientIndex
+										);
+									}
+								}
 							}
 						}
 
