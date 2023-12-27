@@ -72,14 +72,16 @@ const ORDERBOOK_UPDATE_INTERVAL =
 const WS_FALLBACK_FETCH_INTERVAL = 10_000;
 
 // comma separated list of perp market indexes to load: i.e. 0,1,2,3
-const PERP_MARKETS_TO_LOAD = process.env.PERP_MARKETS_TO_LOAD
-	? parsePositiveIntArray(process.env.PERP_MARKETS_TO_LOAD)
-	: undefined;
+const PERP_MARKETS_TO_LOAD =
+	process.env.PERP_MARKETS_TO_LOAD !== undefined
+		? parsePositiveIntArray(process.env.PERP_MARKETS_TO_LOAD)
+		: undefined;
 
 // comma separated list of spot market indexes to load: i.e. 0,1,2,3
-const SPOT_MARKETS_TO_LOAD = process.env.SPOT_MARKETS_TO_LOAD
-	? parsePositiveIntArray(process.env.SPOT_MARKETS_TO_LOAD)
-	: undefined;
+const SPOT_MARKETS_TO_LOAD =
+	process.env.SPOT_MARKETS_TO_LOAD !== undefined
+		? parsePositiveIntArray(process.env.SPOT_MARKETS_TO_LOAD)
+		: undefined;
 
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
