@@ -2,24 +2,17 @@ import {
 	BN,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
-	DevnetPerpMarkets,
-	DevnetSpotMarkets,
 	L2OrderBookGenerator,
-	MainnetPerpMarkets,
-	MainnetSpotMarkets,
 	MarketType,
 	groupL2,
 	isVariant,
 } from '@drift-labs/sdk';
-import { driftEnv } from '../publishers/dlobPublisher';
 import { RedisClient } from '../utils/redisClient';
 import {
 	SubscriberLookup,
 	addOracletoResponse,
 	l2WithBNToStrings,
 } from '../utils/utils';
-import { logger } from '../utils/logger';
-import { webhookMessage } from '../utils/webhook';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -33,6 +26,11 @@ type wsMarketL2Args = {
 	updateOnChange?: boolean;
 };
 
+export type wsMarketInfo = {
+	marketIndex: number;
+	marketName: string;
+};
+
 export class DLOBSubscriberIO extends DLOBSubscriber {
 	public marketL2Args: wsMarketL2Args[] = [];
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
@@ -41,6 +39,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	constructor(
 		config: DLOBSubscriptionConfig & {
 			redisClient: RedisClient;
+			perpMarketInfos: wsMarketInfo[];
+			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
 		}
 	) {
@@ -52,17 +52,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastSeenL2Formatted.set(MarketType.SPOT, new Map());
 		this.lastSeenL2Formatted.set(MarketType.PERP, new Map());
 
-		// Add all active markets to the market L2Args
-		const perpMarkets =
-			driftEnv === 'devnet' ? DevnetPerpMarkets : MainnetPerpMarkets;
-		const spotMarkets =
-			driftEnv === 'devnet' ? DevnetSpotMarkets : MainnetSpotMarkets;
-
-		for (const market of perpMarkets) {
+		for (const market of config.perpMarketInfos) {
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.PERP,
-				marketName: market.symbol,
+				marketName: market.marketName,
 				depth: -1,
 				numVammOrders: 100,
 				includeVamm: true,
@@ -70,11 +64,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				fallbackL2Generators: [],
 			});
 		}
-		for (const market of spotMarkets) {
+		for (const market of config.spotMarketInfos) {
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.SPOT,
-				marketName: market.symbol,
+				marketName: market.marketName,
 				depth: -1,
 				includeVamm: false,
 				updateOnChange: true,
@@ -92,7 +86,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			try {
 				this.getL2AndSendMsg(l2Args);
 			} catch (error) {
-				logger.error(error);
+				console.error(error);
 				console.log(`Error getting L2 ${l2Args.marketName}`);
 			}
 		}
@@ -144,19 +138,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			bids: l2Formatted.bids.slice(0, 5),
 			asks: l2Formatted.asks.slice(0, 5),
 		});
-
-		// START HACK FOR DEBUGGING FAILURE WEBSOCKET CONNECTIONS
-		const orderSubscriberSlot = this.slotSource.getSlot();
-		const dlobOracleSlot = parseInt(l2Formatted['oracleData']['slot']);
-		const slotDiff = Math.abs(orderSubscriberSlot - dlobOracleSlot);
-		if (slotDiff > 50) {
-			const msg = `DlobPublisher bad slot in ${l2Formatted['marketType']} market ${l2Formatted['marketName']}! abs(oracleSlot (${dlobOracleSlot}) - orderSubscriberSlot (${orderSubscriberSlot})) = ${slotDiff} > 50`;
-			logger.error(msg);
-			webhookMessage(msg).then(() => {
-				process.exit(1);
-			});
-		}
-		// END HACK FOR DEBUGGING FAILURE WEBSOCKET CONNECTIONS
 
 		this.redisClient.client.publish(
 			`orderbook_${marketType}_${l2Args.marketIndex}`,
