@@ -13,8 +13,6 @@ import {
 	addOracletoResponse,
 	l2WithBNToStrings,
 } from '../utils/utils';
-import { logger } from '../utils/logger';
-import { webhookMessage } from '../utils/webhook';
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -140,19 +138,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			bids: l2Formatted.bids.slice(0, 5),
 			asks: l2Formatted.asks.slice(0, 5),
 		});
-
-		// START HACK FOR DEBUGGING FAILURE WEBSOCKET CONNECTIONS
-		const orderSubscriberSlot = this.slotSource.getSlot();
-		const dlobOracleSlot = parseInt(l2Formatted['oracleData']['slot']);
-		const slotDiff = Math.abs(orderSubscriberSlot - dlobOracleSlot);
-		if (slotDiff > 50) {
-			const msg = `DlobPublisher bad slot in ${l2Formatted['marketType']} market ${l2Formatted['marketName']}! abs(oracleSlot (${dlobOracleSlot}) - orderSubscriberSlot (${orderSubscriberSlot})) = ${slotDiff} > 50`;
-			logger.error(msg);
-			webhookMessage(msg).then(() => {
-				process.exit(1);
-			});
-		}
-		// END HACK FOR DEBUGGING FAILURE WEBSOCKET CONNECTIONS
 
 		this.redisClient.client.publish(
 			`orderbook_${marketType}_${l2Args.marketIndex}`,
