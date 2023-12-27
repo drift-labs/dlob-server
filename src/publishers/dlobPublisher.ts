@@ -324,8 +324,7 @@ const main = async () => {
 	const initAllMarketSubscribersStart = Date.now();
 	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
 	logger.info(
-		`All market subscribers initialized in ${
-			Date.now() - initAllMarketSubscribersStart
+		`All market subscribers initialized in ${Date.now() - initAllMarketSubscribersStart
 		} ms`
 	);
 

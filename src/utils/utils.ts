@@ -47,7 +47,7 @@ export function parsePositiveIntArray(
 		.split(separator)
 		.map((s) => s.trim())
 		.map((s) => parseInt(s))
-		.filter((n) => !isNaN(n) && n > 0);
+		.filter((n) => !isNaN(n) && n >= 0);
 }
 
 export const getOracleForMarket = (
