@@ -187,7 +187,7 @@ const main = async () => {
 			clientIndex: 0,
 		});
 	}
-	
+
 	// Slot subscriber for source
 	const connection = new Connection(endpoint, {
 		commitment: stateCommitment,
@@ -206,7 +206,7 @@ const main = async () => {
 	);
 
 	const handleStartup = async (_req, res, _next) => {
-		let healthy= false;
+		let healthy = false;
 		for (const redisClient of redisClients) {
 			if (redisClient.connected) {
 				healthy = true;
@@ -291,7 +291,9 @@ const main = async () => {
 								client: redisClients[nextClientIndex],
 								clientIndex: nextClientIndex,
 							});
-							console.log('Rotated redis client to index ', nextClientIndex);
+							console.log(
+								`Rotated redis client to index ${nextClientIndex} for perp market ${normedMarketIndex}`
+							);
 						}
 					}
 				}
@@ -331,7 +333,9 @@ const main = async () => {
 								client: redisClients[nextClientIndex],
 								clientIndex: nextClientIndex,
 							});
-							console.log('Rotated redis client to index ', nextClientIndex);
+							console.log(
+								`Rotated redis client to index ${nextClientIndex} for spot market ${normedMarketIndex}`
+							);
 						}
 					}
 				}
@@ -424,7 +428,7 @@ const main = async () => {
 					) {
 						let redisL2: string;
 						const redisClient =
-								perpMarketRedisMap.get(normedMarketIndex).client;
+							perpMarketRedisMap.get(normedMarketIndex).client;
 						if (parseInt(adjustedDepth as string) === 5) {
 							redisL2 = await redisClient.client.get(
 								`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
@@ -456,8 +460,7 @@ const main = async () => {
 										clientIndex: nextClientIndex,
 									});
 									console.log(
-										'Rotated redis client to index ',
-										nextClientIndex
+										`Rotated redis client to index ${nextClientIndex} for perp market ${normedMarketIndex}`
 									);
 								}
 							}
@@ -470,7 +473,7 @@ const main = async () => {
 					) {
 						let redisL2: string;
 						const redisClient =
-								spotMarketRedisMap.get(normedMarketIndex).client;
+							spotMarketRedisMap.get(normedMarketIndex).client;
 						if (parseInt(adjustedDepth as string) === 5) {
 							redisL2 = await redisClient.client.get(
 								`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
@@ -502,8 +505,7 @@ const main = async () => {
 										clientIndex: nextClientIndex,
 									});
 									console.log(
-										'Rotated redis client to index ',
-										nextClientIndex
+										`Rotated redis client to index ${nextClientIndex} for spot market ${normedMarketIndex}`
 									);
 								}
 							}

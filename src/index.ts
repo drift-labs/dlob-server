@@ -818,7 +818,9 @@ const main = async () => {
 								client: redisClients[nextClientIndex],
 								clientIndex: nextClientIndex,
 							});
-							console.log('Rotated redis client to index ', nextClientIndex);
+							console.log(
+								`Rotated redis client to index ${nextClientIndex} for perp market ${normedMarketIndex}`
+							);
 						}
 					}
 				} else if (
@@ -858,7 +860,9 @@ const main = async () => {
 								client: redisClients[nextClientIndex],
 								clientIndex: nextClientIndex,
 							});
-							console.log('Rotated redis client to index ', nextClientIndex);
+							console.log(
+								`Rotated redis client to index ${nextClientIndex} for spot market ${normedMarketIndex}`
+							);
 						}
 					}
 				}
@@ -1032,8 +1036,7 @@ const main = async () => {
 											clientIndex: nextClientIndex,
 										});
 										console.log(
-											'Rotated redis client to index ',
-											nextClientIndex
+											`Rotated redis client to index ${nextClientIndex} for perp market ${normedMarketIndex}`
 										);
 									}
 								}
@@ -1078,8 +1081,7 @@ const main = async () => {
 											clientIndex: nextClientIndex,
 										});
 										console.log(
-											'Rotated redis client to index ',
-											nextClientIndex
+											`Rotated redis client to index ${nextClientIndex} for spot market ${normedMarketIndex}`
 										);
 									}
 								}
