@@ -236,7 +236,7 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	return markets;
 };
 
-const main = async () => {
+const main = async (): Promise<void> => {
 	const wallet = new Wallet(new Keypair());
 	const clearingHousePublicKey = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
 
@@ -687,13 +687,13 @@ const main = async () => {
 						break;
 					}
 					if (side.userAccount) {
-						const maker = side.userAccount.toBase58();
+						const maker = side.userAccount;
 						if (topMakers.has(maker)) {
 							continue;
 						} else {
 							if (`${includeUserStats}`.toLowerCase() === 'true') {
 								const userAccount = dlobProvider.getUserAccount(
-									side.userAccount
+									new PublicKey(side.userAccount)
 								);
 								topMakers.add([
 									userAccount,
@@ -703,7 +703,7 @@ const main = async () => {
 									),
 								]);
 							} else {
-								topMakers.add(side.userAccount.toBase58());
+								topMakers.add(side.userAccount);
 							}
 							foundMakers++;
 						}
@@ -1217,7 +1217,7 @@ const main = async () => {
 	});
 };
 
-async function recursiveTryCatch(f: () => void) {
+async function recursiveTryCatch(f: () => Promise<void>) {
 	try {
 		await f();
 	} catch (e) {
