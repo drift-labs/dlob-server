@@ -215,7 +215,7 @@ export class GeyserOrderSubscriber {
 		for (const [key, { userAccount }] of this.usersAccounts.entries()) {
 			const userAccountPubkey = new PublicKey(key);
 			for (const order of userAccount.orders) {
-				dlob.insertOrder(order, userAccountPubkey, slot);
+				dlob.insertOrder(order, userAccountPubkey.toBase58(), slot);
 			}
 		}
 		return dlob;
