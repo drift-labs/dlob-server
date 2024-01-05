@@ -169,7 +169,7 @@ const main = async () => {
 					),
 					maker: fill.maker?.toBase58(),
 					makerOrderId: fill.makerOrderId,
-					makerOrderDirection: fill.makderOrderDirection
+					makerOrderDirection: fill.makerOrderDirection
 						? getVariant(fill.makerOrderDirection)
 						: undefined,
 					makerOrderBaseAssetAmount: convertToNumber(
