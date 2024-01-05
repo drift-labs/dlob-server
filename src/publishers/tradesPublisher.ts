@@ -19,6 +19,8 @@ import {
 	getVariant,
 	ZERO,
 	BN,
+	OrderActionRecord,
+	Event,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
@@ -130,7 +132,7 @@ const main = async () => {
 					event.eventType === 'OrderActionRecord' &&
 					JSON.stringify(event.action) === JSON.stringify(OrderAction.FILL)
 			),
-			map((fill) => {
+			map((fill: Event<OrderActionRecord>) => {
 				return {
 					ts: fill.ts.toNumber(),
 					marketIndex: fill.marketIndex,
