@@ -85,11 +85,44 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		for (const l2Args of this.marketL2Args) {
 			try {
 				this.getL2AndSendMsg(l2Args);
+				this.getTopMakersAndSendMsg(l2Args);
 			} catch (error) {
 				console.error(error);
 				console.log(`Error getting L2 ${l2Args.marketName}`);
 			}
 		}
+	}
+
+	getTopMakersAndSendMsg(l2Args: wsMarketL2Args): void {
+		const marketType = isVariant(l2Args.marketType, 'perp') ? 'perp' : 'spot';
+		const oralcePriceData =
+			marketType === 'perp'
+				? this.driftClient.getOracleDataForPerpMarket(l2Args.marketIndex)
+				: this.driftClient.getOracleDataForSpotMarket(l2Args.marketIndex);
+
+		const bids = this.dlob.getRestingLimitBids(
+			l2Args.marketIndex,
+			this.slotSource.getSlot(),
+			l2Args.marketType,
+			oralcePriceData
+		);
+		const asks = this.dlob.getRestingLimitAsks(
+			l2Args.marketIndex,
+			this.slotSource.getSlot(),
+			l2Args.marketType,
+			oralcePriceData
+		);
+
+		const topBids = Array.from(take(bids, 4));
+		const topAsks = Array.from(take(asks, 4));
+
+		this.redisClient.client.set(
+			`top_makers_${marketType}_${l2Args.marketIndex}`,
+			JSON.stringify({
+				asks: topAsks.map((ask) => ask.userAccount),
+				bids: topBids.map((bid) => bid.userAccount),
+			})
+		);
 	}
 
 	getL2AndSendMsg(l2Args: wsMarketL2Args): void {
@@ -159,5 +192,14 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_5`,
 			JSON.stringify(l2Formatted_depth5)
 		);
+	}
+}
+
+function* take<T>(generator: Generator<T>, count: number): Generator<T> {
+	let index = 0;
+	for (const value of generator) {
+		if (index >= count) return;
+		yield value;
+		index++;
 	}
 }
