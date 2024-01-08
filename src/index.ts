@@ -116,21 +116,23 @@ app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
 app.use(handleResponseTime);
-app.use(
-	rateLimit({
-		windowMs: 1000, // 1 second
-		max: rateLimitCallsPerSecond,
-		standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-		legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-		skip: (req, _res) => {
-			if (!loadTestAllowed) {
-				return false;
-			}
+if (!FEATURE_FLAGS.DISABLE_RATE_LIMIT) {
+	app.use(
+		rateLimit({
+			windowMs: 1000, // 1 second
+			max: rateLimitCallsPerSecond,
+			standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+			legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+			skip: (req, _res) => {
+				if (!loadTestAllowed) {
+					return false;
+				}
 
-			return req.headers['user-agent'].includes('k6');
-		},
-	})
-);
+				return req.headers['user-agent'].includes('k6');
+			},
+		})
+	);
+}
 
 // strip off /dlob, if the request comes from exchange history server LB
 app.use((req, _res, next) => {
