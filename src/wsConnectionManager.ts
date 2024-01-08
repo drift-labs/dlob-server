@@ -26,7 +26,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({
 	server,
 	path: '/ws',
-	perMessageDeflate: false,
+	perMessageDeflate: true,
 });
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
