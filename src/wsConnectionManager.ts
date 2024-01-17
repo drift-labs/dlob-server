@@ -103,7 +103,7 @@ async function main() {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		if (subscribers) {
 			subscribers.forEach((ws) => {
-				if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 100)
+				if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 300000)
 					ws.send(
 						JSON.stringify({ channel: subscribedChannel, data: message })
 					);
