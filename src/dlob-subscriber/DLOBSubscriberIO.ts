@@ -96,6 +96,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		const grouping = l2Args.grouping;
 		const { marketName, ...l2FuncArgs } = l2Args;
 		const l2 = this.getL2(l2FuncArgs);
+		const slot = l2.slot;
+		if (slot) {
+			delete l2.slot;
+		}
 		const marketType = isVariant(l2Args.marketType, 'perp') ? 'perp' : 'spot';
 		let l2Formatted: any;
 		if (grouping) {
@@ -119,6 +123,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		l2Formatted['marketName'] = marketName?.toUpperCase();
 		l2Formatted['marketType'] = marketType?.toLowerCase();
 		l2Formatted['marketIndex'] = l2Args.marketIndex;
+		l2Formatted['slot'] = slot;
 		addOracletoResponse(
 			l2Formatted,
 			this.driftClient,
