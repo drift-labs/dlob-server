@@ -10,6 +10,7 @@ import {
 import { RedisClient } from '../utils/redisClient';
 import {
 	SubscriberLookup,
+	addMarketSlotToResponse,
 	addOracletoResponse,
 	l2WithBNToStrings,
 } from '../utils/utils';
@@ -130,7 +131,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
-
+		addMarketSlotToResponse(
+			l2Formatted,
+			this.driftClient,
+			l2Args.marketType,
+			l2Args.marketIndex
+		);
+	
 		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
 			bids: l2Formatted.bids.slice(0, 100),
 			asks: l2Formatted.asks.slice(0, 100),
