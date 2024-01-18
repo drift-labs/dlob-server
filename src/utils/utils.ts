@@ -132,6 +132,21 @@ export const addOracletoResponse = (
 	}
 };
 
+export const addMarketSlotToResponse = (
+	response: L2OrderBook | L3OrderBook,
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number
+): void => {
+	let marketSlot: number;
+	if (isVariant(marketType, 'perp')) {
+		marketSlot = driftClient.accountSubscriber.getMarketAccountAndSlot(marketIndex).slot;
+	} else {
+		marketSlot = driftClient.accountSubscriber.getSpotMarketAccountAndSlot(marketIndex).slot;
+	}
+	response['marketSlot'] = marketSlot;
+};
+
 /**
  * Takes in a req.query like: `{
  * 		marketName: 'SOL-PERP,BTC-PERP,ETH-PERP',
