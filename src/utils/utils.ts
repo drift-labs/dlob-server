@@ -140,9 +140,13 @@ export const addMarketSlotToResponse = (
 ): void => {
 	let marketSlot: number;
 	if (isVariant(marketType, 'perp')) {
-		marketSlot = driftClient.accountSubscriber.getMarketAccountAndSlot(marketIndex).slot;
+		marketSlot =
+			driftClient.accountSubscriber.getMarketAccountAndSlot(marketIndex).slot;
 	} else {
-		marketSlot = driftClient.accountSubscriber.getSpotMarketAccountAndSlot(marketIndex).slot;
+		marketSlot =
+			driftClient.accountSubscriber.getSpotMarketAccountAndSlot(
+				marketIndex
+			).slot;
 	}
 	response['marketSlot'] = marketSlot;
 };
