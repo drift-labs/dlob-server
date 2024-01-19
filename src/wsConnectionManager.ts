@@ -164,11 +164,6 @@ async function main() {
 							.subscribe(redisChannel)
 							.then(() => {
 								subscribedChannels.add(redisChannel);
-								ws.send(
-									JSON.stringify({
-										message: `Subscribe received for channel: ${parsedMessage.channel}, market: ${parsedMessage.market}, marketType: ${parsedMessage.marketType}`,
-									})
-								);
 							})
 							.catch(() => {
 								ws.send(
@@ -186,6 +181,11 @@ async function main() {
 					}
 					channelSubscribers.get(redisChannel).add(ws);
 
+					ws.send(
+						JSON.stringify({
+							message: `Subscribe received for channel: ${parsedMessage.channel}, market: ${parsedMessage.market}, marketType: ${parsedMessage.marketType}`,
+						})
+					);
 					// Fetch and send last message
 					if (redisChannel.includes('orderbook')) {
 						const lastUpdateChannel = `last_update_${redisChannel}`;
