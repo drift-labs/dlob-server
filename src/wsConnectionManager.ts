@@ -164,12 +164,16 @@ async function main() {
 							.subscribe(redisChannel)
 							.then(() => {
 								subscribedChannels.add(redisChannel);
+								ws.send(
+									JSON.stringify({
+										message: `Subscribe received for channel: ${parsedMessage.channel}, market: ${parsedMessage.market}, marketType: ${parsedMessage.marketType}`,
+									})
+								);
 							})
 							.catch(() => {
 								ws.send(
 									JSON.stringify({
-										redisChannel,
-										error: `Error subscribing to channel: ${redisChannel}`,
+										error: `Error subscribing to channel: ${parsedMessage}`,
 									})
 								);
 								return;
@@ -198,6 +202,7 @@ async function main() {
 							);
 						}
 					}
+
 					break;
 				}
 				case 'unsubscribe': {
