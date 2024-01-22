@@ -144,7 +144,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		if (
 			Math.abs(slot - l2Formatted['marketSlot']) >
 				SLOT_DIFF_KILLSWITCH_THRESHOLD ||
-			Math.abs(slot - l2Formatted['oracleData']['slot']) >
+			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
 				SLOT_DIFF_KILLSWITCH_THRESHOLD
 		) {
 			console.log(`Killing process due to slot diffs: 
