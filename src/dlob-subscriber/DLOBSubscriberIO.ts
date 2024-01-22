@@ -15,6 +15,8 @@ import {
 	l2WithBNToStrings,
 } from '../utils/utils';
 
+const SLOT_DIFF_KILLSWITCH_THRESHOLD = 50;
+
 type wsMarketL2Args = {
 	marketIndex: number;
 	marketType: MarketType;
@@ -138,6 +140,20 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
+
+		if (
+			Math.abs(slot - l2Formatted['marketSlot']) >
+				SLOT_DIFF_KILLSWITCH_THRESHOLD ||
+			Math.abs(slot - l2Formatted['oracleData']['slot']) >
+				SLOT_DIFF_KILLSWITCH_THRESHOLD
+		) {
+			console.log(`Killing process due to slot diffs: 
+				dlobProvider slot: ${slot}
+				oracle slot: ${l2Formatted['oracleData']['slot']}
+				market slot: ${l2Formatted['marketSlot']}
+			`);
+			process.exit(1);
+		}
 
 		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
 			bids: l2Formatted.bids.slice(0, 100),
