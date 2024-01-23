@@ -15,7 +15,7 @@ import {
 	l2WithBNToStrings,
 } from '../utils/utils';
 
-const SLOT_DIFF_KILLSWITCH_THRESHOLD = 100;
+const SLOT_DIFF_KILLSWITCH_THRESHOLD = 200;
 
 type wsMarketL2Args = {
 	marketIndex: number;
