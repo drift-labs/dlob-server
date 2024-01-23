@@ -15,7 +15,7 @@ import {
 	l2WithBNToStrings,
 } from '../utils/utils';
 
-const SLOT_DIFF_KILLSWITCH_THRESHOLD = 50;
+const SLOT_DIFF_KILLSWITCH_THRESHOLD = 100;
 
 type wsMarketL2Args = {
 	marketIndex: number;
@@ -38,6 +38,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	public marketL2Args: wsMarketL2Args[] = [];
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
 	redisClient: RedisClient;
+	public marketKillSwitchSlotDiffThreshold: number;
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
@@ -45,10 +46,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
+			marketKillSwitchSlotDiffThreshold?: number;
 		}
 	) {
 		super(config);
 		this.redisClient = config.redisClient;
+		this.marketKillSwitchSlotDiffThreshold =
+			config.marketKillSwitchSlotDiffThreshold || 200;
 
 		// Set up appropriate maps
 		this.lastSeenL2Formatted = new Map();
@@ -142,15 +146,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		);
 
 		if (
-			Math.abs(slot - l2Formatted['marketSlot']) >
-				SLOT_DIFF_KILLSWITCH_THRESHOLD ||
 			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
-				SLOT_DIFF_KILLSWITCH_THRESHOLD
+			SLOT_DIFF_KILLSWITCH_THRESHOLD
 		) {
 			console.log(`Killing process due to slot diffs: 
 				dlobProvider slot: ${slot}
 				oracle slot: ${l2Formatted['oracleData']['slot']}
-				market slot: ${l2Formatted['marketSlot']}
 			`);
 			process.exit(1);
 		}
