@@ -36,6 +36,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	public marketL2Args: wsMarketL2Args[] = [];
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
 	redisClient: RedisClient;
+	public killSwitchSlotDiffThreshold: number;
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
@@ -43,10 +44,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
+			killSwitchSlotDiffThreshold?: number;
 		}
 	) {
 		super(config);
 		this.redisClient = config.redisClient;
+		this.killSwitchSlotDiffThreshold =
+			config.killSwitchSlotDiffThreshold || 200;
 
 		// Set up appropriate maps
 		this.lastSeenL2Formatted = new Map();
@@ -138,6 +142,18 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketType,
 			l2Args.marketIndex
 		);
+
+		if (
+			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
+			this.killSwitchSlotDiffThreshold
+		) {
+			console.log(`Killing process due to slot diffs for market ${marketName}: 
+				dlobProvider slot: ${slot}
+				oracle slot: ${l2Formatted['oracleData']['slot']}
+				market slot: ${l2Formatted['marketSlot']}
+			`);
+			process.exit(1);
+		}
 
 		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
 			bids: l2Formatted.bids.slice(0, 100),
