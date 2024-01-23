@@ -71,8 +71,8 @@ const ORDERBOOK_UPDATE_INTERVAL =
 	parseInt(process.env.ORDERBOOK_UPDATE_INTERVAL) || 1000;
 const WS_FALLBACK_FETCH_INTERVAL = 10_000;
 
-const MARKET_KILLSWITCH_SLOT_DIFF_THRESHOLD =
-	parseInt(process.env.MARKET_KILLSWITCH_SLOT_DIFF_THRESHOLD) || 300;
+const KILLSWITCH_SLOT_DIFF_THRESHOLD =
+	parseInt(process.env.KILLSWITCH_SLOT_DIFF_THRESHOLD) || 200;
 
 // comma separated list of perp market indexes to load: i.e. 0,1,2,3
 const PERP_MARKETS_TO_LOAD =
@@ -398,7 +398,7 @@ const main = async () => {
 		spotMarketSubscribers: MARKET_SUBSCRIBERS,
 		perpMarketInfos,
 		spotMarketInfos,
-		marketKillSwitchSlotDiffThreshold: MARKET_KILLSWITCH_SLOT_DIFF_THRESHOLD,
+		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
 	});
 	await dlobSubscriber.subscribe();
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
