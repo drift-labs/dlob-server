@@ -149,9 +149,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			Math.abs(slot - l2Formatted['marketSlot']) >
 				this.killSwitchSlotDiffThreshold
 		) {
-			console.log(`Killing process due to slot diffs: 
+			console.log(`Killing process due to slot diffs for market ${marketName}: 
 				dlobProvider slot: ${slot}
 				oracle slot: ${l2Formatted['oracleData']['slot']}
+				market slot: ${l2Formatted['marketSlot']}
 			`);
 			process.exit(1);
 		}
