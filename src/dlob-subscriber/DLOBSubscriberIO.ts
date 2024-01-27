@@ -58,13 +58,17 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastSeenL2Formatted.set(MarketType.PERP, new Map());
 
 		for (const market of config.perpMarketInfos) {
+			let includeVamm = true;
+			if (market.marketIndex === 17) {
+				includeVamm = false;
+			}
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.PERP,
 				marketName: market.marketName,
 				depth: -1,
 				numVammOrders: 100,
-				includeVamm: true,
+				includeVamm,
 				updateOnChange: true,
 				fallbackL2Generators: [],
 			});
