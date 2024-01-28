@@ -70,7 +70,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				depth: -1,
 				numVammOrders: 100,
 				includeVamm,
-				updateOnChange: true,
+				updateOnChange: includeVamm,
 				fallbackL2Generators: [],
 			});
 		}
