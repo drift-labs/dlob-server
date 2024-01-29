@@ -27,6 +27,8 @@ type wsMarketL2Args = {
 	updateOnChange?: boolean;
 };
 
+const MAKRET_STALENESS_THRESHOLD = 10 * 60 * 1000;
+
 export type wsMarketInfo = {
 	marketIndex: number;
 	marketName: string;
@@ -37,6 +39,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
 	redisClient: RedisClient;
 	public killSwitchSlotDiffThreshold: number;
+	public lastMarketSlotMap: Map<
+		MarketType,
+		Map<number, { slot: number; ts: number }>
+	>;
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
@@ -56,16 +62,24 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastSeenL2Formatted = new Map();
 		this.lastSeenL2Formatted.set(MarketType.SPOT, new Map());
 		this.lastSeenL2Formatted.set(MarketType.PERP, new Map());
+		this.lastMarketSlotMap = new Map();
+		this.lastMarketSlotMap.set(MarketType.SPOT, new Map());
+		this.lastMarketSlotMap.set(MarketType.PERP, new Map());
 
 		for (const market of config.perpMarketInfos) {
+			const perpMarket = this.driftClient.getPerpMarketAccount(
+				market.marketIndex
+			);
+			const includeVamm = !isVariant(perpMarket.status, 'ammPaused');
+
 			this.marketL2Args.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.PERP,
 				marketName: market.marketName,
 				depth: -1,
 				numVammOrders: 100,
-				includeVamm: true,
-				updateOnChange: true,
+				includeVamm,
+				updateOnChange: includeVamm,
 				fallbackL2Generators: [],
 			});
 		}
@@ -102,6 +116,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		const { marketName, ...l2FuncArgs } = l2Args;
 		const l2 = this.getL2(l2FuncArgs);
 		const slot = l2.slot;
+		const lastMarketSlotAndTime = this.lastMarketSlotMap
+			.get(l2Args.marketType)
+			.get(l2Args.marketIndex);
+		if (!lastMarketSlotAndTime) {
+			this.lastMarketSlotMap
+				.get(l2Args.marketType)
+				.set(l2Args.marketIndex, { slot, ts: Date.now() });
+		}
+
 		if (slot) {
 			delete l2.slot;
 		}
@@ -122,6 +145,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			)
 				return;
 		}
+
 		this.lastSeenL2Formatted
 			.get(l2Args.marketType)
 			?.set(l2Args.marketIndex, JSON.stringify(l2Formatted));
@@ -143,6 +167,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Args.marketIndex
 		);
 
+		// Check if slot diffs are too large for oracle
 		if (
 			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
 			this.killSwitchSlotDiffThreshold
@@ -150,9 +175,34 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			console.log(`Killing process due to slot diffs for market ${marketName}: 
 				dlobProvider slot: ${slot}
 				oracle slot: ${l2Formatted['oracleData']['slot']}
+			`);
+			process.exit(1);
+		}
+
+		// Check if times and slots are too different for market
+		if (
+			lastMarketSlotAndTime &&
+			l2Formatted['marketSlot'] === lastMarketSlotAndTime.slot &&
+			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD
+		) {
+			console.log(`Killing process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms: 
+				dlobProvider slot: ${slot}
 				market slot: ${l2Formatted['marketSlot']}
 			`);
 			process.exit(1);
+		} else if (
+			lastMarketSlotAndTime &&
+			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot
+		) {
+			console.log(
+				`Updating market slot for ${l2Args.marketName} with slot ${l2Formatted['marketSlot']}`
+			);
+			this.lastMarketSlotMap
+				.get(l2Args.marketType)
+				.set(l2Args.marketIndex, {
+					slot: l2Formatted['marketSlot'],
+					ts: Date.now(),
+				});
 		}
 
 		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {

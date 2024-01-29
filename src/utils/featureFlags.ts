@@ -12,6 +12,10 @@ export const FEATURE_FLAGS = {
 	DISABLE_GPA_REFRESH: process.env.DISABLE_GPA_REFRESH
 		? process.env.DISABLE_GPA_REFRESH.toLowerCase() === 'true'
 		: false,
+
+	DISABLE_RATE_LIMIT: process.env.DISABLE_RATE_LIMIT
+		? process.env.DISABLE_RATE_LIMIT.toLowerCase() === 'true'
+		: false,
 };
 
 export default FEATURE_FLAGS;
