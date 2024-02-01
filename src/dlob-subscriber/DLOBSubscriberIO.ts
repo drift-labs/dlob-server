@@ -79,7 +79,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				depth: -1,
 				numVammOrders: 100,
 				includeVamm,
-				updateOnChange: includeVamm,
+				updateOnChange: false,
 				fallbackL2Generators: [],
 			});
 		}
@@ -90,7 +90,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				marketName: market.marketName,
 				depth: -1,
 				includeVamm: false,
-				updateOnChange: true,
+				updateOnChange: false,
 				fallbackL2Generators: [
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
 					config.spotMarketSubscribers[market.marketIndex].serum,
