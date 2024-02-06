@@ -27,7 +27,8 @@ type wsMarketL2Args = {
 	updateOnChange?: boolean;
 };
 
-const MAKRET_STALENESS_THRESHOLD = 10 * 60 * 1000;
+const PERP_MAKRET_STALENESS_THRESHOLD = 10 * 60 * 1000;
+const SPOT_MAKRET_STALENESS_THRESHOLD = 20 * 60 * 1000;
 
 export type wsMarketInfo = {
 	marketIndex: number;
@@ -180,6 +181,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		}
 
 		// Check if times and slots are too different for market
+		const MAKRET_STALENESS_THRESHOLD =
+			marketType === 'perp'
+				? PERP_MAKRET_STALENESS_THRESHOLD
+				: SPOT_MAKRET_STALENESS_THRESHOLD;
 		if (
 			lastMarketSlotAndTime &&
 			l2Formatted['marketSlot'] === lastMarketSlotAndTime.slot &&
@@ -197,12 +202,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			console.log(
 				`Updating market slot for ${l2Args.marketName} with slot ${l2Formatted['marketSlot']}`
 			);
-			this.lastMarketSlotMap
-				.get(l2Args.marketType)
-				.set(l2Args.marketIndex, {
-					slot: l2Formatted['marketSlot'],
-					ts: Date.now(),
-				});
+			this.lastMarketSlotMap.get(l2Args.marketType).set(l2Args.marketIndex, {
+				slot: l2Formatted['marketSlot'],
+				ts: Date.now(),
+			});
 		}
 
 		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
