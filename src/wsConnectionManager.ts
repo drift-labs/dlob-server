@@ -293,7 +293,7 @@ async function main() {
 			set = new Set([...set, ...wsSet]);
 		}
 		for (const ws of set) {
-			if (ws.bufferedAmount > 100) {
+			if (ws.bufferedAmount > 350000) {
 				ws.close();
 			}
 		}
