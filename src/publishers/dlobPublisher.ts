@@ -42,7 +42,7 @@ import FEATURE_FLAGS from '../utils/featureFlags';
 import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
 
 require('dotenv').config();
-const stateCommitment: Commitment = 'processed';
+const stateCommitment: Commitment = 'confirmed';
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';

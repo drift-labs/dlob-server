@@ -7,9 +7,7 @@ import {
 	initialize,
 	DriftEnv,
 	SlotSubscriber,
-	UserMap,
 	Wallet,
-	BulkAccountLoader,
 	EventSubscriber,
 	OrderAction,
 	convertToNumber,
@@ -38,9 +36,7 @@ const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
 
-const stateCommitment: Commitment = 'processed';
-const ORDERBOOK_UPDATE_INTERVAL = 1000;
-
+const stateCommitment: Commitment = 'confirmed';
 let driftClient: DriftClient;
 
 const opts = program.opts();
@@ -62,19 +58,14 @@ const main = async () => {
 		commitment: stateCommitment,
 	});
 
-	const bulkAccountLoader = new BulkAccountLoader(
-		connection,
-		stateCommitment,
-		ORDERBOOK_UPDATE_INTERVAL
-	);
-
 	driftClient = new DriftClient({
 		connection,
 		wallet,
 		programID: clearingHousePublicKey,
 		accountSubscription: {
-			type: 'polling',
-			accountLoader: bulkAccountLoader,
+			type: 'websocket',
+			commitment: stateCommitment,
+			resubTimeoutMs: 30_000,
 		},
 		env: driftEnv,
 	});
@@ -95,18 +86,6 @@ const main = async () => {
 	});
 
 	await slotSubscriber.subscribe();
-
-	const userMap = new UserMap({
-		driftClient,
-		subscriptionConfig: {
-			type: 'websocket',
-			resubTimeoutMs: 30_000,
-			commitment: stateCommitment,
-		},
-		skipInitialLoad: false,
-		includeIdle: false,
-	});
-	await userMap.subscribe();
 
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
 	await redisClient.connect();
