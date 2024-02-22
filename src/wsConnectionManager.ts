@@ -36,6 +36,7 @@ const WS_PORT = process.env.WS_PORT || '3000';
 console.log(`WS LISTENER PORT : ${WS_PORT}`);
 
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+const MAX_BUFFERED_AMOUNT = 300000;
 
 const safeGetRawChannelFromMessage = (message: any): string => {
 	return message?.channel;
@@ -103,7 +104,10 @@ async function main() {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		if (subscribers) {
 			subscribers.forEach((ws) => {
-				if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 300000)
+				if (
+					ws.readyState === WebSocket.OPEN &&
+					ws.bufferedAmount < MAX_BUFFERED_AMOUNT
+				)
 					ws.send(
 						JSON.stringify({ channel: subscribedChannel, data: message })
 					);
@@ -245,10 +249,31 @@ async function main() {
 			}
 		});
 
+		// Set interval to send heartbeat every 5 seconds
+		const heartbeatInterval = setInterval(() => {
+			if (ws.readyState === WebSocket.OPEN) {
+				ws.send(JSON.stringify({ channel: 'heartbeat' }));
+			} else {
+				clearInterval(heartbeatInterval);
+			}
+		}, 5000);
+
+		// Buffer overflow check interval
+		const bufferInterval = setInterval(() => {
+			if (ws.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+				if (ws.readyState === WebSocket.OPEN) {
+					ws.close(1008, 'Buffer overflow');
+				}
+				clearInterval(bufferInterval);
+			}
+		}, 10000);
+
 		// Handle disconnection
 		ws.on('close', () => {
 			console.log('Client disconnected');
-			// Clear any existing intervals and timeouts
+			// Clear any existing intervals
+			clearInterval(heartbeatInterval);
+			clearInterval(bufferInterval);
 			channelSubscribers.forEach((subscribers, channel) => {
 				if (subscribers.delete(ws) && subscribers.size === 0) {
 					redisClient.client.unsubscribe(channel);
@@ -262,15 +287,6 @@ async function main() {
 		ws.on('error', (error) => {
 			console.error('Socket error:', error);
 		});
-
-		// Set interval to send heartbeat every 5 seconds
-		setInterval(() => {
-			ws.send(
-				JSON.stringify({
-					channel: 'heartbeat',
-				})
-			);
-		}, 5000);
 	});
 
 	server.listen(WS_PORT, () => {
@@ -285,19 +301,6 @@ async function main() {
 	server.on('error', (error) => {
 		console.error('Server error:', error);
 	});
-
-	// Periodic check for bad clients and disconnect them to alleviate backpressure
-	setInterval(() => {
-		let set = new Set<WebSocket>();
-		for (const [_channel, wsSet] of channelSubscribers) {
-			set = new Set([...set, ...wsSet]);
-		}
-		for (const ws of set) {
-			if (ws.bufferedAmount > 350000) {
-				ws.close();
-			}
-		}
-	}, 5000);
 }
 
 async function recursiveTryCatch(f: () => void) {
