@@ -89,7 +89,7 @@ const commitHash = process.env.COMMIT;
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
 
-const stateCommitment: Commitment = 'processed';
+const stateCommitment: Commitment = 'confirmed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
