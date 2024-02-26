@@ -8,7 +8,6 @@ import morgan from 'morgan';
 import { Commitment, Connection, Keypair, PublicKey } from '@solana/web3.js';
 
 import {
-	BN,
 	BulkAccountLoader,
 	DLOBNode,
 	DLOBOrder,
@@ -22,10 +21,10 @@ import {
 	Wallet,
 	getUserStatsAccountPublicKey,
 	getVariant,
-	groupL2,
 	initialize,
 	isVariant,
 	OrderSubscriber,
+	MarketType,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -353,14 +352,25 @@ const main = async (): Promise<void> => {
 		`DLOBSubscriber initialized in ${Date.now() - initDlobSubscriberStart} ms`
 	);
 
+	// Handle redis client initialization and rotation maps
 	const redisClients: Array<RedisClient> = [];
 	const spotMarketRedisMap: Map<
 		number,
-		{ client: RedisClient; clientIndex: number }
+		{
+			client: RedisClient;
+			clientIndex: number;
+			lastRotationTime: number;
+			lock: boolean;
+		}
 	> = new Map();
 	const perpMarketRedisMap: Map<
 		number,
-		{ client: RedisClient; clientIndex: number }
+		{
+			client: RedisClient;
+			clientIndex: number;
+			lastRotationTime: number;
+			lock: boolean;
+		}
 	> = new Map();
 	if (useRedis) {
 		logger.info('Connecting to redis');
@@ -378,13 +388,70 @@ const main = async (): Promise<void> => {
 			spotMarketRedisMap.set(sdkConfig.SPOT_MARKETS[i].marketIndex, {
 				client: redisClients[0],
 				clientIndex: 0,
+				lastRotationTime: 0,
+				lock: false,
 			});
 		}
 		for (let i = 0; i < sdkConfig.PERP_MARKETS.length; i++) {
 			perpMarketRedisMap.set(sdkConfig.PERP_MARKETS[i].marketIndex, {
 				client: redisClients[0],
 				clientIndex: 0,
+				lastRotationTime: 0,
+				lock: false,
 			});
+		}
+	}
+
+	function canRotate(marketType: MarketType, marketIndex: number) {
+		if (isVariant(marketType, 'spot')) {
+			const state = spotMarketRedisMap.get(marketIndex);
+			if (state) {
+				const now = Date.now();
+				if (now - state.lastRotationTime > 30000 && !state.lock) {
+					state.lastRotationTime = now;
+					return true;
+				}
+			}
+		} else {
+			const state = perpMarketRedisMap.get(marketIndex);
+			if (state) {
+				const now = Date.now();
+				if (now - state.lastRotationTime > 30000 && !state.lock) {
+					state.lastRotationTime = now;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	function rotateClient(marketType: MarketType, marketIndex: number) {
+		if (isVariant(marketType, 'spot')) {
+			const state = spotMarketRedisMap.get(marketIndex);
+			if (state) {
+				state.lock = true;
+				const nextClientIndex = (state.clientIndex + 1) % redisClients.length;
+				state.client = redisClients[nextClientIndex];
+				state.clientIndex = nextClientIndex;
+				logger.info(
+					`Rotated redis client to index ${nextClientIndex} for spot market ${marketIndex}`
+				);
+				state.lastRotationTime = Date.now();
+				state.lock = false;
+			}
+		} else {
+			const state = perpMarketRedisMap.get(marketIndex);
+			if (state) {
+				state.lock = true;
+				const nextClientIndex = (state.clientIndex + 1) % redisClients.length;
+				state.client = redisClients[nextClientIndex];
+				state.clientIndex = nextClientIndex;
+				logger.info(
+					`Rotated redis client to index ${nextClientIndex} for perp market ${marketIndex}`
+				);
+				state.lastRotationTime = Date.now();
+				state.lock = false;
+			}
 		}
 	}
 
@@ -762,7 +829,6 @@ const main = async (): Promise<void> => {
 				includeVamm,
 				includePhoenix,
 				includeSerum,
-				grouping, // undefined or PRICE_PRECISION
 				includeOracle,
 			} = req.query;
 
@@ -780,20 +846,14 @@ const main = async (): Promise<void> => {
 
 			const isSpot = isVariant(normedMarketType, 'spot');
 
-			let adjustedDepth = depth ?? '10';
-			if (grouping !== undefined) {
-				// If grouping is also supplied, we want the entire book depth.
-				// we will apply depth after grouping
-				adjustedDepth = '-1';
-			}
+			const adjustedDepth = depth ?? '100';
 
 			let l2Formatted: any;
 			if (useRedis) {
 				if (
 					!isSpot &&
 					`${includeVamm}`?.toLowerCase() === 'true' &&
-					`${includeOracle}`?.toLowerCase() === 'true' &&
-					!grouping
+					`${includeOracle}`?.toLowerCase() === 'true'
 				) {
 					let redisL2: string;
 					const redisClient = perpMarketRedisMap.get(normedMarketIndex).client;
@@ -818,24 +878,16 @@ const main = async (): Promise<void> => {
 						l2Formatted = redisL2;
 					} else {
 						if (redisL2 && redisClients.length > 1) {
-							const nextClientIndex =
-								(perpMarketRedisMap.get(normedMarketIndex).clientIndex + 1) %
-								redisClients.length;
-							perpMarketRedisMap.set(normedMarketIndex, {
-								client: redisClients[nextClientIndex],
-								clientIndex: nextClientIndex,
-							});
-							console.log(
-								`Rotated redis client to index ${nextClientIndex} for perp market ${normedMarketIndex}`
-							);
+							if (canRotate(normedMarketType, normedMarketIndex)) {
+								rotateClient(normedMarketType, normedMarketIndex);
+							}
 						}
 					}
 				} else if (
 					isSpot &&
 					`${includeSerum}`?.toLowerCase() === 'true' &&
 					`${includePhoenix}`?.toLowerCase() === 'true' &&
-					`${includeOracle}`?.toLowerCase() === 'true' &&
-					!grouping
+					`${includeOracle}`?.toLowerCase() === 'true'
 				) {
 					let redisL2: string;
 					const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
@@ -860,16 +912,9 @@ const main = async (): Promise<void> => {
 						l2Formatted = redisL2;
 					} else {
 						if (redisL2 && redisClients.length > 1) {
-							const nextClientIndex =
-								(spotMarketRedisMap.get(normedMarketIndex).clientIndex + 1) %
-								redisClients.length;
-							spotMarketRedisMap.set(normedMarketIndex, {
-								client: redisClients[nextClientIndex],
-								clientIndex: nextClientIndex,
-							});
-							console.log(
-								`Rotated redis client to index ${nextClientIndex} for spot market ${normedMarketIndex}`
-							);
+							if (canRotate(normedMarketType, normedMarketIndex)) {
+								rotateClient(normedMarketType, normedMarketIndex);
+							}
 						}
 					}
 				}
@@ -900,38 +945,17 @@ const main = async (): Promise<void> => {
 					: [],
 			});
 
-			if (grouping) {
-				const finalDepth = depth ? parseInt(depth as string) : 10;
-				if (isNaN(parseInt(grouping as string))) {
-					res
-						.status(400)
-						.send('Bad Request: grouping must be a number if supplied');
-					return;
-				}
-				const groupingBN = new BN(parseInt(grouping as string));
-				const l2Formatted = l2WithBNToStrings(
-					groupL2(l2, groupingBN, finalDepth)
+			// make the BNs into strings
+			l2Formatted = l2WithBNToStrings(l2);
+			if (`${includeOracle}`.toLowerCase() === 'true') {
+				addOracletoResponse(
+					l2Formatted,
+					driftClient,
+					normedMarketType,
+					normedMarketIndex
 				);
-				if (`${includeOracle}`.toLowerCase() === 'true') {
-					addOracletoResponse(
-						l2Formatted,
-						driftClient,
-						normedMarketType,
-						normedMarketIndex
-					);
-				}
-			} else {
-				// make the BNs into strings
-				l2Formatted = l2WithBNToStrings(l2);
-				if (`${includeOracle}`.toLowerCase() === 'true') {
-					addOracletoResponse(
-						l2Formatted,
-						driftClient,
-						normedMarketType,
-						normedMarketIndex
-					);
-				}
 			}
+
 			cacheHitCounter.add(1, {
 				miss: true,
 			});
@@ -953,7 +977,6 @@ const main = async (): Promise<void> => {
 				includePhoenix,
 				includeSerum,
 				includeOracle,
-				grouping, // undefined or PRICE_PRECISION
 			} = req.query;
 
 			const normedParams = normalizeBatchQueryParams({
@@ -965,7 +988,6 @@ const main = async (): Promise<void> => {
 				includePhoenix: includePhoenix as string | undefined,
 				includeSerum: includeSerum as string | undefined,
 				includeOracle: includeOracle as string | undefined,
-				grouping: grouping as string | undefined,
 			});
 
 			if (normedParams === undefined) {
@@ -994,20 +1016,13 @@ const main = async (): Promise<void> => {
 
 					const isSpot = isVariant(normedMarketType, 'spot');
 
-					let adjustedDepth = normedParam['depth'] ?? '10';
-					if (normedParam['grouping'] !== undefined) {
-						// If grouping is also supplied, we want the entire book depth.
-						// we will apply depth after grouping
-						adjustedDepth = '-1';
-					}
-
+					const adjustedDepth = normedParam['depth'] ?? '100';
 					let l2Formatted: any;
 					if (useRedis) {
 						if (
 							!isSpot &&
 							normedParam['includeVamm']?.toLowerCase() === 'true' &&
-							normedParam['includeOracle']?.toLowerCase() === 'true' &&
-							!normedParam['grouping']
+							normedParam['includeOracle']?.toLowerCase() === 'true'
 						) {
 							let redisL2: string;
 							const redisClient =
@@ -1034,25 +1049,16 @@ const main = async (): Promise<void> => {
 									l2Formatted = parsedRedisL2;
 								} else {
 									if (redisClients.length > 1) {
-										const nextClientIndex =
-											(perpMarketRedisMap.get(normedMarketIndex).clientIndex +
-												1) %
-											redisClients.length;
-										perpMarketRedisMap.set(normedMarketIndex, {
-											client: redisClients[nextClientIndex],
-											clientIndex: nextClientIndex,
-										});
-										console.log(
-											`Rotated redis client to index ${nextClientIndex} for perp market ${normedMarketIndex}`
-										);
+										if (canRotate(normedMarketType, normedMarketIndex)) {
+											rotateClient(normedMarketType, normedMarketIndex);
+										}
 									}
 								}
 							}
 						} else if (
 							isSpot &&
 							normedParam['includePhoenix']?.toLowerCase() === 'true' &&
-							normedParam['includeSerum']?.toLowerCase() === 'true' &&
-							!normedParam['grouping']
+							normedParam['includeSerum']?.toLowerCase() === 'true'
 						) {
 							let redisL2: string;
 							const redisClient =
@@ -1079,17 +1085,9 @@ const main = async (): Promise<void> => {
 									l2Formatted = parsedRedisL2;
 								} else {
 									if (redisClients.length > 1) {
-										const nextClientIndex =
-											(spotMarketRedisMap.get(normedMarketIndex).clientIndex +
-												1) %
-											redisClients.length;
-										spotMarketRedisMap.set(normedMarketIndex, {
-											client: redisClients[nextClientIndex],
-											clientIndex: nextClientIndex,
-										});
-										console.log(
-											`Rotated redis client to index ${nextClientIndex} for spot market ${normedMarketIndex}`
-										);
+										if (canRotate(normedMarketType, normedMarketIndex)) {
+											rotateClient(normedMarketType, normedMarketIndex);
+										}
 									}
 								}
 							}
@@ -1120,42 +1118,15 @@ const main = async (): Promise<void> => {
 							: [],
 					});
 
-					if (normedParam['grouping']) {
-						const finalDepth = normedParam['depth']
-							? parseInt(normedParam['depth'] as string)
-							: 10;
-						if (isNaN(parseInt(normedParam['grouping'] as string))) {
-							res
-								.status(400)
-								.send('Bad Request: grouping must be a number if supplied');
-							return;
-						}
-						const groupingBN = new BN(
-							parseInt(normedParam['grouping'] as string)
+					// make the BNs into strings
+					l2Formatted = l2WithBNToStrings(l2);
+					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
+						addOracletoResponse(
+							l2Formatted,
+							driftClient,
+							normedMarketType,
+							normedMarketIndex
 						);
-
-						l2Formatted = l2WithBNToStrings(
-							groupL2(l2, groupingBN, finalDepth)
-						);
-						if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
-							addOracletoResponse(
-								l2Formatted,
-								driftClient,
-								normedMarketType,
-								normedMarketIndex
-							);
-						}
-					} else {
-						// make the BNs into strings
-						l2Formatted = l2WithBNToStrings(l2);
-						if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
-							addOracletoResponse(
-								l2Formatted,
-								driftClient,
-								normedMarketType,
-								normedMarketIndex
-							);
-						}
 					}
 					cacheHitCounter.add(1, {
 						miss: true,
