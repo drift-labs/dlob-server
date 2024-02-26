@@ -1000,6 +1000,8 @@ const main = async (): Promise<void> => {
 				return;
 			}
 
+			let hasError = false;
+			let errorMessage = '';
 			const l2s = await Promise.all(
 				normedParams.map(async (normedParam) => {
 					const { normedMarketType, normedMarketIndex, error } =
@@ -1011,7 +1013,8 @@ const main = async (): Promise<void> => {
 							normedParam['marketName'] as string
 						);
 					if (error) {
-						res.status(400).send(`Bad Request: ${error}`);
+						hasError = true;
+						errorMessage = `Bad Request: ${error}`;
 						return;
 					}
 
@@ -1135,6 +1138,11 @@ const main = async (): Promise<void> => {
 					return l2Formatted;
 				})
 			);
+
+			if (hasError) {
+				res.status(400).send(errorMessage);
+				return;
+			}
 
 			res.writeHead(200);
 			res.end(JSON.stringify({ l2s }));
