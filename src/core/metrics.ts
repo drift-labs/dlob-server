@@ -37,6 +37,7 @@ enum METRIC_TYPES {
 	cache_miss_count = 'cache_miss_count',
 	current_system_ts = 'current_system_ts',
 	health_status = 'health_status',
+	incoming_requests_count = 'incoming_requests_count',
 }
 
 export enum HEALTH_STATUS {
@@ -115,6 +116,13 @@ lastWsReceivedTsGauge.addCallback((obs: ObservableResult) => {
 const cacheHitCounter = meter.createCounter(METRIC_TYPES.cache_hit_count, {
 	description: 'Total redis cache hits',
 });
+
+const incomingRequestsCounter = meter.createCounter(
+	METRIC_TYPES.incoming_requests_count,
+	{
+		description: 'Total incoming requests',
+	}
+);
 
 const accountUpdatesCounter = meter.createCounter(
 	METRIC_TYPES.account_updates_count,
@@ -225,6 +233,7 @@ export {
 	endpointResponseTimeHistogram,
 	gpaFetchDurationHistogram,
 	responseStatusCounter,
+	incomingRequestsCounter,
 	handleHealthCheck,
 	setLastReceivedWsMsgTs,
 	accountUpdatesCounter,

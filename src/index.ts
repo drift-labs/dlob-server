@@ -36,6 +36,7 @@ import {
 	accountUpdatesCounter,
 	cacheHitCounter,
 	setLastReceivedWsMsgTs,
+	incomingRequestsCounter,
 	runtimeSpecsGauge,
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
@@ -57,26 +58,29 @@ import { RedisClient } from './utils/redisClient';
 require('dotenv').config();
 
 // Reading in Redis env vars
-const REDIS_HOSTS_ENV = (process.env.REDIS_HOSTS as string) || 'localhost';
-const REDIS_HOSTS = REDIS_HOSTS_ENV.includes(',')
-	? REDIS_HOSTS_ENV.trim()
-			.replace(/^\[|\]$/g, '')
-			.split(/\s*,\s*/)
-	: [REDIS_HOSTS_ENV];
+const REDIS_HOSTS = process.env.REDIS_HOSTS?.replace(/^\[|\]$/g, '')
+	.split(',')
+	.map((host) => host.trim()) || ['localhost'];
+const REDIS_PORTS = process.env.REDIS_PORTS?.replace(/^\[|\]$/g, '')
+	.split(',')
+	.map((port) => parseInt(port.trim(), 10)) || [6379];
+const REDIS_PASSWORDS_ENV = process.env.REDIS_PASSWORDS || "['']";
 
-const REDIS_PASSWORDS_ENV = (process.env.REDIS_PASSWORDS as string) || '';
-const REDIS_PASSWORDS = REDIS_PASSWORDS_ENV.includes(',')
-	? REDIS_PASSWORDS_ENV.trim()
-			.replace(/^\[|\]$/g, '')
-			.split(/\s*,\s*/)
-	: [REDIS_PASSWORDS_ENV];
+let REDIS_PASSWORDS;
 
-const REDIS_PORTS_ENV = (process.env.REDIS_PORTS as string) || '6379';
-const REDIS_PORTS = REDIS_PORTS_ENV.includes(',')
-	? REDIS_PORTS_ENV.trim()
-			.replace(/^\[|\]$/g, '')
-			.split(/\s*,\s*/)
-	: [REDIS_PORTS_ENV];
+if (REDIS_PASSWORDS_ENV.trim() === "['']") {
+	REDIS_PASSWORDS = [undefined];
+} else {
+	REDIS_PASSWORDS = REDIS_PASSWORDS_ENV.replace(/^\[|\]$/g, '')
+		.split(/\s*,\s*/)
+		.map((pwd) => pwd.replace(/(^'|'$)/g, '').trim())
+		.map((pwd) => (pwd === '' ? undefined : pwd));
+}
+
+console.log('Redis Hosts:', REDIS_HOSTS);
+console.log('Redis Ports:', REDIS_PORTS);
+console.log('Redis Passwords:', REDIS_PASSWORDS);
+
 if (
 	REDIS_PORTS.length !== REDIS_PASSWORDS.length ||
 	REDIS_PORTS.length !== REDIS_HOSTS.length
@@ -142,6 +146,7 @@ app.use((req, _res, next) => {
 			req.url = '/';
 		}
 	}
+	incomingRequestsCounter.add(1);
 	next();
 });
 
@@ -363,7 +368,7 @@ const main = async (): Promise<void> => {
 			redisClients.push(
 				new RedisClient(
 					REDIS_HOSTS[i],
-					REDIS_PORTS[i],
+					REDIS_PORTS[i].toString(),
 					REDIS_PASSWORDS[i] || undefined
 				)
 			);
@@ -1180,6 +1185,32 @@ const main = async (): Promise<void> => {
 			if (error) {
 				res.status(400).send(error);
 				return;
+			}
+
+			const marketTypeStr = getVariant(normedMarketType);
+			if (useRedis) {
+				const redisClient = (
+					marketTypeStr === 'spot' ? spotMarketRedisMap : perpMarketRedisMap
+				).get(normedMarketIndex).client;
+				const redisL3 = await redisClient.client.get(
+					`last_update_orderbook_l3_${marketTypeStr}_${normedMarketIndex}`
+				);
+				if (
+					redisL3 &&
+					dlobProvider.getSlot() - parseInt(JSON.parse(redisL3).slot) <
+						SLOT_STALENESS_TOLERANCE
+				) {
+					cacheHitCounter.add(1, {
+						miss: false,
+					});
+					res.writeHead(200);
+					res.end(redisL3);
+					return;
+				} else {
+					cacheHitCounter.add(1, {
+						miss: true,
+					});
+				}
 			}
 
 			const l3 = dlobSubscriber.getL3({

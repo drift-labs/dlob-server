@@ -15,7 +15,7 @@ import {
 	l2WithBNToStrings,
 } from '../utils/utils';
 
-type wsMarketL2Args = {
+type wsMarketArgs = {
 	marketIndex: number;
 	marketType: MarketType;
 	marketName: string;
@@ -36,7 +36,7 @@ export type wsMarketInfo = {
 };
 
 export class DLOBSubscriberIO extends DLOBSubscriber {
-	public marketL2Args: wsMarketL2Args[] = [];
+	public marketArgs: wsMarketArgs[] = [];
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
 	redisClient: RedisClient;
 	public killSwitchSlotDiffThreshold: number;
@@ -73,7 +73,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			);
 			const includeVamm = !isVariant(perpMarket.status, 'ammPaused');
 
-			this.marketL2Args.push({
+			this.marketArgs.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.PERP,
 				marketName: market.marketName,
@@ -85,7 +85,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			});
 		}
 		for (const market of config.spotMarketInfos) {
-			this.marketL2Args.push({
+			this.marketArgs.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.SPOT,
 				marketName: market.marketName,
@@ -102,70 +102,75 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	override async updateDLOB(): Promise<void> {
 		await super.updateDLOB();
-		for (const l2Args of this.marketL2Args) {
+		for (const marketArgs of this.marketArgs) {
 			try {
-				this.getL2AndSendMsg(l2Args);
+				this.getL2AndSendMsg(marketArgs);
+				this.getL3AndSendMsg(marketArgs);
 			} catch (error) {
 				console.error(error);
-				console.log(`Error getting L2 ${l2Args.marketName}`);
+				console.log(`Error getting L2 ${marketArgs.marketName}`);
 			}
 		}
 	}
 
-	getL2AndSendMsg(l2Args: wsMarketL2Args): void {
-		const grouping = l2Args.grouping;
-		const { marketName, ...l2FuncArgs } = l2Args;
+	getL2AndSendMsg(marketArgs: wsMarketArgs): void {
+		const grouping = marketArgs.grouping;
+		const { marketName, ...l2FuncArgs } = marketArgs;
 		const l2 = this.getL2(l2FuncArgs);
 		const slot = l2.slot;
 		const lastMarketSlotAndTime = this.lastMarketSlotMap
-			.get(l2Args.marketType)
-			.get(l2Args.marketIndex);
+			.get(marketArgs.marketType)
+			.get(marketArgs.marketIndex);
 		if (!lastMarketSlotAndTime) {
 			this.lastMarketSlotMap
-				.get(l2Args.marketType)
-				.set(l2Args.marketIndex, { slot, ts: Date.now() });
+				.get(marketArgs.marketType)
+				.set(marketArgs.marketIndex, { slot, ts: Date.now() });
 		}
 
 		if (slot) {
 			delete l2.slot;
 		}
-		const marketType = isVariant(l2Args.marketType, 'perp') ? 'perp' : 'spot';
+		const marketType = isVariant(marketArgs.marketType, 'perp')
+			? 'perp'
+			: 'spot';
 		let l2Formatted: any;
 		if (grouping) {
 			const groupingBN = new BN(grouping);
-			l2Formatted = l2WithBNToStrings(groupL2(l2, groupingBN, l2Args.depth));
+			l2Formatted = l2WithBNToStrings(
+				groupL2(l2, groupingBN, marketArgs.depth)
+			);
 		} else {
 			l2Formatted = l2WithBNToStrings(l2);
 		}
 
-		if (l2Args.updateOnChange) {
+		if (marketArgs.updateOnChange) {
 			if (
 				this.lastSeenL2Formatted
-					.get(l2Args.marketType)
-					?.get(l2Args.marketIndex) === JSON.stringify(l2Formatted)
+					.get(marketArgs.marketType)
+					?.get(marketArgs.marketIndex) === JSON.stringify(l2Formatted)
 			)
 				return;
 		}
 
 		this.lastSeenL2Formatted
-			.get(l2Args.marketType)
-			?.set(l2Args.marketIndex, JSON.stringify(l2Formatted));
+			.get(marketArgs.marketType)
+			?.set(marketArgs.marketIndex, JSON.stringify(l2Formatted));
 		l2Formatted['marketName'] = marketName?.toUpperCase();
 		l2Formatted['marketType'] = marketType?.toLowerCase();
-		l2Formatted['marketIndex'] = l2Args.marketIndex;
+		l2Formatted['marketIndex'] = marketArgs.marketIndex;
 		l2Formatted['ts'] = Date.now();
 		l2Formatted['slot'] = slot;
 		addOracletoResponse(
 			l2Formatted,
 			this.driftClient,
-			l2Args.marketType,
-			l2Args.marketIndex
+			marketArgs.marketType,
+			marketArgs.marketIndex
 		);
 		addMarketSlotToResponse(
 			l2Formatted,
 			this.driftClient,
-			l2Args.marketType,
-			l2Args.marketIndex
+			marketArgs.marketType,
+			marketArgs.marketIndex
 		);
 
 		// Check if slot diffs are too large for oracle
@@ -200,12 +205,14 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot
 		) {
 			console.log(
-				`Updating market slot for ${l2Args.marketName} with slot ${l2Formatted['marketSlot']}`
+				`Updating market slot for ${marketArgs.marketName} with slot ${l2Formatted['marketSlot']}`
 			);
-			this.lastMarketSlotMap.get(l2Args.marketType).set(l2Args.marketIndex, {
-				slot: l2Formatted['marketSlot'],
-				ts: Date.now(),
-			});
+			this.lastMarketSlotMap
+				.get(marketArgs.marketType)
+				.set(marketArgs.marketIndex, {
+					slot: l2Formatted['marketSlot'],
+					ts: Date.now(),
+				});
 		}
 
 		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
@@ -222,24 +229,121 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		});
 
 		this.redisClient.client.publish(
-			`orderbook_${marketType}_${l2Args.marketIndex}`,
+			`orderbook_${marketType}_${marketArgs.marketIndex}`,
 			JSON.stringify(l2Formatted)
 		);
 		this.redisClient.client.set(
-			`last_update_orderbook_${marketType}_${l2Args.marketIndex}`,
+			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}`,
 			JSON.stringify(l2Formatted_depth100)
 		);
 		this.redisClient.client.set(
-			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_100`,
+			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_100`,
 			JSON.stringify(l2Formatted_depth100)
 		);
 		this.redisClient.client.set(
-			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_20`,
+			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_20`,
 			JSON.stringify(l2Formatted_depth20)
 		);
 		this.redisClient.client.set(
-			`last_update_orderbook_${marketType}_${l2Args.marketIndex}_depth_5`,
+			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_5`,
 			JSON.stringify(l2Formatted_depth5)
+		);
+	}
+
+	getL3AndSendMsg(marketArgs: wsMarketArgs): void {
+		const { marketName, ...l2FuncArgs } = marketArgs;
+		const l3 = this.getL3(l2FuncArgs);
+		const slot = l3.slot;
+		const lastMarketSlotAndTime = this.lastMarketSlotMap
+			.get(marketArgs.marketType)
+			.get(marketArgs.marketIndex);
+		if (!lastMarketSlotAndTime) {
+			this.lastMarketSlotMap
+				.get(marketArgs.marketType)
+				.set(marketArgs.marketIndex, { slot, ts: Date.now() });
+		}
+
+		if (slot) {
+			delete l3.slot;
+		}
+		const marketType = isVariant(marketArgs.marketType, 'perp')
+			? 'perp'
+			: 'spot';
+
+		for (const key of Object.keys(l3)) {
+			for (const idx in l3[key]) {
+				const level = l3[key][idx];
+				l3[key][idx] = {
+					...level,
+					price: level.price.toString(),
+					size: level.size.toString(),
+				};
+			}
+		}
+
+		l3['marketName'] = marketName?.toUpperCase();
+		l3['marketType'] = marketType?.toLowerCase();
+		l3['marketIndex'] = marketArgs.marketIndex;
+		l3['ts'] = Date.now();
+		l3['slot'] = slot;
+		addOracletoResponse(
+			l3,
+			this.driftClient,
+			marketArgs.marketType,
+			marketArgs.marketIndex
+		);
+		addMarketSlotToResponse(
+			l3,
+			this.driftClient,
+			marketArgs.marketType,
+			marketArgs.marketIndex
+		);
+
+		// Check if slot diffs are too large for oracle
+		if (
+			Math.abs(slot - parseInt(l3['oracleData']['slot'])) >
+			this.killSwitchSlotDiffThreshold
+		) {
+			console.log(`Killing process due to slot diffs for market ${marketName}: 
+				dlobProvider slot: ${slot}
+				oracle slot: ${l3['oracleData']['slot']}
+			`);
+			process.exit(1);
+		}
+
+		// Check if times and slots are too different for market
+		const MAKRET_STALENESS_THRESHOLD =
+			marketType === 'perp'
+				? PERP_MAKRET_STALENESS_THRESHOLD
+				: SPOT_MAKRET_STALENESS_THRESHOLD;
+		if (
+			lastMarketSlotAndTime &&
+			l3['marketSlot'] === lastMarketSlotAndTime.slot &&
+			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD
+		) {
+			console.log(`Killing process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms: 
+				dlobProvider slot: ${slot}
+				market slot: ${l3['marketSlot']}
+			`);
+			process.exit(1);
+		} else if (
+			lastMarketSlotAndTime &&
+			l3['marketSlot'] !== lastMarketSlotAndTime.slot
+		) {
+			console.log(
+				`Updating market slot for ${marketArgs.marketName} with slot ${l3['marketSlot']}`
+			);
+			this.lastMarketSlotMap
+				.get(marketArgs.marketType)
+				.set(marketArgs.marketIndex, {
+					slot: l3['marketSlot'],
+					ts: Date.now(),
+				});
+		}
+
+		this.redisClient.client.set(
+			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}`,
+			JSON.stringify(l3)
 		);
 	}
 }
