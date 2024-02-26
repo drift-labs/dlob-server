@@ -408,7 +408,7 @@ const main = async (): Promise<void> => {
 			const state = spotMarketRedisMap.get(marketIndex);
 			if (state) {
 				const now = Date.now();
-				if (now - state.lastRotationTime > 30500000 && !state.lock) {
+				if (now - state.lastRotationTime > ROTATION_COOLDOWN && !state.lock) {
 					state.lastRotationTime = now;
 					return true;
 				}
