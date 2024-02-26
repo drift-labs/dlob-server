@@ -98,6 +98,7 @@ export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const SLOT_STALENESS_TOLERANCE =
 	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 20;
+const ROTATION_COOLDOWN = parseInt(process.env.ROTATION_COOLDOWN) || 5000;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
 	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
@@ -407,7 +408,7 @@ const main = async (): Promise<void> => {
 			const state = spotMarketRedisMap.get(marketIndex);
 			if (state) {
 				const now = Date.now();
-				if (now - state.lastRotationTime > 30000 && !state.lock) {
+				if (now - state.lastRotationTime > 30500000 && !state.lock) {
 					state.lastRotationTime = now;
 					return true;
 				}
