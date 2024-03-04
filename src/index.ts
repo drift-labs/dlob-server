@@ -125,7 +125,7 @@ if (!FEATURE_FLAGS.DISABLE_RATE_LIMIT) {
 		rateLimit({
 			windowMs: 1000, // 1 second
 			max: rateLimitCallsPerSecond,
-			standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+			standardHeaders: false, // Return rate limit info in the `RateLimit-*` headers
 			legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 			skip: (req, _res) => {
 				if (!loadTestAllowed) {
