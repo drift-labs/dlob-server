@@ -4,6 +4,7 @@ import {
 	DLOBSubscriptionConfig,
 	L2OrderBookGenerator,
 	MarketType,
+	PositionDirection,
 	groupL2,
 	isVariant,
 } from '@drift-labs/sdk';
@@ -247,6 +248,35 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.redisClient.client.set(
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_5`,
 			JSON.stringify(l2Formatted_depth5)
+		);
+
+		const oraclePriceData =
+			marketType === 'spot'
+				? this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
+				: this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex);
+		const bids = this.dlob
+			.getBestMakers({
+				marketIndex: marketArgs.marketIndex,
+				marketType: marketArgs.marketType,
+				direction: PositionDirection.LONG,
+				slot: slot,
+				oraclePriceData,
+				numMakers: 4,
+			})
+			.map((x) => x.toString());
+		const asks = this.dlob
+			.getBestMakers({
+				marketIndex: marketArgs.marketIndex,
+				marketType: marketArgs.marketType,
+				direction: PositionDirection.SHORT,
+				slot,
+				oraclePriceData,
+				numMakers: 4,
+			})
+			.map((x) => x.toString());
+		this.redisClient.client.set(
+			`last_update_orderbook_best_makers_${marketType}_${marketArgs.marketIndex}`,
+			JSON.stringify({ bids, asks, slot })
 		);
 	}
 
