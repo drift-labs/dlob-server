@@ -19,7 +19,6 @@ import {
 	DriftEnv,
 	SlotSubscriber,
 	Wallet,
-	getUserStatsAccountPublicKey,
 	getVariant,
 	initialize,
 	isVariant,
@@ -720,8 +719,7 @@ const main = async (): Promise<void> => {
 				marketIndex,
 				marketType,
 				side, // bid or ask
-				limit, // number of unique makers to return, if undefined will return all
-				includeUserStats,
+				limit,
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -752,9 +750,46 @@ const main = async (): Promise<void> => {
 					return;
 				}
 				normedLimit = parseInt(limit as string);
+			} else {
+				normedLimit = 4;
 			}
 
-			const topMakers = new Set();
+			let topMakers: string[];
+			if (useRedis) {
+				const redisClient = isVariant(normedMarketType, 'perp')
+					? perpMarketRedisMap.get(normedMarketIndex).client
+					: spotMarketRedisMap.get(normedMarketIndex).client;
+				const redisResponse = await redisClient.client.get(
+					`last_update_orderbook_best_makers_${getVariant(
+						normedMarketType
+					)}_${marketIndex}`
+				);
+				if (redisResponse) {
+					const parsedResponse = JSON.parse(redisResponse);
+					if (
+						parsedResponse.slot &&
+						Math.abs(dlobProvider.getSlot() - parsedResponse.slot) <
+							SLOT_STALENESS_TOLERANCE
+					) {
+						if (side === 'bid') {
+							topMakers = parsedResponse.bids;
+						} else {
+							topMakers = parsedResponse.asks;
+						}
+					}
+				}
+			}
+
+			if (topMakers) {
+				cacheHitCounter.add(1, {
+					miss: false,
+				});
+				res.writeHead(200);
+				res.end(JSON.stringify(topMakers));
+				return;
+			}
+
+			const topMakersSet = new Set<string>();
 			let foundMakers = 0;
 			const findMakers = async (sideGenerator: Generator<DLOBNode>) => {
 				for (const side of sideGenerator) {
@@ -763,23 +798,10 @@ const main = async (): Promise<void> => {
 					}
 					if (side.userAccount) {
 						const maker = side.userAccount;
-						if (topMakers.has(maker)) {
+						if (topMakersSet.has(maker)) {
 							continue;
 						} else {
-							if (`${includeUserStats}`.toLowerCase() === 'true') {
-								const userAccount = dlobProvider.getUserAccount(
-									new PublicKey(side.userAccount)
-								);
-								topMakers.add([
-									userAccount,
-									getUserStatsAccountPublicKey(
-										driftClient.program.programId,
-										userAccount.authority
-									),
-								]);
-							} else {
-								topMakers.add(side.userAccount);
-							}
+							topMakersSet.add(side.userAccount);
 							foundMakers++;
 						}
 					} else {
@@ -811,9 +833,12 @@ const main = async (): Promise<void> => {
 						)
 				);
 			}
-
+			topMakers = [...topMakersSet];
+			cacheHitCounter.add(1, {
+				miss: true,
+			});
 			res.writeHead(200);
-			res.end(JSON.stringify([...topMakers]));
+			res.end(JSON.stringify(topMakers));
 		} catch (err) {
 			next(err);
 		}
