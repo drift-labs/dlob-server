@@ -767,7 +767,7 @@ const main = async (): Promise<void> => {
 				if (redisResponse) {
 					const parsedResponse = JSON.parse(redisResponse);
 					if (
-						parsedResponse.slot &&
+						parsedResponse &&
 						Math.abs(dlobProvider.getSlot() - parsedResponse.slot) <
 							SLOT_STALENESS_TOLERANCE
 					) {
