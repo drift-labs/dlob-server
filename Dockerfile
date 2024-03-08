@@ -11,4 +11,4 @@ RUN yarn build
 
 EXPOSE 9464
 
-CMD [ "yarn", "start:all" ]
+CMD [ "yarn", "start" ]
