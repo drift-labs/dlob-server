@@ -275,7 +275,9 @@ const main = async (): Promise<void> => {
 			type: 'websocket',
 			commitment: stateCommitment,
 		};
-		slotSubscriber = new SlotSubscriber(connection);
+		slotSubscriber = new SlotSubscriber(connection, {
+			resubTimeoutMs: 5000
+		});
 		await slotSubscriber.subscribe();
 	}
 
@@ -768,7 +770,7 @@ const main = async (): Promise<void> => {
 					const parsedResponse = JSON.parse(redisResponse);
 					if (
 						parsedResponse &&
-						Math.abs(dlobProvider.getSlot() - parsedResponse.slot) <
+						dlobProvider.getSlot() - parsedResponse.slot <
 							SLOT_STALENESS_TOLERANCE
 					) {
 						if (side === 'bid') {
