@@ -46,6 +46,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		Map<number, { slot: number; ts: number }>
 	>;
 
+	public skipSlotStalenessCheckMarkets = new Set<number>();
+
 	constructor(
 		config: DLOBSubscriptionConfig & {
 			redisClient: RedisClient;
@@ -73,6 +75,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				market.marketIndex
 			);
 			const includeVamm = !isVariant(perpMarket.status, 'ammPaused');
+			const oracleSource = perpMarket.amm.oracleSource;
+			if (isVariant(oracleSource, 'prelaunch')) {
+				this.skipSlotStalenessCheckMarkets.add(market.marketIndex);
+			}
 
 			this.marketArgs.push({
 				marketIndex: market.marketIndex,
@@ -175,9 +181,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		);
 
 		// Check if slot diffs are too large for oracle
+		const skipSlotCheck =
+			marketType === 'perp' &&
+			this.skipSlotStalenessCheckMarkets.has(marketArgs.marketIndex);
 		if (
 			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
-			this.killSwitchSlotDiffThreshold
+				this.killSwitchSlotDiffThreshold &&
+			!skipSlotCheck
 		) {
 			console.log(`Killing process due to slot diffs for market ${marketName}: 
 				dlobProvider slot: ${slot}
@@ -194,7 +204,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		if (
 			lastMarketSlotAndTime &&
 			l2Formatted['marketSlot'] === lastMarketSlotAndTime.slot &&
-			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD
+			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD &&
+			!skipSlotCheck
 		) {
 			console.log(`Killing process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms: 
 				dlobProvider slot: ${slot}
@@ -328,48 +339,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			marketArgs.marketType,
 			marketArgs.marketIndex
 		);
-
-		// Check if slot diffs are too large for oracle
-		if (
-			Math.abs(slot - parseInt(l3['oracleData']['slot'])) >
-			this.killSwitchSlotDiffThreshold
-		) {
-			console.log(`Killing process due to slot diffs for market ${marketName}: 
-				dlobProvider slot: ${slot}
-				oracle slot: ${l3['oracleData']['slot']}
-			`);
-			process.exit(1);
-		}
-
-		// Check if times and slots are too different for market
-		const MAKRET_STALENESS_THRESHOLD =
-			marketType === 'perp'
-				? PERP_MAKRET_STALENESS_THRESHOLD
-				: SPOT_MAKRET_STALENESS_THRESHOLD;
-		if (
-			lastMarketSlotAndTime &&
-			l3['marketSlot'] === lastMarketSlotAndTime.slot &&
-			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD
-		) {
-			console.log(`Killing process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms: 
-				dlobProvider slot: ${slot}
-				market slot: ${l3['marketSlot']}
-			`);
-			process.exit(1);
-		} else if (
-			lastMarketSlotAndTime &&
-			l3['marketSlot'] !== lastMarketSlotAndTime.slot
-		) {
-			console.log(
-				`Updating market slot for ${marketArgs.marketName} with slot ${l3['marketSlot']}`
-			);
-			this.lastMarketSlotMap
-				.get(marketArgs.marketType)
-				.set(marketArgs.marketIndex, {
-					slot: l3['marketSlot'],
-					ts: Date.now(),
-				});
-		}
 
 		this.redisClient.client.set(
 			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}`,
