@@ -276,7 +276,7 @@ const main = async (): Promise<void> => {
 			commitment: stateCommitment,
 		};
 		slotSubscriber = new SlotSubscriber(connection, {
-			resubTimeoutMs: 5000
+			resubTimeoutMs: 5000,
 		});
 		await slotSubscriber.subscribe();
 	}
