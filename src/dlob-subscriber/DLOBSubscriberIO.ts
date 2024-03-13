@@ -2,6 +2,7 @@ import {
 	BN,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
+	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
 	PositionDirection,
@@ -31,6 +32,16 @@ type wsMarketArgs = {
 const PERP_MAKRET_STALENESS_THRESHOLD = 10 * 60 * 1000;
 const SPOT_MAKRET_STALENESS_THRESHOLD = 20 * 60 * 1000;
 
+const PERP_MARKETS_TO_SKIP_SLOT_CHECK = {
+	'mainnet-beta': [17, 21, 23, 25, 26],
+	devnet: [17, 21],
+};
+
+const SPOT_MARKETS_TO_SKIP_SLOT_CHECK = {
+	'mainnet-beta': [6, 8, 10],
+	devnet: [],
+};
+
 export type wsMarketInfo = {
 	marketIndex: number;
 	marketName: string;
@@ -46,10 +57,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		Map<number, { slot: number; ts: number }>
 	>;
 
-	public skipSlotStalenessCheckMarkets = new Set<number>();
+	public skipSlotStalenessCheckMarketsPerp: number[];
+	public skipSlotStalenessCheckMarketsSpot: number[];
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
+			env: DriftEnv,
 			redisClient: RedisClient;
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
@@ -70,6 +83,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastMarketSlotMap.set(MarketType.SPOT, new Map());
 		this.lastMarketSlotMap.set(MarketType.PERP, new Map());
 
+		this.skipSlotStalenessCheckMarketsPerp =
+			PERP_MARKETS_TO_SKIP_SLOT_CHECK[config.env];
+		this.skipSlotStalenessCheckMarketsSpot =
+			SPOT_MARKETS_TO_SKIP_SLOT_CHECK[config.env];
+
 		for (const market of config.perpMarketInfos) {
 			const perpMarket = this.driftClient.getPerpMarketAccount(
 				market.marketIndex
@@ -77,7 +95,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			const includeVamm = !isVariant(perpMarket.status, 'ammPaused');
 			const oracleSource = perpMarket.amm.oracleSource;
 			if (isVariant(oracleSource, 'prelaunch')) {
-				this.skipSlotStalenessCheckMarkets.add(market.marketIndex);
+				this.skipSlotStalenessCheckMarketsPerp.push(market.marketIndex);
 			}
 
 			this.marketArgs.push({
@@ -182,8 +200,14 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		// Check if slot diffs are too large for oracle
 		const skipSlotCheck =
-			marketType === 'perp' &&
-			this.skipSlotStalenessCheckMarkets.has(marketArgs.marketIndex);
+			(marketType === 'perp' &&
+				this.skipSlotStalenessCheckMarketsPerp.includes(
+					marketArgs.marketIndex
+				)) ||
+			(marketType === 'spot' &&
+				this.skipSlotStalenessCheckMarketsSpot.includes(
+					marketArgs.marketIndex
+				));
 		if (
 			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
 				this.killSwitchSlotDiffThreshold &&

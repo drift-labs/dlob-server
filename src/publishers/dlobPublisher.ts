@@ -391,6 +391,7 @@ const main = async () => {
 
 	const dlobSubscriber = new DLOBSubscriberIO({
 		driftClient,
+		env: driftEnv,
 		dlobSource: dlobProvider,
 		slotSource,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
