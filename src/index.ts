@@ -785,6 +785,7 @@ const main = async (): Promise<void> => {
 			if (topMakers) {
 				cacheHitCounter.add(1, {
 					miss: false,
+					path: req.baseUrl + req.path,
 				});
 				res.writeHead(200);
 				res.end(JSON.stringify(topMakers));
@@ -838,6 +839,7 @@ const main = async (): Promise<void> => {
 			topMakers = [...topMakersSet];
 			cacheHitCounter.add(1, {
 				miss: true,
+				path: req.baseUrl + req.path,
 			});
 			res.writeHead(200);
 			res.end(JSON.stringify(topMakers));
@@ -950,6 +952,7 @@ const main = async (): Promise<void> => {
 				if (l2Formatted) {
 					cacheHitCounter.add(1, {
 						miss: false,
+						path: req.baseUrl + req.path,
 					});
 					res.writeHead(200);
 					res.end(l2Formatted);
@@ -986,6 +989,7 @@ const main = async (): Promise<void> => {
 
 			cacheHitCounter.add(1, {
 				miss: true,
+				path: req.baseUrl + req.path,
 			});
 			res.writeHead(200);
 			res.end(JSON.stringify(l2Formatted));
@@ -1127,6 +1131,7 @@ const main = async (): Promise<void> => {
 						if (l2Formatted) {
 							cacheHitCounter.add(1, {
 								miss: false,
+								path: req.baseUrl + req.path,
 							});
 							return l2Formatted;
 						}
@@ -1161,6 +1166,7 @@ const main = async (): Promise<void> => {
 					}
 					cacheHitCounter.add(1, {
 						miss: true,
+						path: req.baseUrl + req.path,
 					});
 					return l2Formatted;
 				})
@@ -1209,6 +1215,7 @@ const main = async (): Promise<void> => {
 				) {
 					cacheHitCounter.add(1, {
 						miss: false,
+						path: req.baseUrl + req.path,
 					});
 					res.writeHead(200);
 					res.end(redisL3);
@@ -1216,6 +1223,7 @@ const main = async (): Promise<void> => {
 				} else {
 					cacheHitCounter.add(1, {
 						miss: true,
+						path: req.baseUrl + req.path,
 					});
 				}
 			}
