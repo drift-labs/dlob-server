@@ -81,7 +81,6 @@ const main = async () => {
 
 	await driftClient.subscribe();
 	driftClient.eventEmitter.on('error', (e) => {
-		logger.info('clearing house error');
 		logger.error(e);
 	});
 
