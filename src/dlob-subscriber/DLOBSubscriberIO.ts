@@ -2,6 +2,7 @@ import {
 	BN,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
+	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
 	PositionDirection,
@@ -61,6 +62,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
+			env: DriftEnv,
 			redisClient: RedisClient;
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];

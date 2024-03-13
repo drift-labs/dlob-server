@@ -345,7 +345,6 @@ const main = async (): Promise<void> => {
 	const initDlobSubscriberStart = Date.now();
 	const dlobSubscriber = new DLOBSubscriber({
 		driftClient,
-		env: driftEnv,
 		dlobSource: dlobProvider,
 		slotSource: dlobProvider,
 		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
