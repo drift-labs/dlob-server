@@ -33,7 +33,7 @@ const PERP_MAKRET_STALENESS_THRESHOLD = 10 * 60 * 1000;
 const SPOT_MAKRET_STALENESS_THRESHOLD = 20 * 60 * 1000;
 
 const PERP_MARKETS_TO_SKIP_SLOT_CHECK = {
-	'mainnet-beta': [17, 21, 23, 25, 26],
+	'mainnet-beta': [17],
 	devnet: [17, 21],
 };
 
@@ -93,10 +93,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				market.marketIndex
 			);
 			const includeVamm = !isVariant(perpMarket.status, 'ammPaused');
-			const oracleSource = perpMarket.amm.oracleSource;
-			if (isVariant(oracleSource, 'prelaunch')) {
-				this.skipSlotStalenessCheckMarketsPerp.push(market.marketIndex);
-			}
 
 			this.marketArgs.push({
 				marketIndex: market.marketIndex,
