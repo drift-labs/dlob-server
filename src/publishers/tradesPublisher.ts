@@ -167,7 +167,7 @@ const main = async () => {
 					oraclePrice: convertToNumber(fill.oraclePrice, PRICE_PRECISION),
 					txSig: fill.txSig,
 					slot: fill.slot,
-					fillRecordId: fill.fillRecordId.toNumber(),
+					fillRecordId: fill.fillRecordId?.toNumber(),
 					action: 'fill',
 					actionExplanation: getVariant(fill.actionExplanation),
 					referrerReward: convertToNumber(
