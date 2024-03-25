@@ -548,6 +548,7 @@ const main = async (): Promise<void> => {
 						confidence: oracle.confidence.toString(),
 						hasSufficientNumberOfDataPoints:
 							oracle.hasSufficientNumberOfDataPoints,
+						maxPrice: oracle.maxPrice,
 					};
 					if (oracle.twap) {
 						oracleHuman['twap'] = oracle.twap.toString();
