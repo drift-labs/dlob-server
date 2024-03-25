@@ -69,6 +69,7 @@ type SerializableOraclePriceData = {
 	hasSufficientNumberOfDataPoints: boolean;
 	twap?: string;
 	twapConfidence?: string;
+	maxPrice?: string;
 };
 
 const getSerializableOraclePriceData = (
@@ -82,6 +83,7 @@ const getSerializableOraclePriceData = (
 			oraclePriceData.hasSufficientNumberOfDataPoints,
 		twap: oraclePriceData.twap?.toString?.(),
 		twapConfidence: oraclePriceData.twapConfidence?.toString?.(),
+		maxPrice: oraclePriceData.maxPrice?.toString?.(),
 	};
 };
 
