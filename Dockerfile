@@ -10,5 +10,3 @@ RUN yarn
 RUN yarn build
 
 EXPOSE 9464
-
-CMD [ "yarn", "start:all" ]
