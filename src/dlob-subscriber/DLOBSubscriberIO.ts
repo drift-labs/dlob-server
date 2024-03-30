@@ -34,7 +34,7 @@ const SPOT_MAKRET_STALENESS_THRESHOLD = 20 * 60 * 1000;
 
 const PERP_MARKETS_TO_SKIP_SLOT_CHECK = {
 	'mainnet-beta': [17],
-	devnet: [17, 21],
+	devnet: [17, 21, 23],
 };
 
 const SPOT_MARKETS_TO_SKIP_SLOT_CHECK = {
