@@ -40,6 +40,8 @@ import {
 } from '../dlobProvider';
 import FEATURE_FLAGS from '../utils/featureFlags';
 import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
+import express from 'express';
+import { handleHealthCheck } from '../core/metrics';
 
 require('dotenv').config();
 const stateCommitment: Commitment = 'confirmed';
@@ -48,6 +50,9 @@ const commitHash = process.env.COMMIT;
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+
+// Set up express for health checks
+const app = express();
 
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
@@ -419,6 +424,31 @@ const main = async () => {
 		};
 		recursiveFetch();
 	}
+
+	const handleStartup = async (_req, res, _next) => {
+		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
+			res.writeHead(200);
+			res.end('OK');
+		} else {
+			res.writeHead(500);
+			res.end('Not ready');
+		}
+	};
+
+	app.get(
+		'/health',
+		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider)
+	);
+	app.get('/startup', handleStartup);
+	app.get('/', handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider));
+	const server = app.listen(8080);
+
+	// Default keepalive is 5s, since the AWS ALB timeout is 60 seconds, clients
+	// sometimes get 502s.
+	// https://shuheikagawa.com/blog/2019/04/25/keep-alive-timeout/
+	// https://stackoverflow.com/a/68922692
+	server.keepAliveTimeout = 61 * 1000;
+	server.headersTimeout = 65 * 1000;
 
 	console.log('DLOBSubscriber Publishing Messages');
 };
