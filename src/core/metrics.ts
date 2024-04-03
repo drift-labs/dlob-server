@@ -45,6 +45,7 @@ export enum HEALTH_STATUS {
 	StaleBulkAccountLoader,
 	UnhealthySlotSubscriber,
 	LivenessTesting,
+	Restart,
 }
 
 const metricsPort =
@@ -169,6 +170,10 @@ let lastHealthCheckState = true; // true = healthy, false = unhealthy
 let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
 let lastTimeHealthy = Date.now() - healthCheckInterval;
 
+export const setHealthStatus = (status: HEALTH_STATUS): void => {
+	healthStatus = status;
+};
+
 /**
  * Middleware that checks if we are in general healthy by checking that the bulk account loader slot
  * has changed recently.
@@ -185,6 +190,12 @@ const handleHealthCheck = (
 	slotSource: SlotSource
 ) => {
 	return async (_req, res, _next) => {
+		if (healthStatus === HEALTH_STATUS.Restart) {
+			res.writeHead(500);
+			res.end(`NOK`);
+			return;
+		}
+
 		if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
 			if (lastHealthCheckState) {
 				res.writeHead(200);
