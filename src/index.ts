@@ -2,7 +2,6 @@ import { program } from 'commander';
 import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
-import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
 
 import { Commitment, Connection, Keypair, PublicKey } from '@solana/web3.js';
@@ -99,10 +98,6 @@ const SLOT_STALENESS_TOLERANCE =
 	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 20;
 const ROTATION_COOLDOWN = parseInt(process.env.ROTATION_COOLDOWN) || 5000;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
-const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
-	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
-	: 1;
-const loadTestAllowed = process.env.ALLOW_LOAD_TEST?.toLowerCase() === 'true';
 const useRedis = process.env.USE_REDIS?.toLowerCase() === 'true';
 
 const logFormat =
@@ -119,23 +114,6 @@ app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
 app.use(handleResponseTime);
-if (!FEATURE_FLAGS.DISABLE_RATE_LIMIT) {
-	app.use(
-		rateLimit({
-			windowMs: 1000, // 1 second
-			max: rateLimitCallsPerSecond,
-			standardHeaders: false, // Return rate limit info in the `RateLimit-*` headers
-			legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-			skip: (req, _res) => {
-				if (!loadTestAllowed) {
-					return false;
-				}
-
-				return req.headers['user-agent'].includes('k6');
-			},
-		})
-	);
-}
 
 // strip off /dlob, if the request comes from exchange history server LB
 app.use((req, _res, next) => {

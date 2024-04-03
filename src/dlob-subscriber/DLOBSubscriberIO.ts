@@ -16,6 +16,7 @@ import {
 	addOracletoResponse,
 	l2WithBNToStrings,
 } from '../utils/utils';
+import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 
 type wsMarketArgs = {
 	marketIndex: number;
@@ -34,7 +35,7 @@ const SPOT_MAKRET_STALENESS_THRESHOLD = 20 * 60 * 1000;
 
 const PERP_MARKETS_TO_SKIP_SLOT_CHECK = {
 	'mainnet-beta': [17],
-	devnet: [17, 21],
+	devnet: [17, 21, 23],
 };
 
 const SPOT_MARKETS_TO_SKIP_SLOT_CHECK = {
@@ -62,7 +63,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
-			env: DriftEnv,
+			env: DriftEnv;
 			redisClient: RedisClient;
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
@@ -209,11 +210,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				this.killSwitchSlotDiffThreshold &&
 			!skipSlotCheck
 		) {
-			console.log(`Killing process due to slot diffs for market ${marketName}: 
+			console.log(`Unhealthy process due to slot diffs for market ${marketName}: 
 				dlobProvider slot: ${slot}
 				oracle slot: ${l2Formatted['oracleData']['slot']}
 			`);
-			process.exit(1);
+			setHealthStatus(HEALTH_STATUS.Restart);
 		}
 
 		// Check if times and slots are too different for market
@@ -227,11 +228,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD &&
 			!skipSlotCheck
 		) {
-			console.log(`Killing process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms: 
+			console.log(`Unhealthy process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms: 
 				dlobProvider slot: ${slot}
 				market slot: ${l2Formatted['marketSlot']}
 			`);
-			process.exit(1);
+			setHealthStatus(HEALTH_STATUS.Restart);
 		} else if (
 			lastMarketSlotAndTime &&
 			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot

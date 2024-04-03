@@ -2,7 +2,6 @@ import { program } from 'commander';
 import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
-import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
 
 import { Commitment, Connection } from '@solana/web3.js';
@@ -65,13 +64,9 @@ const sdkConfig = initialize({ env: process.env.ENV });
 
 const stateCommitment: Commitment = 'processed';
 const serverPort = process.env.PORT || 6969;
-const rateLimitCallsPerSecond = process.env.RATE_LIMIT_CALLS_PER_SECOND
-	? parseInt(process.env.RATE_LIMIT_CALLS_PER_SECOND)
-	: 1;
 
 const SLOT_STALENESS_TOLERANCE =
 	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 20;
-const loadTestAllowed = process.env.ALLOW_LOAD_TEST?.toLowerCase() === 'true';
 
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
@@ -85,21 +80,6 @@ app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
 app.use(handleResponseTime);
-app.use(
-	rateLimit({
-		windowMs: 1000, // 1 second
-		max: rateLimitCallsPerSecond,
-		standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-		legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-		skip: (req, _res) => {
-			if (!loadTestAllowed) {
-				return false;
-			}
-
-			return req.headers['user-agent'].includes('k6');
-		},
-	})
-);
 
 // Metrics defined here
 const bootTimeMs = Date.now();

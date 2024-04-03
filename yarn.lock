@@ -115,10 +115,10 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
-"@drift-labs/sdk@2.74.0-beta.12":
-  version "2.74.0-beta.12"
-  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.74.0-beta.12.tgz#86a4e0657c5b425e303c4d3684ad82fe1f7919ce"
-  integrity sha512-YFr6jnQn1ANRrAiby5gdg93dHyKVG3wJ9bTe/U3p2T6PoxDzzhZF4/1oabewodGNia5PHvTRiA3rpbmTHdvWkQ==
+"@drift-labs/sdk@2.76.0-beta.1":
+  version "2.76.0-beta.1"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.76.0-beta.1.tgz#d483e0ce5938a9fd81532a0ff23a49fe939710f2"
+  integrity sha512-NAtfLcp6tbDaR5cXaPsYvqSqclfjFo3GrvupzMImbz2b0ilgeeToW+JwHRlLgcOZaj+9JG7ECi31kHaHmItf9w==
   dependencies:
     "@coral-xyz/anchor" "0.28.1-beta.2"
     "@ellipsis-labs/phoenix-sdk" "^1.4.2"
@@ -128,6 +128,7 @@
     "@solana/web3.js" "1.73.2"
     strict-event-emitter-types "^2.0.0"
     uuid "^8.3.2"
+    zstddec "^0.1.0"
 
 "@ellipsis-labs/phoenix-sdk@^1.4.2":
   version "1.4.2"
@@ -2520,11 +2521,6 @@ eventemitter3@^4.0.7:
   resolved "https://registry.yarnpkg.com/eventemitter3/-/eventemitter3-4.0.7.tgz#2de9b68f6528d5644ef5c59526a1b4a07306169f"
   integrity sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==
 
-express-rate-limit@^6.7.0:
-  version "6.7.0"
-  resolved "https://registry.yarnpkg.com/express-rate-limit/-/express-rate-limit-6.7.0.tgz#6aa8a1bd63dfe79702267b3af1161a93afc1d3c2"
-  integrity sha512-vhwIdRoqcYB/72TK3tRZI+0ttS8Ytrk24GfmsxDXK9o9IhHNO5bXRiXQSExPQ4GbaE5tvIS7j1SGrxsuWs+sGA==
-
 express@^4.18.2:
   version "4.18.2"
   resolved "https://registry.yarnpkg.com/express/-/express-4.18.2.tgz#3fabe08296e930c796c19e3c516979386ba9fd59"
@@ -4507,3 +4503,8 @@ yn@3.1.1:
   version "3.1.1"
   resolved "https://registry.yarnpkg.com/yn/-/yn-3.1.1.tgz#1e87401a09d767c1d5eab26a6e4c185182d2eb50"
   integrity sha512-Ux4ygGWsu2c7isFWe8Yu1YluJmqVhxqK2cLXNQA5AcC3QfbGNpM7fu0Y8b/z16pXLnFxZYvWhd3fhBY9DLmC6Q==
+
+zstddec@^0.1.0:
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/zstddec/-/zstddec-0.1.0.tgz#7050f3f0e0c3978562d0c566b3e5a427d2bad7ec"
+  integrity sha512-w2NTI8+3l3eeltKAdK8QpiLo/flRAr2p8AGeakfMZOXBxOg9HIu4LVDxBi81sYgVhFhdJjv1OrB5ssI8uFPoLg==
