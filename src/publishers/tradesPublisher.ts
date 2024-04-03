@@ -111,6 +111,10 @@ const main = async () => {
 					JSON.stringify(event.action) === JSON.stringify(OrderAction.FILL)
 			),
 			map((fill: Event<OrderActionRecord>) => {
+				const basePrecision =
+					getVariant(fill.marketType) === 'spot'
+						? sdkConfig.SPOT_MARKETS[fill.marketIndex].precision
+						: BASE_PRECISION;
 				return {
 					ts: fill.ts.toNumber(),
 					marketIndex: fill.marketIndex,
@@ -124,7 +128,7 @@ const main = async () => {
 					),
 					baseAssetAmountFilled: convertToNumber(
 						fill.baseAssetAmountFilled,
-						BASE_PRECISION
+						basePrecision
 					),
 					quoteAssetAmountFilled: convertToNumber(
 						fill.quoteAssetAmountFilled,
@@ -137,11 +141,11 @@ const main = async () => {
 						: undefined,
 					takerOrderBaseAssetAmount: convertToNumber(
 						fill.takerOrderBaseAssetAmount,
-						BASE_PRECISION
+						basePrecision
 					),
 					takerOrderCumulativeBaseAssetAmountFilled: convertToNumber(
 						fill.takerOrderCumulativeBaseAssetAmountFilled,
-						BASE_PRECISION
+						basePrecision
 					),
 					takerOrderCumulativeQuoteAssetAmountFilled: convertToNumber(
 						fill.takerOrderCumulativeQuoteAssetAmountFilled,
@@ -154,11 +158,11 @@ const main = async () => {
 						: undefined,
 					makerOrderBaseAssetAmount: convertToNumber(
 						fill.makerOrderBaseAssetAmount,
-						BASE_PRECISION
+						basePrecision
 					),
 					makerOrderCumulativeBaseAssetAmountFilled: convertToNumber(
 						fill.makerOrderCumulativeBaseAssetAmountFilled,
-						BASE_PRECISION
+						basePrecision
 					),
 					makerOrderCumulativeQuoteAssetAmountFilled: convertToNumber(
 						fill.makerOrderCumulativeQuoteAssetAmountFilled,
