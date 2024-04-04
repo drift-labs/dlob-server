@@ -65,11 +65,13 @@ const getRedisChannelFromMessage = (message: any): string => {
 		throw new Error('Bad market specified');
 	}
 
-	switch (channel) {
+	switch (channel.toLowerCase()) {
 		case 'trades':
 			return `trades_${marketType}_${marketIndex}`;
 		case 'orderbook':
 			return `orderbook_${marketType}_${marketIndex}`;
+		case 'priorityfees':
+			return `priorityFees_${marketType}_${marketIndex}`;
 		case undefined:
 		default:
 			throw new Error('Bad channel specified');
@@ -145,17 +147,14 @@ async function main() {
 								JSON.stringify({
 									channel: requestChannel,
 									error:
-										'Error subscribing to channel with data: ' +
-										JSON.stringify(parsedMessage),
+										'Error subscribing to channel'
 								})
 							);
 						} else {
 							ws.close(
 								1003,
 								JSON.stringify({
-									error:
-										'Error subscribing to channel with data: ' +
-										JSON.stringify(parsedMessage),
+									error: 'Error subscribing to channel'
 								})
 							);
 						}
@@ -221,8 +220,7 @@ async function main() {
 								JSON.stringify({
 									channel: requestChannel,
 									error:
-										'Error unsubscribing from channel with data: ' +
-										JSON.stringify(parsedMessage),
+										'Error unsubscribing from channel'
 								})
 							);
 						} else {
@@ -230,8 +228,7 @@ async function main() {
 								1003,
 								JSON.stringify({
 									error:
-										'Error unsubscribing from channel with data: ' +
-										JSON.stringify(parsedMessage),
+										'Error unsubscribing from channel'
 								})
 							);
 						}
