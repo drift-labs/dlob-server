@@ -65,11 +65,13 @@ const getRedisChannelFromMessage = (message: any): string => {
 		throw new Error('Bad market specified');
 	}
 
-	switch (channel) {
+	switch (channel.toLowerCase()) {
 		case 'trades':
 			return `trades_${marketType}_${marketIndex}`;
 		case 'orderbook':
 			return `orderbook_${marketType}_${marketIndex}`;
+		case 'priorityfees':
+			return `priorityFees_${marketType}_${marketIndex}`;
 		case undefined:
 		default:
 			throw new Error('Bad channel specified');
