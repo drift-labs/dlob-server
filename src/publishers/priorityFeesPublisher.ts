@@ -8,7 +8,6 @@ import {
 	DriftEnv,
 	Wallet,
 	BulkAccountLoader,
-	isVariant,
 	getMarketsAndOraclesForSubscription,
 } from '@drift-labs/sdk';
 
@@ -56,7 +55,7 @@ logger.info(`Commit:       ${commitHash}`);
 class PriorityFeeSubscriber {
 	endpoint: string;
 	perpMarketPubkeys: { marketIndex: number; pubkey: string }[];
-	spotMarketPubkeys: { marketIndex: number; pubkey: string }[];
+	spotMarketPubkeys: { marketIndex: number; pubkeys: string[] }[];
 	redisClient: RedisClient;
 	frequencyMs: number;
 
@@ -64,7 +63,7 @@ class PriorityFeeSubscriber {
 		endpoint: string;
 		redisClient: RedisClient;
 		perpMarketPubkeys: { marketIndex: number; pubkey: string }[];
-		spotMarketPubkeys: { marketIndex: number; pubkey: string }[];
+		spotMarketPubkeys: { marketIndex: number; pubkeys: string[] }[];
 		frequencyMs?: number;
 	}) {
 		this.endpoint = config.endpoint;
@@ -119,7 +118,7 @@ class PriorityFeeSubscriber {
 							method: 'getPriorityFeeEstimate',
 							params: [
 								{
-									accountKeys: [xx.pubkey],
+									accountKeys: xx.pubkeys,
 									options: {
 										includeAllPriorityFeeLevels: true,
 									},
@@ -187,32 +186,27 @@ const main = async () => {
 	const perpMarketPubkeys = driftClient.getPerpMarketAccounts().map((acct) => {
 		return { marketIndex: acct.marketIndex, pubkey: acct.pubkey.toString() };
 	});
-	const spotMarketPubkeys = [];
+
+	const usdcMarket = driftClient.getSpotMarketAccount(0).pubkey.toString();
+	const spotMarketPubkeys: { marketIndex: number; pubkeys: string[] }[] = [];
 	for (const market of sdkConfig.SPOT_MARKETS) {
+		const pubkeysForMarket = [usdcMarket];
+
+		const driftMarket = driftClient.getSpotMarketAccount(market.marketIndex);
+		pubkeysForMarket.push(driftMarket.pubkey.toString());
+
 		if (market.serumMarket) {
-			const serumConfigAccount = await driftClient.getSerumV3FulfillmentConfig(
-				market.serumMarket
-			);
-			if (isVariant(serumConfigAccount.status, 'enabled')) {
-				spotMarketPubkeys.push({
-					marketIndex: market.marketIndex,
-					pubkey: market.serumMarket.toString(),
-				});
-			} else {
-				if (market.phoenixMarket) {
-					const phoneixConfigAccount =
-						await driftClient.getPhoenixV1FulfillmentConfig(
-							market.phoenixMarket
-						);
-					if (isVariant(phoneixConfigAccount.status, 'enabled')) {
-						spotMarketPubkeys.push({
-							marketIndex: market.marketIndex,
-							pubkey: market.phoenixMarket.toString(),
-						});
-					}
-				}
-			}
+			pubkeysForMarket.push(market.serumMarket.toString());
 		}
+
+		if (market.phoenixMarket) {
+			pubkeysForMarket.push(market.phoenixMarket.toString());
+		}
+
+		spotMarketPubkeys.push({
+			marketIndex: market.marketIndex,
+			pubkeys: pubkeysForMarket,
+		});
 	}
 
 	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
