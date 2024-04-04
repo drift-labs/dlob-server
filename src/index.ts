@@ -9,9 +9,6 @@ import { Commitment, Connection, Keypair, PublicKey } from '@solana/web3.js';
 import {
 	BulkAccountLoader,
 	DLOBNode,
-	DLOBOrder,
-	DLOBOrders,
-	DLOBOrdersCoder,
 	DLOBSubscriber,
 	DriftClient,
 	DriftClientSubscriptionConfig,
@@ -299,8 +296,6 @@ const main = async (): Promise<void> => {
 
 	const dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
 
-	const dlobCoder = DLOBOrdersCoder.create();
-
 	await driftClient.subscribe();
 	driftClient.eventEmitter.on('error', (e) => {
 		logger.info('clearing house error');
@@ -461,237 +456,24 @@ const main = async (): Promise<void> => {
 	app.get('/startup', handleStartup);
 	app.get('/', handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider));
 
-	if (FEATURE_FLAGS.ENABLE_ORDERS_ENDPOINTS) {
-		app.get('/orders/json/raw', async (_req, res, next) => {
-			try {
-				// object with userAccount key and orders object serialized
-				const orders: Array<any> = [];
-				const oracles: Array<any> = [];
-				const slot = dlobProvider.getSlot();
+	app.get('/priorityFees', async (req, res, next) => {
+		try {
+			const { marketIndex, marketType } = req.query;
 
-				for (const market of driftClient.getPerpMarketAccounts()) {
-					const oracle = driftClient.getOracleDataForPerpMarket(
-						market.marketIndex
-					);
-					oracles.push({
-						marketIndex: market.marketIndex,
-						...oracle,
-					});
-				}
-
-				for (const {
-					userAccount,
-					publicKey,
-				} of dlobProvider.getUserAccounts()) {
-					for (const order of userAccount.orders) {
-						if (isVariant(order.status, 'init')) {
-							continue;
-						}
-
-						orders.push({
-							user: publicKey.toBase58(),
-							order: order,
-						});
-					}
-				}
-
-				// respond with orders
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						slot,
-						oracles,
-						orders,
-					})
-				);
-			} catch (e) {
-				next(e);
+			const fees = await redisClients[
+				parseInt(process.env.HELIUS_REDIS_HOST_INDEX) ?? 0
+			].client.get(`priorityFees_${marketType}_${marketIndex}`);
+			if (fees) {
+				res.status(200).json(JSON.parse(fees));
+				return;
+			} else {
+				res.writeHead(404);
+				res.end('Not found');
 			}
-		});
-
-		app.get('/orders/json', async (_req, res, next) => {
-			try {
-				// object with userAccount key and orders object serialized
-				const slot = dlobProvider.getSlot();
-				const orders: Array<any> = [];
-				const oracles: Array<any> = [];
-				for (const market of driftClient.getPerpMarketAccounts()) {
-					const oracle = driftClient.getOracleDataForPerpMarket(
-						market.marketIndex
-					);
-					const oracleHuman = {
-						marketIndex: market.marketIndex,
-						price: oracle.price.toString(),
-						slot: oracle.slot.toString(),
-						confidence: oracle.confidence.toString(),
-						hasSufficientNumberOfDataPoints:
-							oracle.hasSufficientNumberOfDataPoints,
-						maxPrice: oracle.maxPrice,
-					};
-					if (oracle.twap) {
-						oracleHuman['twap'] = oracle.twap.toString();
-					}
-					if (oracle.twapConfidence) {
-						oracleHuman['twapConfidence'] = oracle.twapConfidence.toString();
-					}
-					oracles.push(oracleHuman);
-				}
-				for (const {
-					userAccount,
-					publicKey,
-				} of dlobProvider.getUserAccounts()) {
-					for (const order of userAccount.orders) {
-						if (isVariant(order.status, 'init')) {
-							continue;
-						}
-
-						const orderHuman = {
-							status: getVariant(order.status),
-							orderType: getVariant(order.orderType),
-							marketType: getVariant(order.marketType),
-							slot: order.slot.toString(),
-							orderId: order.orderId,
-							userOrderId: order.userOrderId,
-							marketIndex: order.marketIndex,
-							price: order.price.toString(),
-							baseAssetAmount: order.baseAssetAmount.toString(),
-							baseAssetAmountFilled: order.baseAssetAmountFilled.toString(),
-							quoteAssetAmountFilled: order.quoteAssetAmountFilled.toString(),
-							direction: getVariant(order.direction),
-							reduceOnly: order.reduceOnly,
-							triggerPrice: order.triggerPrice.toString(),
-							triggerCondition: getVariant(order.triggerCondition),
-							existingPositionDirection: getVariant(
-								order.existingPositionDirection
-							),
-							postOnly: order.postOnly,
-							immediateOrCancel: order.immediateOrCancel,
-							oraclePriceOffset: order.oraclePriceOffset,
-							auctionDuration: order.auctionDuration,
-							auctionStartPrice: order.auctionStartPrice.toString(),
-							auctionEndPrice: order.auctionEndPrice.toString(),
-							maxTs: order.maxTs.toString(),
-						};
-						if (order.quoteAssetAmountFilled) {
-							orderHuman['quoteAssetAmount'] =
-								order.quoteAssetAmountFilled.toString();
-							orderHuman['quoteAssetAmountFilled'] =
-								order.quoteAssetAmountFilled.toString();
-						}
-
-						orders.push({
-							user: publicKey.toBase58(),
-							order: orderHuman,
-						});
-					}
-				}
-
-				// respond with orders
-				res.writeHead(200);
-				res.end(
-					JSON.stringify({
-						slot,
-						oracles,
-						orders,
-					})
-				);
-			} catch (err) {
-				next(err);
-			}
-		});
-
-		app.get('/orders/idl', async (_req, res, next) => {
-			try {
-				const dlobOrders: DLOBOrders = [];
-
-				for (const {
-					userAccount,
-					publicKey,
-				} of dlobProvider.getUserAccounts()) {
-					for (const order of userAccount.orders) {
-						if (isVariant(order.status, 'init')) {
-							continue;
-						}
-
-						dlobOrders.push({
-							user: publicKey,
-							order,
-						} as DLOBOrder);
-					}
-				}
-
-				res.writeHead(200);
-				res.end(dlobCoder.encode(dlobOrders));
-			} catch (err) {
-				next(err);
-			}
-		});
-
-		app.get('/orders/idlWithSlot', async (req, res, next) => {
-			try {
-				const { marketName, marketIndex, marketType } = req.query;
-				const { normedMarketType, normedMarketIndex, error } =
-					validateDlobQuery(
-						driftClient,
-						driftEnv,
-						marketType as string,
-						marketIndex as string,
-						marketName as string
-					);
-				const useFilter =
-					marketName !== undefined ||
-					marketIndex !== undefined ||
-					marketType !== undefined;
-
-				if (useFilter) {
-					if (
-						error ||
-						normedMarketType === undefined ||
-						normedMarketIndex === undefined
-					) {
-						res.status(400).send(error);
-						return;
-					}
-				}
-
-				const dlobOrders: DLOBOrders = [];
-
-				for (const {
-					userAccount,
-					publicKey,
-				} of dlobProvider.getUserAccounts()) {
-					for (const order of userAccount.orders) {
-						if (isVariant(order.status, 'init')) {
-							continue;
-						}
-
-						if (useFilter) {
-							if (
-								getVariant(order.marketType) !== getVariant(normedMarketType) ||
-								order.marketIndex !== normedMarketIndex
-							) {
-								continue;
-							}
-						}
-
-						dlobOrders.push({
-							user: publicKey,
-							order,
-						} as DLOBOrder);
-					}
-				}
-
-				res.end(
-					JSON.stringify({
-						slot: dlobProvider.getSlot(),
-						data: dlobCoder.encode(dlobOrders).toString('base64'),
-					})
-				);
-			} catch (err) {
-				next(err);
-			}
-		});
-	}
+		} catch (err) {
+			next(err);
+		}
+	});
 
 	app.get('/topMakers', async (req, res, next) => {
 		try {

@@ -56,6 +56,7 @@
     "server-lite": "ts-node src/serverLite.ts",
     "dlob-publish": "ts-node src/publishers/dlobPublisher.ts",
     "trades-publish": "ts-node src/publishers/tradesPublisher.ts",
+    "fees-publish": "ts-node src/publishers/priorityFeesPublisher.ts",
     "ws-manager": "ts-node src/wsConnectionManager.ts",
     "ws-manager:inspect": "yarn build && node --inspect ./lib/wsConnectionManager.js",
     "dev:inspect": "yarn build && node --inspect ./lib/index.js",
