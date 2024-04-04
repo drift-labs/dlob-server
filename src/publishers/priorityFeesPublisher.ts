@@ -41,7 +41,8 @@ const endpoint = token
 	? process.env.ENDPOINT + `/${token}`
 	: process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
-const FEE_POLLING_FREQUENCY = parseInt(process.env.FEE_POLLING_FREQUENCY) || 5000;
+const FEE_POLLING_FREQUENCY =
+	parseInt(process.env.FEE_POLLING_FREQUENCY) || 5000;
 
 if (!endpoint.includes('helius')) {
 	throw new Error('We use helius for fee publisher fellas');
@@ -91,7 +92,7 @@ class PriorityFeeSubscriber {
 					this.perpMarketPubkeys.map((xx) => {
 						return {
 							jsonrpc: '2.0',
-							id: '1',
+							id: xx.marketIndex.toString(),
 							method: 'getPriorityFeeEstimate',
 							params: [
 								{
@@ -114,7 +115,7 @@ class PriorityFeeSubscriber {
 					this.spotMarketPubkeys.map((xx) => {
 						return {
 							jsonrpc: '2.0',
-							id: '1',
+							id: (100 + xx.marketIndex).toString(),
 							method: 'getPriorityFeeEstimate',
 							params: [
 								{
@@ -135,8 +136,8 @@ class PriorityFeeSubscriber {
 			resultSpot.json(),
 		]);
 
-		dataPerp.forEach((result: any, index: number) => {
-			const marketIndex = this.perpMarketPubkeys[index].marketIndex;
+		dataPerp.forEach((result: any) => {
+			const marketIndex = parseInt(result['id']);
 			this.redisClient.client.publish(
 				`priorityFees_perp_${marketIndex}`,
 				JSON.stringify(result.result['priorityFeeLevels'])
@@ -147,8 +148,8 @@ class PriorityFeeSubscriber {
 			);
 		});
 
-		dataSpot.forEach((result: any, index: number) => {
-			const marketIndex = this.perpMarketPubkeys[index].marketIndex;
+		dataSpot.forEach((result: any) => {
+			const marketIndex = parseInt(result['id']) - 100;
 			this.redisClient.client.publish(
 				`priorityFees_spot_${marketIndex}`,
 				JSON.stringify(result.result['priorityFeeLevels'])
@@ -197,6 +198,19 @@ const main = async () => {
 					marketIndex: market.marketIndex,
 					pubkey: market.serumMarket.toString(),
 				});
+			} else {
+				if (market.phoenixMarket) {
+					const phoneixConfigAccount =
+						await driftClient.getPhoenixV1FulfillmentConfig(
+							market.phoenixMarket
+						);
+					if (isVariant(phoneixConfigAccount.status, 'enabled')) {
+						spotMarketPubkeys.push({
+							marketIndex: market.marketIndex,
+							pubkey: market.phoenixMarket.toString(),
+						});
+					}
+				}
 			}
 		}
 	}
