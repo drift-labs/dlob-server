@@ -147,17 +147,14 @@ async function main() {
 								JSON.stringify({
 									channel: requestChannel,
 									error:
-										'Error subscribing to channel with data: ' +
-										JSON.stringify(parsedMessage),
+										'Error subscribing to channel'
 								})
 							);
 						} else {
 							ws.close(
 								1003,
 								JSON.stringify({
-									error:
-										'Error subscribing to channel with data: ' +
-										JSON.stringify(parsedMessage),
+									error: 'Error subscribing to channel'
 								})
 							);
 						}
@@ -223,8 +220,7 @@ async function main() {
 								JSON.stringify({
 									channel: requestChannel,
 									error:
-										'Error unsubscribing from channel with data: ' +
-										JSON.stringify(parsedMessage),
+										'Error unsubscribing from channel'
 								})
 							);
 						} else {
@@ -232,8 +228,7 @@ async function main() {
 								1003,
 								JSON.stringify({
 									error:
-										'Error unsubscribing from channel with data: ' +
-										JSON.stringify(parsedMessage),
+										'Error unsubscribing from channel'
 								})
 							);
 						}
