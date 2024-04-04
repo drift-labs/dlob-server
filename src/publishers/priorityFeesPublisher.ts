@@ -41,6 +41,7 @@ const endpoint = token
 	? process.env.ENDPOINT + `/${token}`
 	: process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
+const FEE_POLLING_FREQUENCY = parseInt(process.env.FEE_POLLING_FREQUENCY) || 5000;
 
 if (!endpoint.includes('helius')) {
 	throw new Error('We use helius for fee publisher fellas');
@@ -69,7 +70,7 @@ class PriorityFeeSubscriber {
 		this.perpMarketPubkeys = config.perpMarketPubkeys;
 		this.spotMarketPubkeys = config.spotMarketPubkeys;
 		this.redisClient = config.redisClient;
-		this.frequencyMs = config.frequencyMs ?? 5000;
+		this.frequencyMs = config.frequencyMs ?? FEE_POLLING_FREQUENCY;
 	}
 
 	async subscribe() {
