@@ -475,6 +475,47 @@ const main = async (): Promise<void> => {
 		}
 	});
 
+	app.get('/batchPriorityFees', async (req, res, next) => {
+		try {
+			const { marketIndex, marketType } = req.query;
+
+			const normedParams = normalizeBatchQueryParams({
+				marketIndex: marketIndex as string | undefined,
+				marketType: marketType as string | undefined,
+			});
+
+			if (normedParams === undefined) {
+				res
+					.status(400)
+					.send(
+						'Bad Request: all params for batch request must be the same length'
+					);
+				return;
+			}
+
+			const fees = await Promise.all(
+				normedParams.map(async (normedParam) => {
+					const fees = await redisClients[
+						parseInt(process.env.HELIUS_REDIS_HOST_INDEX) ?? 0
+					].client.get(
+						`priorityFees_${normedParam['marketType']}_${normedParam['marketIndex']}`
+					);
+					return JSON.parse(fees);
+				})
+			);
+
+			if (fees && fees.length > 0) {
+				res.status(200).json(fees);
+				return;
+			} else {
+				res.writeHead(404);
+				res.end('Not found');
+			}
+		} catch (err) {
+			next(err);
+		}
+	});
+
 	app.get('/topMakers', async (req, res, next) => {
 		try {
 			const {
