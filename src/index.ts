@@ -464,7 +464,11 @@ const main = async (): Promise<void> => {
 				parseInt(process.env.HELIUS_REDIS_HOST_INDEX) ?? 0
 			].client.get(`priorityFees_${marketType}_${marketIndex}`);
 			if (fees) {
-				res.status(200).json(JSON.parse(fees));
+				res.status(200).json({
+					...JSON.parse(fees),
+					marketType,
+					marketIndex,
+				});
 				return;
 			} else {
 				res.writeHead(404);
@@ -500,7 +504,11 @@ const main = async (): Promise<void> => {
 					].client.get(
 						`priorityFees_${normedParam['marketType']}_${normedParam['marketIndex']}`
 					);
-					return JSON.parse(fees);
+					return {
+						...JSON.parse(fees),
+						marketType,
+						marketIndex,
+					};
 				})
 			);
 
