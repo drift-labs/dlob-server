@@ -7,11 +7,9 @@ import morgan from 'morgan';
 import { Commitment, Connection, Keypair, PublicKey } from '@solana/web3.js';
 
 import {
-	BulkAccountLoader,
 	DLOBNode,
 	DLOBSubscriber,
 	DriftClient,
-	DriftClientSubscriptionConfig,
 	DriftEnv,
 	SlotSubscriber,
 	Wallet,
@@ -92,7 +90,7 @@ const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
 const SLOT_STALENESS_TOLERANCE =
-	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 20;
+	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 35;
 const ROTATION_COOLDOWN = parseInt(process.env.ROTATION_COOLDOWN) || 5000;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const useRedis = process.env.USE_REDIS?.toLowerCase() === 'true';
@@ -226,63 +224,32 @@ const main = async (): Promise<void> => {
 		commitment: stateCommitment,
 	});
 
-	// only set when polling
-	let bulkAccountLoader: BulkAccountLoader | undefined;
-
-	// only set when using websockets
-	let slotSubscriber: SlotSubscriber | undefined;
-
-	let accountSubscription: DriftClientSubscriptionConfig;
-
-	if (!useWebsocket) {
-		bulkAccountLoader = new BulkAccountLoader(
-			connection,
-			stateCommitment,
-			ORDERBOOK_UPDATE_INTERVAL
-		);
-
-		accountSubscription = {
-			type: 'polling',
-			accountLoader: bulkAccountLoader,
-		};
-	} else {
-		accountSubscription = {
-			type: 'websocket',
-			commitment: stateCommitment,
-		};
-		slotSubscriber = new SlotSubscriber(connection, {
-			resubTimeoutMs: 5000,
-		});
-		await slotSubscriber.subscribe();
-	}
+	const slotSubscriber = new SlotSubscriber(connection, {
+		resubTimeoutMs: 5000,
+	});
+	await slotSubscriber.subscribe();
 
 	driftClient = new DriftClient({
 		connection,
 		wallet,
 		programID: clearingHousePublicKey,
-		accountSubscription,
-		env: driftEnv,
-	});
-
-	let subscriptionConfig;
-	if (useWebsocket) {
-		subscriptionConfig = {
+		accountSubscription: {
 			type: 'websocket',
 			commitment: stateCommitment,
-			resyncIntervalMs: WS_FALLBACK_FETCH_INTERVAL,
-		};
-	} else {
-		subscriptionConfig = {
-			type: 'polling',
-			frequency: ORDERBOOK_UPDATE_INTERVAL,
-			commitment: stateCommitment,
-		};
-	}
+			resubTimeoutMs: 60_000,
+		},
+		env: driftEnv,
+	});
 
 	let updatesReceivedTotal = 0;
 	const orderSubscriber = new OrderSubscriber({
 		driftClient,
-		subscriptionConfig,
+		subscriptionConfig: {
+			type: 'websocket',
+			commitment: stateCommitment,
+			resubTimeoutMs: 10_000,
+			resyncIntervalMs: WS_FALLBACK_FETCH_INTERVAL,
+		},
 	});
 	orderSubscriber.eventEmitter.on(
 		'updateReceived',
@@ -690,11 +657,7 @@ const main = async (): Promise<void> => {
 
 			let l2Formatted: any;
 			if (useRedis) {
-				if (
-					!isSpot &&
-					`${includeVamm}`?.toLowerCase() === 'true' &&
-					`${includeOracle}`?.toLowerCase() === 'true'
-				) {
+				if (!isSpot && `${includeVamm}`?.toLowerCase() === 'true') {
 					let redisL2: string;
 					const redisClient = perpMarketRedisMap.get(normedMarketIndex).client;
 					if (parseInt(adjustedDepth as string) === 5) {
@@ -726,8 +689,7 @@ const main = async (): Promise<void> => {
 				} else if (
 					isSpot &&
 					`${includeSerum}`?.toLowerCase() === 'true' &&
-					`${includePhoenix}`?.toLowerCase() === 'true' &&
-					`${includeOracle}`?.toLowerCase() === 'true'
+					`${includePhoenix}`?.toLowerCase() === 'true'
 				) {
 					let redisL2: string;
 					const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
@@ -866,8 +828,7 @@ const main = async (): Promise<void> => {
 					if (useRedis) {
 						if (
 							!isSpot &&
-							normedParam['includeVamm']?.toLowerCase() === 'true' &&
-							normedParam['includeOracle']?.toLowerCase() === 'true'
+							normedParam['includeVamm']?.toLowerCase() === 'true'
 						) {
 							let redisL2: string;
 							const redisClient =
