@@ -474,7 +474,7 @@ const main = async (): Promise<void> => {
 					return {
 						...JSON.parse(fees),
 						marketType: normedParam['marketType'],
-						marketIndex: normedParam['marketIndex'],
+						marketIndex: parseInt(normedParam['marketIndex']),
 					};
 				})
 			);
