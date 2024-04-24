@@ -473,8 +473,8 @@ const main = async (): Promise<void> => {
 					);
 					return {
 						...JSON.parse(fees),
-						marketType,
-						marketIndex,
+						marketType: normedParam['marketType'],
+						marketIndex: normedParam['marketIndex'],
 					};
 				})
 			);
