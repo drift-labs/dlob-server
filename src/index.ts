@@ -88,7 +88,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 const stateCommitment: Commitment = 'confirmed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
-const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 10;
+const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
 const SLOT_STALENESS_TOLERANCE =
 	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 35;
 const ROTATION_COOLDOWN = parseInt(process.env.ROTATION_COOLDOWN) || 5000;
