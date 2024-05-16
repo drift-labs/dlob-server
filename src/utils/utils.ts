@@ -11,8 +11,11 @@ import {
 	SerumSubscriber,
 	SpotMarketConfig,
 	SpotMarkets,
+	decodeUser,
 	isVariant,
 } from '@drift-labs/sdk';
+import { RedisClient } from '@drift/common';
+
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
@@ -336,6 +339,27 @@ export const validateDlobQuery = (
 		normedMarketType,
 		normedMarketIndex,
 	};
+};
+
+export const getAccountFromId = async (
+	userMapClient: RedisClient,
+	topMakers: string[]
+) => {
+	return Promise.all(
+		topMakers.map(async (accountId) => {
+			const userMap = await userMapClient.getRaw(accountId);
+			if (userMap) {
+				return {
+					accountId,
+					account: decodeUser(Buffer.from(userMap.split('::')[1], 'base64')),
+				};
+			}
+			return {
+				accountId,
+				account: null,
+			};
+		})
+	).then((results) => results.filter((user) => !!user));
 };
 
 export function errorHandler(

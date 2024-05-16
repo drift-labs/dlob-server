@@ -10,20 +10,17 @@ import {
 	BulkAccountLoader,
 	getMarketsAndOraclesForSubscription,
 } from '@drift-labs/sdk';
+import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
 import express from 'express';
 // import { handleHealthCheck } from '../core/metrics';
-import { RedisClient } from '../utils/redisClient';
 
 require('dotenv').config();
 const stateCommitment: Commitment = 'confirmed';
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = process.env.REDIS_PORT || '6379';
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
 // Set up express for health checks
 const app = express();
@@ -137,25 +134,25 @@ class PriorityFeeSubscriber {
 
 		dataPerp.forEach((result: any) => {
 			const marketIndex = parseInt(result['id']);
-			this.redisClient.client.publish(
+			this.redisClient.publish(
 				`priorityFees_perp_${marketIndex}`,
-				JSON.stringify(result.result['priorityFeeLevels'])
+				result.result['priorityFeeLevels']
 			);
-			this.redisClient.client.set(
+			this.redisClient.set(
 				`priorityFees_perp_${marketIndex}`,
-				JSON.stringify(result.result['priorityFeeLevels'])
+				result.result['priorityFeeLevels']
 			);
 		});
 
 		dataSpot.forEach((result: any) => {
 			const marketIndex = parseInt(result['id']) - 100;
-			this.redisClient.client.publish(
+			this.redisClient.publish(
 				`priorityFees_spot_${marketIndex}`,
-				JSON.stringify(result.result['priorityFeeLevels'])
+				result.result['priorityFeeLevels']
 			);
-			this.redisClient.client.set(
+			this.redisClient.set(
 				`priorityFees_spot_${marketIndex}`,
-				JSON.stringify(result.result['priorityFeeLevels'])
+				result.result['priorityFeeLevels']
 			);
 		});
 	}
@@ -166,6 +163,11 @@ const main = async () => {
 		wsEndpoint: wsEndpoint,
 		commitment: stateCommitment,
 	});
+
+	const redisClient = new RedisClient({
+		prefix: RedisClientPrefix.DLOB_HELIUS,
+	});
+	await redisClient.connect();
 
 	const { perpMarketIndexes, spotMarketIndexes, oracleInfos } =
 		getMarketsAndOraclesForSubscription(sdkConfig.ENV);
@@ -208,9 +210,6 @@ const main = async () => {
 			pubkeys: pubkeysForMarket,
 		});
 	}
-
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
-	await redisClient.connect();
 
 	const priorityFeeSubscriber = new PriorityFeeSubscriber({
 		endpoint,

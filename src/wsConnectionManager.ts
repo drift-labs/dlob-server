@@ -4,9 +4,9 @@ import * as http from 'http';
 import compression from 'compression';
 import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
-import { RedisClient } from './utils/redisClient';
 import { register, Gauge } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
+import { RedisClient } from '@drift/common';
 
 // Set up env constants
 require('dotenv').config();
@@ -29,13 +29,10 @@ const wss = new WebSocketServer({
 	perMessageDeflate: true,
 });
 
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = process.env.REDIS_PORT || '6379';
 const WS_PORT = process.env.WS_PORT || '3000';
 
 console.log(`WS LISTENER PORT : ${WS_PORT}`);
 
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 const MAX_BUFFERED_AMOUNT = 300000;
 
 const safeGetRawChannelFromMessage = (message: any): string => {
@@ -79,12 +76,8 @@ const getRedisChannelFromMessage = (message: any): string => {
 };
 
 async function main() {
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
-	const lastMessageRetriever = new RedisClient(
-		REDIS_HOST,
-		REDIS_PORT,
-		REDIS_PASSWORD
-	);
+	const redisClient = new RedisClient({});
+	const lastMessageRetriever = new RedisClient({});
 
 	await redisClient.connect();
 	await lastMessageRetriever.connect();
@@ -92,17 +85,17 @@ async function main() {
 	const channelSubscribers = new Map<string, Set<WebSocket>>();
 	const subscribedChannels = new Set<string>();
 
-	redisClient.client.on('connect', () => {
+	redisClient.forceGetClient().on('connect', () => {
 		subscribedChannels.forEach(async (channel) => {
 			try {
-				await redisClient.client.subscribe(channel);
+				await redisClient.subscribe(channel);
 			} catch (error) {
 				console.error(`Error subscribing to ${channel}:`, error);
 			}
 		});
 	});
 
-	redisClient.client.on('message', (subscribedChannel, message) => {
+	redisClient.forceGetClient().on('message', (subscribedChannel, message) => {
 		const subscribers = channelSubscribers.get(subscribedChannel);
 		if (subscribers) {
 			subscribers.forEach((ws) => {
@@ -117,7 +110,7 @@ async function main() {
 		}
 	});
 
-	redisClient.client.on('error', (error) => {
+	redisClient.forceGetClient().on('error', (error) => {
 		console.error('Redis client error:', error);
 	});
 
@@ -162,7 +155,7 @@ async function main() {
 
 					if (!subscribedChannels.has(redisChannel)) {
 						console.log('Trying to subscribe to channel', redisChannel);
-						redisClient.client
+						redisClient
 							.subscribe(redisChannel)
 							.then(() => {
 								subscribedChannels.add(redisChannel);
@@ -191,7 +184,7 @@ async function main() {
 					// Fetch and send last message
 					if (redisChannel.includes('orderbook')) {
 						const lastUpdateChannel = `last_update_${redisChannel}`;
-						const lastMessage = await lastMessageRetriever.client.get(
+						const lastMessage = await lastMessageRetriever.get(
 							lastUpdateChannel
 						);
 
@@ -270,7 +263,7 @@ async function main() {
 			clearInterval(bufferInterval);
 			channelSubscribers.forEach((subscribers, channel) => {
 				if (subscribers.delete(ws) && subscribers.size === 0) {
-					redisClient.client.unsubscribe(channel);
+					redisClient.unsubscribe(channel);
 					channelSubscribers.delete(channel);
 					subscribedChannels.delete(channel);
 				}

@@ -18,6 +18,7 @@ import {
 	PerpMarketConfig,
 	SpotMarketConfig,
 } from '@drift-labs/sdk';
+import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 import { logger, setLogLevel } from '../utils/logger';
 import {
@@ -31,7 +32,6 @@ import {
 	DLOBSubscriberIO,
 	wsMarketInfo,
 } from '../dlob-subscriber/DLOBSubscriberIO';
-import { RedisClient } from '../utils/redisClient';
 import {
 	DLOBProvider,
 	getDLOBProviderFromGrpcOrderSubscriber,
@@ -47,9 +47,8 @@ require('dotenv').config();
 const stateCommitment: Commitment = 'confirmed';
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = process.env.REDIS_PORT || '6379';
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
+
+const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
 
 // Set up express for health checks
 const app = express();
@@ -259,6 +258,11 @@ const main = async () => {
 	const wallet = new Wallet(new Keypair());
 	const clearingHousePublicKey = new PublicKey(sdkConfig.DRIFT_PROGRAM_ID);
 
+	const redisClient = new RedisClient({
+		prefix: RedisClientPrefix[REDIS_CLIENT],
+	});
+	await redisClient.connect();
+
 	const connection = new Connection(endpoint, {
 		wsEndpoint: wsEndpoint,
 		commitment: stateCommitment,
@@ -390,9 +394,6 @@ const main = async () => {
 	}
 
 	await dlobProvider.subscribe();
-
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
-	await redisClient.connect();
 
 	const dlobSubscriber = new DLOBSubscriberIO({
 		driftClient,
