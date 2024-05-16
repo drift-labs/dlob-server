@@ -17,12 +17,12 @@ import {
 	OracleInfo,
 	PerpMarketConfig,
 	SpotMarketConfig,
+	PhoenixSubscriber,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from '../utils/logger';
 import {
 	SubscriberLookup,
-	getPhoenixSubscriber,
 	getSerumSubscriber,
 	parsePositiveIntArray,
 	sleep,
@@ -206,11 +206,20 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 				logger.info(
 					`Loading phoenix subscriber for spot market ${market.marketIndex}`
 				);
-				const phoenixSubscriber = getPhoenixSubscriber(
-					driftClient,
-					marketConfig,
-					sdkConfig
+				const bulkAccountLoader = new BulkAccountLoader(
+					driftClient.connection,
+					stateCommitment,
+					5_000
 				);
+				const phoenixSubscriber = new PhoenixSubscriber({
+					connection: driftClient.connection,
+					programId: new PublicKey(sdkConfig.PHOENIX),
+					marketAddress: phoenixConfigAccount.phoenixMarket,
+					accountSubscription: {
+						type: 'polling',
+						accountLoader: bulkAccountLoader,
+					},
+				});
 				await phoenixSubscriber.subscribe();
 				// Test get L2 to know if we should add
 				try {
