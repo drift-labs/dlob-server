@@ -18,6 +18,8 @@ import {
 	isVariant,
 	OrderSubscriber,
 	MarketType,
+	PhoenixSubscriber,
+	BulkAccountLoader,
 } from '@drift-labs/sdk';
 
 import { logger, setLogLevel } from './utils/logger';
@@ -36,7 +38,6 @@ import {
 	SubscriberLookup,
 	addOracletoResponse,
 	errorHandler,
-	getPhoenixSubscriber,
 	getSerumSubscriber,
 	l2WithBNToStrings,
 	normalizeBatchQueryParams,
@@ -169,11 +170,20 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 			const phoenixConfigAccount =
 				await driftClient.getPhoenixV1FulfillmentConfig(market.phoenixMarket);
 			if (isVariant(phoenixConfigAccount.status, 'enabled')) {
-				const phoenixSubscriber = getPhoenixSubscriber(
-					driftClient,
-					market,
-					sdkConfig
+				const bulkAccountLoader = new BulkAccountLoader(
+					driftClient.connection,
+					stateCommitment,
+					2_000
 				);
+				const phoenixSubscriber = new PhoenixSubscriber({
+					connection: driftClient.connection,
+					programId: new PublicKey(sdkConfig.PHOENIX),
+					marketAddress: phoenixConfigAccount.phoenixMarket,
+					accountSubscription: {
+						type: 'polling',
+						accountLoader: bulkAccountLoader,
+					},
+				});
 				await phoenixSubscriber.subscribe();
 				// Test get L2 to know if we should add
 				try {
