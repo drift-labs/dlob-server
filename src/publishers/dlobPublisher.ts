@@ -42,6 +42,13 @@ import FEATURE_FLAGS from '../utils/featureFlags';
 import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
 import express from 'express';
 import { handleHealthCheck } from '../core/metrics';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+setGlobalDispatcher(
+	new Agent({
+		connections: 200,
+	})
+);
 
 require('dotenv').config();
 const stateCommitment: Commitment = 'confirmed';

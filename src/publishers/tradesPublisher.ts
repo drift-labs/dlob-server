@@ -25,6 +25,13 @@ import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
 import { RedisClient } from '../utils/redisClient';
 import { fromEvent, filter, map } from 'rxjs';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+setGlobalDispatcher(
+	new Agent({
+		connections: 200,
+	})
+);
 
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
