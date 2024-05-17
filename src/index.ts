@@ -47,6 +47,13 @@ import {
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { RedisClient } from './utils/redisClient';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+setGlobalDispatcher(
+	new Agent({
+		connections: 200,
+	})
+);
 
 require('dotenv').config();
 
