@@ -180,7 +180,7 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 				const bulkAccountLoader = new BulkAccountLoader(
 					driftClient.connection,
 					stateCommitment,
-					2_000
+					5_000
 				);
 				const phoenixSubscriber = new PhoenixSubscriber({
 					connection: driftClient.connection,
