@@ -347,11 +347,13 @@ export const getAccountFromId = async (
 ) => {
 	return Promise.all(
 		topMakers.map(async (accountId) => {
-			const userMap = await userMapClient.getRaw(accountId);
-			if (userMap) {
+			const userAccountEncoded = await userMapClient.getRaw(accountId);
+			if (userAccountEncoded) {
 				return {
 					accountId,
-					account: decodeUser(Buffer.from(userMap.split('::')[1], 'base64')),
+					account: decodeUser(
+						Buffer.from(userAccountEncoded.split('::')[1], 'base64')
+					),
 				};
 			}
 			return {

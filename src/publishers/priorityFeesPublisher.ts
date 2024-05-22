@@ -21,7 +21,7 @@ require('dotenv').config();
 const stateCommitment: Commitment = 'confirmed';
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
-
+const redisClientPrefix = RedisClientPrefix.DLOB_HELIUS;
 // Set up express for health checks
 const app = express();
 
@@ -135,7 +135,7 @@ class PriorityFeeSubscriber {
 		dataPerp.forEach((result: any) => {
 			const marketIndex = parseInt(result['id']);
 			this.redisClient.publish(
-				`priorityFees_perp_${marketIndex}`,
+				`${redisClientPrefix}priorityFees_perp_${marketIndex}`,
 				result.result['priorityFeeLevels']
 			);
 			this.redisClient.set(
@@ -147,7 +147,7 @@ class PriorityFeeSubscriber {
 		dataSpot.forEach((result: any) => {
 			const marketIndex = parseInt(result['id']) - 100;
 			this.redisClient.publish(
-				`priorityFees_spot_${marketIndex}`,
+				`${redisClientPrefix}priorityFees_spot_${marketIndex}`,
 				result.result['priorityFeeLevels']
 			);
 			this.redisClient.set(
@@ -165,7 +165,7 @@ const main = async () => {
 	});
 
 	const redisClient = new RedisClient({
-		prefix: RedisClientPrefix.DLOB_HELIUS,
+		prefix: redisClientPrefix,
 	});
 	await redisClient.connect();
 

@@ -29,7 +29,7 @@ import { fromEvent, filter, map } from 'rxjs';
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
-
+const redisClientPrefix = RedisClientPrefix.DLOB;
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
 
@@ -67,7 +67,7 @@ const main = async () => {
 		env: driftEnv,
 	});
 
-	const redisClient = new RedisClient({ prefix: RedisClientPrefix.DLOB });
+	const redisClient = new RedisClient({ prefix: redisClientPrefix });
 	await redisClient.connect();
 
 	const slotSubscriber = new SlotSubscriber(connection, {});
@@ -180,7 +180,7 @@ const main = async () => {
 		)
 		.subscribe((fillEvent) => {
 			redisClient.publish(
-				`trades_${fillEvent.marketType}_${fillEvent.marketIndex}`,
+				`${redisClientPrefix}trades_${fillEvent.marketType}_${fillEvent.marketIndex}`,
 				fillEvent
 			);
 		});

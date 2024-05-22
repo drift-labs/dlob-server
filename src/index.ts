@@ -51,10 +51,7 @@ import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 require('dotenv').config();
 
 // Reading in Redis env vars
-const REDIS_CLIENTS = process.env.REDIS_CLIENTS?.replace(/^\[|\]$/g, '')
-	.split(',')
-	.map((clients) => clients.trim()) || ['DLOB'];
-
+const REDIS_CLIENTS = [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
 console.log('Redis Clients:', REDIS_CLIENTS);
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
@@ -294,8 +291,7 @@ const main = async (): Promise<void> => {
 	if (useRedis) {
 		logger.info('Connecting to redis');
 		for (let i = 0; i < REDIS_CLIENTS.length; i++) {
-			const prefix = RedisClientPrefix[REDIS_CLIENTS[i]];
-			redisClients.push(new RedisClient({ prefix }));
+			redisClients.push(new RedisClient({ prefix: REDIS_CLIENTS[i] }));
 		}
 
 		for (let i = 0; i < sdkConfig.SPOT_MARKETS.length; i++) {
@@ -402,11 +398,12 @@ const main = async (): Promise<void> => {
 			const { marketIndex, marketType } = req.query;
 
 			const fees = await redisClients
-				.find(
-					(client) =>
+				.find((client) => {
+					return (
 						client.forceGetClient().options.keyPrefix ===
 						RedisClientPrefix.DLOB_HELIUS
-				)
+					);
+				})
 				.getRaw(`priorityFees_${marketType}_${marketIndex}`);
 
 			if (fees) {
@@ -521,7 +518,7 @@ const main = async (): Promise<void> => {
 
 			let accountFlag = false;
 			if (includeAccounts) {
-				accountFlag = includeAccounts === 'true';
+				accountFlag = (includeAccounts as string).toLowerCase() === 'true';
 			}
 
 			let topMakers: string[];

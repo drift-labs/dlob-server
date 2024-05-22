@@ -137,6 +137,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	}
 
 	getL2AndSendMsg(marketArgs: wsMarketArgs): void {
+		const clientPrefix = this.redisClient.forceGetClient().options.keyPrefix;
 		const grouping = marketArgs.grouping;
 		const { marketName, ...l2FuncArgs } = marketArgs;
 		const l2 = this.getL2(l2FuncArgs);
@@ -263,7 +264,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		});
 
 		this.redisClient.publish(
-			`orderbook_${marketType}_${marketArgs.marketIndex}`,
+			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}`,
 			l2Formatted
 		);
 		this.redisClient.set(

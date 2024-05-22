@@ -30,10 +30,7 @@ import { RedisClient, RedisClientPrefix } from '@drift/common';
 require('dotenv').config();
 
 // Reading in Redis env vars
-const REDIS_CLIENTS = process.env.REDIS_CLIENTS?.replace(/^\[|\]$/g, '')
-	.split(',')
-	.map((clients) => clients.trim()) || ['DLOB'];
-
+const REDIS_CLIENTS = [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
 console.log('Redis Clients:', REDIS_CLIENTS);
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;

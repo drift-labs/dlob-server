@@ -6,7 +6,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
 import { register, Gauge } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
-import { RedisClient } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 // Set up env constants
 require('dotenv').config();
@@ -34,6 +34,7 @@ const WS_PORT = process.env.WS_PORT || '3000';
 console.log(`WS LISTENER PORT : ${WS_PORT}`);
 
 const MAX_BUFFERED_AMOUNT = 300000;
+const CHANNEL_PREFIX = RedisClientPrefix.DLOB;
 
 const safeGetRawChannelFromMessage = (message: any): string => {
 	return message?.channel;
@@ -64,11 +65,11 @@ const getRedisChannelFromMessage = (message: any): string => {
 
 	switch (channel.toLowerCase()) {
 		case 'trades':
-			return `trades_${marketType}_${marketIndex}`;
+			return `${CHANNEL_PREFIX}trades_${marketType}_${marketIndex}`;
 		case 'orderbook':
-			return `orderbook_${marketType}_${marketIndex}`;
+			return `${CHANNEL_PREFIX}orderbook_${marketType}_${marketIndex}`;
 		case 'priorityfees':
-			return `priorityFees_${marketType}_${marketIndex}`;
+			return `${CHANNEL_PREFIX}priorityFees_${marketType}_${marketIndex}`;
 		case undefined:
 		default:
 			throw new Error('Bad channel specified');
@@ -77,7 +78,7 @@ const getRedisChannelFromMessage = (message: any): string => {
 
 async function main() {
 	const redisClient = new RedisClient({});
-	const lastMessageRetriever = new RedisClient({});
+	const lastMessageRetriever = new RedisClient({ prefix: CHANNEL_PREFIX });
 
 	await redisClient.connect();
 	await lastMessageRetriever.connect();
@@ -183,11 +184,13 @@ async function main() {
 					);
 					// Fetch and send last message
 					if (redisChannel.includes('orderbook')) {
-						const lastUpdateChannel = `last_update_${redisChannel}`;
-						const lastMessage = await lastMessageRetriever.get(
+						const lastUpdateChannel = `last_update_${redisChannel}`.replace(
+							CHANNEL_PREFIX,
+							''
+						);
+						const lastMessage = await lastMessageRetriever.getRaw(
 							lastUpdateChannel
 						);
-
 						if (lastMessage) {
 							ws.send(
 								JSON.stringify({
