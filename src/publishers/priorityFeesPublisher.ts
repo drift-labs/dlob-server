@@ -16,6 +16,13 @@ import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
 import express from 'express';
 // import { handleHealthCheck } from '../core/metrics';
+import { setGlobalDispatcher, Agent } from 'undici';
+
+setGlobalDispatcher(
+	new Agent({
+		connections: 200,
+	})
+);
 
 require('dotenv').config();
 const stateCommitment: Commitment = 'confirmed';

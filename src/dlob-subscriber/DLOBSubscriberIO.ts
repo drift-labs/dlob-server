@@ -40,7 +40,7 @@ const PERP_MARKETS_TO_SKIP_SLOT_CHECK = {
 };
 
 const SPOT_MARKETS_TO_SKIP_SLOT_CHECK = {
-	'mainnet-beta': [6, 8, 10],
+	'mainnet-beta': [6, 8, 10, 15],
 	devnet: [],
 };
 
