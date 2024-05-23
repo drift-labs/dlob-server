@@ -346,18 +346,18 @@ export const getAccountFromId = async (
 	topMakers: string[]
 ) => {
 	return Promise.all(
-		topMakers.map(async (accountId) => {
-			const userAccountEncoded = await userMapClient.getRaw(accountId);
+		topMakers.map(async (userAccountPubKey) => {
+			const userAccountEncoded = await userMapClient.getRaw(userAccountPubKey);
 			if (userAccountEncoded) {
 				return {
-					accountId,
+					userAccountPubKey,
 					account: decodeUser(
 						Buffer.from(userAccountEncoded.split('::')[1], 'base64')
 					),
 				};
 			}
 			return {
-				accountId,
+				userAccountPubKey,
 				account: null,
 			};
 		})
