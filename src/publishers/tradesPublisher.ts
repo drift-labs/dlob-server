@@ -20,10 +20,10 @@ import {
 	OrderActionRecord,
 	Event,
 } from '@drift-labs/sdk';
+import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
-import { RedisClient } from '../utils/redisClient';
 import { fromEvent, filter, map } from 'rxjs';
 import { setGlobalDispatcher, Agent } from 'undici';
 
@@ -36,10 +36,7 @@ setGlobalDispatcher(
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = process.env.REDIS_PORT || '6379';
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-
+const redisClientPrefix = RedisClientPrefix.DLOB;
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
 
@@ -77,6 +74,9 @@ const main = async () => {
 		env: driftEnv,
 	});
 
+	const redisClient = new RedisClient({ prefix: redisClientPrefix });
+	await redisClient.connect();
+
 	const slotSubscriber = new SlotSubscriber(connection, {});
 
 	const lamportsBalance = await connection.getBalance(wallet.publicKey);
@@ -92,9 +92,6 @@ const main = async () => {
 	});
 
 	await slotSubscriber.subscribe();
-
-	const redisClient = new RedisClient(REDIS_HOST, REDIS_PORT, REDIS_PASSWORD);
-	await redisClient.connect();
 
 	const eventSubscriber = new EventSubscriber(connection, driftClient.program, {
 		maxTx: 8192,
@@ -189,9 +186,9 @@ const main = async () => {
 			})
 		)
 		.subscribe((fillEvent) => {
-			redisClient.client.publish(
-				`trades_${fillEvent.marketType}_${fillEvent.marketIndex}`,
-				JSON.stringify(fillEvent)
+			redisClient.publish(
+				`${redisClientPrefix}trades_${fillEvent.marketType}_${fillEvent.marketIndex}`,
+				fillEvent
 			);
 		});
 
