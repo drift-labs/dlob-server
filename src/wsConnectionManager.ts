@@ -35,9 +35,12 @@ console.log(`WS LISTENER PORT : ${WS_PORT}`);
 
 const MAX_BUFFERED_AMOUNT = 300000;
 const CHANNEL_PREFIX = RedisClientPrefix.DLOB;
+const CHANNEL_PREFIX_HELIUS = RedisClientPrefix.DLOB_HELIUS;
 
-const safeGetRawChannelFromMessage = (message: any): string => {
-	return message?.channel;
+const sanitiseChannelForClient = (channel: string): string => {
+	return channel
+		.replace(CHANNEL_PREFIX, '')
+		.replace(CHANNEL_PREFIX_HELIUS, '');
 };
 
 const getRedisChannelFromMessage = (message: any): string => {
@@ -69,7 +72,7 @@ const getRedisChannelFromMessage = (message: any): string => {
 		case 'orderbook':
 			return `${CHANNEL_PREFIX}orderbook_${marketType}_${marketIndex}`;
 		case 'priorityfees':
-			return `${CHANNEL_PREFIX}priorityFees_${marketType}_${marketIndex}`;
+			return `${CHANNEL_PREFIX_HELIUS}priorityFees_${marketType}_${marketIndex}`;
 		case undefined:
 		default:
 			throw new Error('Bad channel specified');
@@ -105,7 +108,10 @@ async function main() {
 					ws.bufferedAmount < MAX_BUFFERED_AMOUNT
 				)
 					ws.send(
-						JSON.stringify({ channel: subscribedChannel, data: message })
+						JSON.stringify({
+							channel: sanitiseChannelForClient(subscribedChannel),
+							data: message,
+						})
 					);
 			});
 		}
@@ -135,7 +141,7 @@ async function main() {
 					try {
 						redisChannel = getRedisChannelFromMessage(parsedMessage);
 					} catch (error) {
-						const requestChannel = safeGetRawChannelFromMessage(parsedMessage);
+						const requestChannel = sanitiseChannelForClient(parsedMessage?.channel);
 						if (requestChannel) {
 							ws.send(
 								JSON.stringify({
@@ -208,7 +214,7 @@ async function main() {
 					try {
 						redisChannel = getRedisChannelFromMessage(parsedMessage);
 					} catch (error) {
-						const requestChannel = safeGetRawChannelFromMessage(parsedMessage);
+						const requestChannel = sanitiseChannelForClient(parsedMessage?.channel);
 						if (requestChannel) {
 							console.log('Error unsubscribing from channel:', error.message);
 							ws.send(
