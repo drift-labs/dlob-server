@@ -364,6 +364,32 @@ export const getAccountFromId = async (
 	).then((results) => results.filter((user) => !!user));
 };
 
+export const getRawAccountFromId = async (
+	userMapClient: RedisClient,
+	topMakers: string[]
+): Promise<
+	{
+		userAccountPubKey: string;
+		accountBase64: string;
+	}[]
+> => {
+	return Promise.all(
+		topMakers.map(async (userAccountPubKey) => {
+			const userAccountEncoded = await userMapClient.getRaw(userAccountPubKey);
+			if (userAccountEncoded) {
+				return {
+					userAccountPubKey,
+					accountBase64: userAccountEncoded.split('::')[1],
+				};
+			}
+			return {
+				userAccountPubKey,
+				accountBase64: null,
+			};
+		})
+	).then((results) => results.filter((user) => !!user));
+};
+
 export function errorHandler(
 	err: Error,
 	_req: Request,

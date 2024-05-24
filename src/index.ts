@@ -45,6 +45,7 @@ import {
 	sleep,
 	validateDlobQuery,
 	getAccountFromId,
+	getRawAccountFromId,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
@@ -572,7 +573,10 @@ const main = async (): Promise<void> => {
 				res.writeHead(200);
 
 				if (accountFlag) {
-					const topAccounts = await getAccountFromId(userMapClient, topMakers);
+					const topAccounts = await getRawAccountFromId(
+						userMapClient,
+						topMakers
+					);
 					res.end(JSON.stringify(topAccounts));
 					return;
 				}
