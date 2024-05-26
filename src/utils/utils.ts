@@ -11,8 +11,11 @@ import {
 	SerumSubscriber,
 	SpotMarketConfig,
 	SpotMarkets,
+	decodeUser,
 	isVariant,
 } from '@drift-labs/sdk';
+import { RedisClient } from '@drift/common';
+
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
@@ -336,6 +339,55 @@ export const validateDlobQuery = (
 		normedMarketType,
 		normedMarketIndex,
 	};
+};
+
+export const getAccountFromId = async (
+	userMapClient: RedisClient,
+	topMakers: string[]
+) => {
+	return Promise.all(
+		topMakers.map(async (userAccountPubKey) => {
+			const userAccountEncoded = await userMapClient.getRaw(userAccountPubKey);
+			if (userAccountEncoded) {
+				return {
+					userAccountPubKey,
+					account: decodeUser(
+						Buffer.from(userAccountEncoded.split('::')[1], 'base64')
+					),
+				};
+			}
+			return {
+				userAccountPubKey,
+				account: null,
+			};
+		})
+	).then((results) => results.filter((user) => !!user));
+};
+
+export const getRawAccountFromId = async (
+	userMapClient: RedisClient,
+	topMakers: string[]
+): Promise<
+	{
+		userAccountPubKey: string;
+		accountBase64: string;
+	}[]
+> => {
+	return Promise.all(
+		topMakers.map(async (userAccountPubKey) => {
+			const userAccountEncoded = await userMapClient.getRaw(userAccountPubKey);
+			if (userAccountEncoded) {
+				return {
+					userAccountPubKey,
+					accountBase64: userAccountEncoded.split('::')[1],
+				};
+			}
+			return {
+				userAccountPubKey,
+				accountBase64: null,
+			};
+		})
+	).then((results) => results.filter((user) => !!user));
 };
 
 export function errorHandler(
