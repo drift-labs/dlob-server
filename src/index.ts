@@ -21,6 +21,7 @@ import {
 	PhoenixSubscriber,
 	BulkAccountLoader,
 } from '@drift-labs/sdk';
+import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 import { logger, setLogLevel } from './utils/logger';
 
@@ -43,10 +44,11 @@ import {
 	normalizeBatchQueryParams,
 	sleep,
 	validateDlobQuery,
+	getAccountFromId,
+	getRawAccountFromId,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
-import { RedisClient } from './utils/redisClient';
 import { setGlobalDispatcher, Agent } from 'undici';
 
 setGlobalDispatcher(
@@ -58,35 +60,8 @@ setGlobalDispatcher(
 require('dotenv').config();
 
 // Reading in Redis env vars
-const REDIS_HOSTS = process.env.REDIS_HOSTS?.replace(/^\[|\]$/g, '')
-	.split(',')
-	.map((host) => host.trim()) || ['localhost'];
-const REDIS_PORTS = process.env.REDIS_PORTS?.replace(/^\[|\]$/g, '')
-	.split(',')
-	.map((port) => parseInt(port.trim(), 10)) || [6379];
-const REDIS_PASSWORDS_ENV = process.env.REDIS_PASSWORDS || "['']";
-
-let REDIS_PASSWORDS;
-
-if (REDIS_PASSWORDS_ENV.trim() === "['']") {
-	REDIS_PASSWORDS = [undefined];
-} else {
-	REDIS_PASSWORDS = REDIS_PASSWORDS_ENV.replace(/^\[|\]$/g, '')
-		.split(/\s*,\s*/)
-		.map((pwd) => pwd.replace(/(^'|'$)/g, '').trim())
-		.map((pwd) => (pwd === '' ? undefined : pwd));
-}
-
-console.log('Redis Hosts:', REDIS_HOSTS);
-console.log('Redis Ports:', REDIS_PORTS);
-console.log('Redis Passwords:', REDIS_PASSWORDS);
-
-if (
-	REDIS_PORTS.length !== REDIS_PASSWORDS.length ||
-	REDIS_PORTS.length !== REDIS_HOSTS.length
-) {
-	throw 'REDIS_HOSTS and REDIS_PASSWORDS and REDIS_PORTS must be the same length';
-}
+const REDIS_CLIENTS = [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
+console.log('Redis Clients:', REDIS_CLIENTS);
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
@@ -180,7 +155,7 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 				const bulkAccountLoader = new BulkAccountLoader(
 					driftClient.connection,
 					stateCommitment,
-					2_000
+					5_000
 				);
 				const phoenixSubscriber = new PhoenixSubscriber({
 					connection: driftClient.connection,
@@ -333,16 +308,10 @@ const main = async (): Promise<void> => {
 	> = new Map();
 	if (useRedis) {
 		logger.info('Connecting to redis');
-		for (let i = 0; i < REDIS_HOSTS.length; i++) {
-			redisClients.push(
-				new RedisClient(
-					REDIS_HOSTS[i],
-					REDIS_PORTS[i].toString(),
-					REDIS_PASSWORDS[i] || undefined
-				)
-			);
-			await redisClients[i].connect();
+		for (let i = 0; i < REDIS_CLIENTS.length; i++) {
+			redisClients.push(new RedisClient({ prefix: REDIS_CLIENTS[i] }));
 		}
+
 		for (let i = 0; i < sdkConfig.SPOT_MARKETS.length; i++) {
 			spotMarketRedisMap.set(sdkConfig.SPOT_MARKETS[i].marketIndex, {
 				client: redisClients[0],
@@ -360,6 +329,8 @@ const main = async (): Promise<void> => {
 			});
 		}
 	}
+
+	const userMapClient = new RedisClient({ prefix: RedisClientPrefix.USER_MAP });
 
 	function canRotate(marketType: MarketType, marketIndex: number) {
 		if (isVariant(marketType, 'spot')) {
@@ -444,15 +415,22 @@ const main = async (): Promise<void> => {
 		try {
 			const { marketIndex, marketType } = req.query;
 
-			const fees = await redisClients[
-				parseInt(process.env.HELIUS_REDIS_HOST_INDEX) ?? 0
-			].client.get(`priorityFees_${marketType}_${marketIndex}`);
+			const fees = await redisClients
+				.find((client) => {
+					return (
+						client.forceGetClient().options.keyPrefix ===
+						RedisClientPrefix.DLOB_HELIUS
+					);
+				})
+				.getRaw(`priorityFees_${marketType}_${marketIndex}`);
+
 			if (fees) {
 				res.status(200).json({
 					...JSON.parse(fees),
 					marketType,
 					marketIndex,
 				});
+
 				return;
 			} else {
 				res.writeHead(404);
@@ -483,11 +461,16 @@ const main = async (): Promise<void> => {
 
 			const fees = await Promise.all(
 				normedParams.map(async (normedParam) => {
-					const fees = await redisClients[
-						parseInt(process.env.HELIUS_REDIS_HOST_INDEX) ?? 0
-					].client.get(
-						`priorityFees_${normedParam['marketType']}_${normedParam['marketIndex']}`
-					);
+					const fees = await redisClients
+						.find(
+							(client) =>
+								client.forceGetClient().options.keyPrefix ===
+								RedisClientPrefix.DLOB_HELIUS
+						)
+						.getRaw(
+							`priorityFees_${normedParam['marketType']}_${normedParam['marketIndex']}`
+						);
+
 					return {
 						...JSON.parse(fees),
 						marketType: normedParam['marketType'],
@@ -516,6 +499,7 @@ const main = async (): Promise<void> => {
 				marketType,
 				side, // bid or ask
 				limit,
+				includeAccounts,
 			} = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -550,12 +534,17 @@ const main = async (): Promise<void> => {
 				normedLimit = 4;
 			}
 
+			let accountFlag = false;
+			if (includeAccounts) {
+				accountFlag = (includeAccounts as string).toLowerCase() === 'true';
+			}
+
 			let topMakers: string[];
 			if (useRedis) {
 				const redisClient = isVariant(normedMarketType, 'perp')
 					? perpMarketRedisMap.get(normedMarketIndex).client
 					: spotMarketRedisMap.get(normedMarketIndex).client;
-				const redisResponse = await redisClient.client.get(
+				const redisResponse = await redisClient.getRaw(
 					`last_update_orderbook_best_makers_${getVariant(
 						normedMarketType
 					)}_${marketIndex}`
@@ -582,6 +571,16 @@ const main = async (): Promise<void> => {
 					path: req.baseUrl + req.path,
 				});
 				res.writeHead(200);
+
+				if (accountFlag) {
+					const topAccounts = await getRawAccountFromId(
+						userMapClient,
+						topMakers
+					);
+					res.end(JSON.stringify(topAccounts));
+					return;
+				}
+
 				res.end(JSON.stringify(topMakers));
 				return;
 			}
@@ -636,6 +635,13 @@ const main = async (): Promise<void> => {
 				path: req.baseUrl + req.path,
 			});
 			res.writeHead(200);
+
+			if (accountFlag) {
+				const topAccounts = await getAccountFromId(userMapClient, topMakers);
+				res.end(JSON.stringify(topAccounts));
+				return;
+			}
+
 			res.end(JSON.stringify(topMakers));
 		} catch (err) {
 			next(err);
@@ -678,15 +684,15 @@ const main = async (): Promise<void> => {
 					let redisL2: string;
 					const redisClient = perpMarketRedisMap.get(normedMarketIndex).client;
 					if (parseInt(adjustedDepth as string) === 5) {
-						redisL2 = await redisClient.client.get(
+						redisL2 = await redisClient.getRaw(
 							`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
 						);
 					} else if (parseInt(adjustedDepth as string) === 20) {
-						redisL2 = await redisClient.client.get(
+						redisL2 = await redisClient.getRaw(
 							`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
 						);
 					} else if (parseInt(adjustedDepth as string) === 100) {
-						redisL2 = await redisClient.client.get(
+						redisL2 = await redisClient.getRaw(
 							`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
 						);
 					}
@@ -711,15 +717,15 @@ const main = async (): Promise<void> => {
 					let redisL2: string;
 					const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
 					if (parseInt(adjustedDepth as string) === 5) {
-						redisL2 = await redisClient.client.get(
+						redisL2 = await redisClient.getRaw(
 							`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
 						);
 					} else if (parseInt(adjustedDepth as string) === 20) {
-						redisL2 = await redisClient.client.get(
+						redisL2 = await redisClient.getRaw(
 							`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
 						);
 					} else if (parseInt(adjustedDepth as string) === 100) {
-						redisL2 = await redisClient.client.get(
+						redisL2 = await redisClient.getRaw(
 							`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
 						);
 					}
@@ -851,15 +857,15 @@ const main = async (): Promise<void> => {
 							const redisClient =
 								perpMarketRedisMap.get(normedMarketIndex).client;
 							if (parseInt(adjustedDepth as string) === 5) {
-								redisL2 = await redisClient.client.get(
+								redisL2 = await redisClient.getRaw(
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_5`
 								);
 							} else if (parseInt(adjustedDepth as string) === 20) {
-								redisL2 = await redisClient.client.get(
+								redisL2 = await redisClient.getRaw(
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_20`
 								);
 							} else if (parseInt(adjustedDepth as string) === 100) {
-								redisL2 = await redisClient.client.get(
+								redisL2 = await redisClient.getRaw(
 									`last_update_orderbook_perp_${normedMarketIndex}_depth_100`
 								);
 							}
@@ -887,15 +893,15 @@ const main = async (): Promise<void> => {
 							const redisClient =
 								spotMarketRedisMap.get(normedMarketIndex).client;
 							if (parseInt(adjustedDepth as string) === 5) {
-								redisL2 = await redisClient.client.get(
+								redisL2 = await redisClient.getRaw(
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_5`
 								);
 							} else if (parseInt(adjustedDepth as string) === 20) {
-								redisL2 = await redisClient.client.get(
+								redisL2 = await redisClient.getRaw(
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_20`
 								);
 							} else if (parseInt(adjustedDepth as string) === 100) {
-								redisL2 = await redisClient.client.get(
+								redisL2 = await redisClient.getRaw(
 									`last_update_orderbook_spot_${normedMarketIndex}_depth_100`
 								);
 							}
@@ -993,7 +999,7 @@ const main = async (): Promise<void> => {
 				const redisClient = (
 					marketTypeStr === 'spot' ? spotMarketRedisMap : perpMarketRedisMap
 				).get(normedMarketIndex).client;
-				const redisL3 = await redisClient.client.get(
+				const redisL3 = await redisClient.getRaw(
 					`last_update_orderbook_l3_${marketTypeStr}_${normedMarketIndex}`
 				);
 				if (

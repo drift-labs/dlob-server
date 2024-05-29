@@ -16,11 +16,11 @@ jobs:
         node-version: '18.x'
         registry-url: 'https://registry.npmjs.org'
 
+    - name: Pull git modules
+      run: git submodule update --init --recursive
+
     - name: Install dependencies
       run: yarn install
-
-    - name: Add specific version of sdk
-      run: yarn add @drift-labs/sdk@${{ github.event.client_payload.version }}
 
     - name: Build after new dependency
       run: yarn run build

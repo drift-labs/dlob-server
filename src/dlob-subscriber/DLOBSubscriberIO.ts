@@ -9,7 +9,8 @@ import {
 	groupL2,
 	isVariant,
 } from '@drift-labs/sdk';
-import { RedisClient } from '../utils/redisClient';
+import { RedisClient } from '@drift/common';
+
 import {
 	SubscriberLookup,
 	addMarketSlotToResponse,
@@ -136,6 +137,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	}
 
 	getL2AndSendMsg(marketArgs: wsMarketArgs): void {
+		const clientPrefix = this.redisClient.forceGetClient().options.keyPrefix;
 		const grouping = marketArgs.grouping;
 		const { marketName, ...l2FuncArgs } = marketArgs;
 		const l2 = this.getL2(l2FuncArgs);
@@ -261,25 +263,25 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			asks: l2Formatted.asks.slice(0, 5),
 		});
 
-		this.redisClient.client.publish(
-			`orderbook_${marketType}_${marketArgs.marketIndex}`,
-			JSON.stringify(l2Formatted)
+		this.redisClient.publish(
+			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}`,
+			l2Formatted
 		);
-		this.redisClient.client.set(
+		this.redisClient.set(
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}`,
-			JSON.stringify(l2Formatted_depth100)
+			l2Formatted_depth100
 		);
-		this.redisClient.client.set(
+		this.redisClient.set(
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_100`,
-			JSON.stringify(l2Formatted_depth100)
+			l2Formatted_depth100
 		);
-		this.redisClient.client.set(
+		this.redisClient.set(
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_20`,
-			JSON.stringify(l2Formatted_depth20)
+			l2Formatted_depth20
 		);
-		this.redisClient.client.set(
+		this.redisClient.set(
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_5`,
-			JSON.stringify(l2Formatted_depth5)
+			l2Formatted_depth5
 		);
 
 		const oraclePriceData =
@@ -306,9 +308,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				numMakers: 4,
 			})
 			.map((x) => x.toString());
-		this.redisClient.client.set(
+		this.redisClient.set(
 			`last_update_orderbook_best_makers_${marketType}_${marketArgs.marketIndex}`,
-			JSON.stringify({ bids, asks, slot })
+			{ bids, asks, slot }
 		);
 	}
 
@@ -361,9 +363,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			marketArgs.marketIndex
 		);
 
-		this.redisClient.client.set(
+		this.redisClient.set(
 			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}`,
-			JSON.stringify(l3)
+			l3
 		);
 	}
 }
