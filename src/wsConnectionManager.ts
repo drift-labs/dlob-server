@@ -37,10 +37,10 @@ const MAX_BUFFERED_AMOUNT = 300000;
 const CHANNEL_PREFIX = RedisClientPrefix.DLOB;
 const CHANNEL_PREFIX_HELIUS = RedisClientPrefix.DLOB_HELIUS;
 
-const sanitiseChannelForClient = (channel: string): string => {
+const sanitiseChannelForClient = (channel: string | undefined): string => {
 	return channel
-		.replace(CHANNEL_PREFIX, '')
-		.replace(CHANNEL_PREFIX_HELIUS, '');
+		?.replace(CHANNEL_PREFIX, '')
+		?.replace(CHANNEL_PREFIX_HELIUS, '');
 };
 
 const getRedisChannelFromMessage = (message: any): string => {
