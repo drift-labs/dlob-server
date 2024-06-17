@@ -141,7 +141,9 @@ async function main() {
 					try {
 						redisChannel = getRedisChannelFromMessage(parsedMessage);
 					} catch (error) {
-						const requestChannel = sanitiseChannelForClient(parsedMessage?.channel);
+						const requestChannel = sanitiseChannelForClient(
+							parsedMessage?.channel
+						);
 						if (requestChannel) {
 							ws.send(
 								JSON.stringify({
@@ -214,7 +216,9 @@ async function main() {
 					try {
 						redisChannel = getRedisChannelFromMessage(parsedMessage);
 					} catch (error) {
-						const requestChannel = sanitiseChannelForClient(parsedMessage?.channel);
+						const requestChannel = sanitiseChannelForClient(
+							parsedMessage?.channel
+						);
 						if (requestChannel) {
 							console.log('Error unsubscribing from channel:', error.message);
 							ws.send(
