@@ -1,21 +1,20 @@
 import {
-	BN,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
 	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
 	PositionDirection,
-	groupL2,
 	isVariant,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common';
-
+import { logger } from '../utils/logger';
 import {
 	SubscriberLookup,
 	addMarketSlotToResponse,
 	addOracletoResponse,
 	l2WithBNToStrings,
+	parsePositiveIntArray,
 } from '../utils/utils';
 import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 
@@ -26,23 +25,24 @@ type wsMarketArgs = {
 	depth: number;
 	includeVamm: boolean;
 	numVammOrders?: number;
-	grouping?: number;
 	fallbackL2Generators?: L2OrderBookGenerator[];
 	updateOnChange?: boolean;
 };
 
+require('dotenv').config();
+
 const PERP_MAKRET_STALENESS_THRESHOLD = 30 * 60 * 1000;
 const SPOT_MAKRET_STALENESS_THRESHOLD = 60 * 60 * 1000;
+const STALE_ORACLE_REMOVE_VAMM_THRESHOLD = 100;
 
-const PERP_MARKETS_TO_SKIP_SLOT_CHECK = {
-	'mainnet-beta': [17, 25],
-	devnet: [17, 21, 23],
-};
-
-const SPOT_MARKETS_TO_SKIP_SLOT_CHECK = {
-	'mainnet-beta': [6, 8, 10, 15],
-	devnet: [],
-};
+const PERP_MARKETS_TO_SKIP_SLOT_CHECK =
+	process.env.PERP_MARKETS_TO_SKIP_SLOT_CHECK !== undefined
+		? parsePositiveIntArray(process.env.PERP_MARKETS_TO_SKIP_SLOT_CHECK)
+		: [];
+const SPOT_MARKETS_TO_SKIP_SLOT_CHECK =
+	process.env.SPOT_MARKETS_TO_SKIP_SLOT_CHECK !== undefined
+		? parsePositiveIntArray(process.env.SPOT_MARKETS_TO_SKIP_SLOT_CHECK)
+		: [];
 
 export type wsMarketInfo = {
 	marketIndex: number;
@@ -58,9 +58,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		MarketType,
 		Map<number, { slot: number; ts: number }>
 	>;
-
-	public skipSlotStalenessCheckMarketsPerp: number[];
-	public skipSlotStalenessCheckMarketsSpot: number[];
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
@@ -84,11 +81,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastMarketSlotMap = new Map();
 		this.lastMarketSlotMap.set(MarketType.SPOT, new Map());
 		this.lastMarketSlotMap.set(MarketType.PERP, new Map());
-
-		this.skipSlotStalenessCheckMarketsPerp =
-			PERP_MARKETS_TO_SKIP_SLOT_CHECK[config.env];
-		this.skipSlotStalenessCheckMarketsSpot =
-			SPOT_MARKETS_TO_SKIP_SLOT_CHECK[config.env];
 
 		for (const market of config.perpMarketInfos) {
 			const perpMarket = this.driftClient.getPerpMarketAccount(
@@ -138,9 +130,25 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	getL2AndSendMsg(marketArgs: wsMarketArgs): void {
 		const clientPrefix = this.redisClient.forceGetClient().options.keyPrefix;
-		const grouping = marketArgs.grouping;
 		const { marketName, ...l2FuncArgs } = marketArgs;
-		const l2 = this.getL2(l2FuncArgs);
+		const marketType = isVariant(marketArgs.marketType, 'perp')
+			? 'perp'
+			: 'spot';
+
+		// Test for oracle staleness to know whether to include vamm
+		const dlobSlot = this.slotSource.getSlot();
+		const oracleSlot =
+			marketType === 'perp'
+				? this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex)
+						.slot
+				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
+						.slot;
+		let includeVamm = marketArgs.includeVamm;
+		if (dlobSlot - oracleSlot > STALE_ORACLE_REMOVE_VAMM_THRESHOLD) {
+			logger.info('Oracle is stale, removing vamm orders');
+			includeVamm = false;
+		}
+		const l2 = this.getL2({ ...l2FuncArgs, includeVamm });
 		const slot = l2.slot;
 		const lastMarketSlotAndTime = this.lastMarketSlotMap
 			.get(marketArgs.marketType)
@@ -154,18 +162,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		if (slot) {
 			delete l2.slot;
 		}
-		const marketType = isVariant(marketArgs.marketType, 'perp')
-			? 'perp'
-			: 'spot';
-		let l2Formatted: any;
-		if (grouping) {
-			const groupingBN = new BN(grouping);
-			l2Formatted = l2WithBNToStrings(
-				groupL2(l2, groupingBN, marketArgs.depth)
-			);
-		} else {
-			l2Formatted = l2WithBNToStrings(l2);
-		}
+
+		const l2Formatted = l2WithBNToStrings(l2);
 
 		if (marketArgs.updateOnChange) {
 			if (
@@ -200,13 +198,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		// Check if slot diffs are too large for oracle
 		const skipSlotCheck =
 			(marketType === 'perp' &&
-				this.skipSlotStalenessCheckMarketsPerp.includes(
-					marketArgs.marketIndex
-				)) ||
+				PERP_MARKETS_TO_SKIP_SLOT_CHECK.includes(marketArgs.marketIndex)) ||
 			(marketType === 'spot' &&
-				this.skipSlotStalenessCheckMarketsSpot.includes(
-					marketArgs.marketIndex
-				));
+				SPOT_MARKETS_TO_SKIP_SLOT_CHECK.includes(marketArgs.marketIndex));
 		if (
 			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
 				this.killSwitchSlotDiffThreshold &&
