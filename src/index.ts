@@ -793,7 +793,7 @@ const main = async (): Promise<void> => {
 		}
 	});
 
-	app.get('/batchL2', async (req, res, next) => {
+	app.get(['/batchL2', '/batchL2Cache'], async (req, res, next) => {
 		try {
 			const {
 				marketName,
