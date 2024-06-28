@@ -248,14 +248,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			bids: l2Formatted.bids.slice(0, 100),
 			asks: l2Formatted.asks.slice(0, 100),
 		});
-		const l2Formatted_depth20 = Object.assign({}, l2Formatted, {
-			bids: l2Formatted.bids.slice(0, 20),
-			asks: l2Formatted.asks.slice(0, 20),
-		});
-		const l2Formatted_depth5 = Object.assign({}, l2Formatted, {
-			bids: l2Formatted.bids.slice(0, 5),
-			asks: l2Formatted.asks.slice(0, 5),
-		});
 
 		this.redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}`,
@@ -265,19 +257,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}`,
 			l2Formatted_depth100
 		);
-		this.redisClient.set(
-			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_100`,
-			l2Formatted_depth100
-		);
-		this.redisClient.set(
-			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_20`,
-			l2Formatted_depth20
-		);
-		this.redisClient.set(
-			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_5`,
-			l2Formatted_depth5
-		);
-
 		const oraclePriceData =
 			marketType === 'spot'
 				? this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
