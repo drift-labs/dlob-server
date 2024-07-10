@@ -684,8 +684,8 @@ const main = async (): Promise<void> => {
 					const redisClient = perpMarketRedisMap.get(normedMarketIndex).client;
 					const redisL2 = await redisClient.get(`last_update_orderbook_perp_${normedMarketIndex}`);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-					redisL2['bids'] = redisL2['bids'].slice(0, depth);
-					redisL2['asks'] = redisL2['asks'].slice(0, depth);
+					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 
 					if (
 						redisL2 &&
@@ -708,8 +708,8 @@ const main = async (): Promise<void> => {
 					const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
 					const redisL2 = await redisClient.get(`last_update_orderbook_spot_${normedMarketIndex}`);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-					redisL2['bids'] = redisL2['bids'].slice(0, depth);
-					redisL2['asks'] = redisL2['asks'].slice(0, depth);
+					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 					if (
 						redisL2 &&
 						dlobProvider.getSlot() - parseInt(redisL2['slot']) <
@@ -838,8 +838,8 @@ const main = async (): Promise<void> => {
 								perpMarketRedisMap.get(normedMarketIndex).client;
 							const redisL2 = await redisClient.get(`last_update_orderbook_perp_${normedMarketIndex}`);
 							const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-							redisL2['bids'] = redisL2['bids'].slice(0, depth);
-							redisL2['asks'] = redisL2['asks'].slice(0, depth);
+							redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+							redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 							if (redisL2) {
 								if (
 									dlobProvider.getSlot() - parseInt(redisL2['slot']) <
@@ -863,8 +863,8 @@ const main = async (): Promise<void> => {
 								spotMarketRedisMap.get(normedMarketIndex).client;
 							const redisL2 = await redisClient.get(`last_update_orderbook_spot_${normedMarketIndex}`);
 							const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-							redisL2['bids'] = redisL2['bids'].slice(0, depth);
-							redisL2['asks'] = redisL2['asks'].slice(0, depth);
+							redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+							redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 							if (redisL2) {
 								if (
 									dlobProvider.getSlot() - parseInt(redisL2['slot']) <
