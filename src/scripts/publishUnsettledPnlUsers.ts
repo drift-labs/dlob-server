@@ -65,6 +65,8 @@ const main = async () => {
 	// construct an object with the top 20/bottom 20 unsettled in each perp market
 	const _userPnlMap = createMarketSpecificPnlLeaderboards(redisUsers);
 
+	//console.log('pnlmap for sol: ', JSON.stringify(_userPnlMap[0]));
+
 	// publish the user keys with pnl to the dlob redis client
 };
 
@@ -128,6 +130,41 @@ const createMarketSpecificPnlLeaderboards = (
 							oraclePriceData
 						);
 					}
+
+					// console.log('==================');
+					// console.log('Market: ', perpMarket.symbol);
+					// console.log(
+					// 	'Market Current Price: ',
+					// 	BigNum.from(oraclePriceData.price, PRICE_PRECISION_EXP).print()
+					// );
+					// console.log('User: ', redisUser.user.userAccountPublicKey.toString());
+					// console.log('Position: ', JSON.stringify(perpPositionWithLpSettle));
+					// console.log(
+					// 	'Base asset amount: ',
+					// 	BigNum.from(
+					// 		perpPositionWithLpSettle.baseAssetAmount,
+					// 		BASE_PRECISION_EXP
+					// 	).print()
+					// );
+					// console.log(
+					// 	'Quote asset amount: ',
+					// 	BigNum.from(
+					// 		perpPositionWithLpSettle.quoteAssetAmount,
+					// 		QUOTE_PRECISION_EXP
+					// 	).print()
+					// );
+					// console.log(
+					// 	'Settled PnL: ',
+					// 	BigNum.from(
+					// 		perpPositionWithLpSettle.settledPnl,
+					// 		QUOTE_PRECISION_EXP
+					// 	).print()
+					// );
+					// console.log(
+					// 	'Unsettled Pnl: ',
+					// 	BigNum.from(marketPnl, QUOTE_PRECISION_EXP).print()
+					// );
+					// console.log('==================');
 
 					return marketPnl.eq(ZERO)
 						? []
