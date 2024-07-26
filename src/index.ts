@@ -648,6 +648,38 @@ const main = async (): Promise<void> => {
 		}
 	});
 
+	app.get('/unsettledPnlUsers', async (req, res, next) => {
+		try {
+			// will always be perp and return top 20 winners and losers, so no need for other params
+			const marketIndex = Number(req.query.marketIndex as string);
+			const redisClient = perpMarketRedisMap.get(marketIndex).client;
+
+			const redisResponseGainers = await redisClient.getRaw(
+				`perp_market_${marketIndex}_gainers`
+			);
+			const redisResponseLosers = await redisClient.getRaw(
+				`perp_market_${marketIndex}_losers`
+			);
+
+			let response = {};
+
+			if (redisResponseGainers) {
+				const parsedResponseGainers = JSON.parse(redisResponseGainers);
+				response['gain'] = parsedResponseGainers;
+			}
+
+			if (redisResponseLosers) {
+				const parsedResponseLosers = JSON.parse(redisResponseLosers);
+				response['loss'] = parsedResponseLosers;
+			}
+
+			res.end(JSON.stringify(response));
+			return;
+		} catch (err) {
+			next(err);
+		}
+	});
+
 	app.get('/l2', async (req, res, next) => {
 		try {
 			const {

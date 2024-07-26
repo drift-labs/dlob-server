@@ -23,9 +23,18 @@ dotenv.config();
 
 console.log('Starting script to publish unsettled pnl users');
 
+type UserPnlMap = {
+	[perpMarketIndex: number]: {
+		gain: { userPubKey: string; pnl: number }[];
+		loss: { userPubKey: string; pnl: number }[];
+	};
+};
+
+const startTime = Date.now();
 const endpoint = process.env.ENDPOINT as string;
 const wsEndpoint = process.env.WS_ENDPOINT as string;
 const driftEnv = process.env.ENV as string;
+const runningLocal = (process.env.RUNNING_LOCAL as string) === 'true';
 
 const connection = new Connection(endpoint, {
 	commitment: 'confirmed',
@@ -37,21 +46,31 @@ const driftClient = new DriftClient({
 	wallet: new Wallet(new Keypair()),
 });
 
-const userMapRedisClient = new RedisClient({
-	host: 'localhost',
-	port: '6379',
-	cluster: false,
-	opts: {
-		tls: null,
-	},
-	//prefix: RedisClientPrefix.USER_MAP,
-});
+const userMapRedisClient = runningLocal
+	? new RedisClient({
+			host: 'localhost',
+			port: '6379',
+			cluster: false,
+			opts: {
+				tls: null,
+			},
+	  })
+	: new RedisClient({
+			prefix: RedisClientPrefix.USER_MAP,
+	  });
 
-// const dlobRedisClient = new RedisClient({
-// 	host: 'localhost',
-// 	port: '6378',
-// 	prefix: RedisClientPrefix.DLOB,
-// });
+const dlobRedisClient = runningLocal
+	? new RedisClient({
+			host: 'localhost',
+			port: '6378',
+			cluster: false,
+			opts: {
+				tls: null,
+			},
+	  })
+	: new RedisClient({
+			prefix: RedisClientPrefix.DLOB,
+	  });
 
 const main = async () => {
 	// get the users from usermap redis client
@@ -63,21 +82,54 @@ const main = async () => {
 	);
 
 	// construct an object with the top 20/bottom 20 unsettled in each perp market
-	const _userPnlMap = createMarketSpecificPnlLeaderboards(redisUsers);
-
-	//console.log('pnlmap for sol: ', JSON.stringify(_userPnlMap[0]));
+	const userPnlMap = createMarketSpecificPnlLeaderboards(redisUsers);
 
 	// publish the user keys with pnl to the dlob redis client
+	writeToDlobRedis(userPnlMap).then((result) => {
+		// to do - metrics place to send this to?
+		console.log(
+			`Unsettled PnL publisher ${
+				result ? 'successfully completed' : 'failed'
+			} in ${Date.now() - startTime} ms`
+		);
+	});
+
+	process.exit();
+};
+
+const writeToDlobRedis = async (userPnlMap: UserPnlMap): Promise<boolean> => {
+	try {
+		await Promise.all(
+			Object.keys(userPnlMap).map(async (perpMarketIndex) => {
+				const gainersRedisKey = `perp_market_${perpMarketIndex}_gainers`;
+				const losersRedisKey = `perp_market_${perpMarketIndex}_losers`;
+
+				//await dlobRedisClient.delete(gainersRedisKey, losersRedisKey);
+
+				// write the new lists
+				await dlobRedisClient.set(
+					gainersRedisKey,
+					JSON.stringify(userPnlMap[perpMarketIndex].gain)
+				);
+				await dlobRedisClient.set(
+					losersRedisKey,
+					JSON.stringify(userPnlMap[perpMarketIndex].loss)
+				);
+
+				return;
+			})
+		);
+
+		return true;
+	} catch (e) {
+		console.log('Error writing to dlob redis client: ', e);
+		return false;
+	}
 };
 
 const createMarketSpecificPnlLeaderboards = (
 	redisUsers: { user: User; bufferString: string }[]
-): {
-	[perpMarketIndex: number]: {
-		gain: { userPubKey: string; pnl: number }[];
-		loss: { userPubKey: string; pnl: number }[];
-	};
-} => {
+): UserPnlMap => {
 	const pnlMap = {};
 
 	const usdcSpotMarket = driftClient.getSpotMarketAccount(
@@ -130,41 +182,6 @@ const createMarketSpecificPnlLeaderboards = (
 							oraclePriceData
 						);
 					}
-
-					// console.log('==================');
-					// console.log('Market: ', perpMarket.symbol);
-					// console.log(
-					// 	'Market Current Price: ',
-					// 	BigNum.from(oraclePriceData.price, PRICE_PRECISION_EXP).print()
-					// );
-					// console.log('User: ', redisUser.user.userAccountPublicKey.toString());
-					// console.log('Position: ', JSON.stringify(perpPositionWithLpSettle));
-					// console.log(
-					// 	'Base asset amount: ',
-					// 	BigNum.from(
-					// 		perpPositionWithLpSettle.baseAssetAmount,
-					// 		BASE_PRECISION_EXP
-					// 	).print()
-					// );
-					// console.log(
-					// 	'Quote asset amount: ',
-					// 	BigNum.from(
-					// 		perpPositionWithLpSettle.quoteAssetAmount,
-					// 		QUOTE_PRECISION_EXP
-					// 	).print()
-					// );
-					// console.log(
-					// 	'Settled PnL: ',
-					// 	BigNum.from(
-					// 		perpPositionWithLpSettle.settledPnl,
-					// 		QUOTE_PRECISION_EXP
-					// 	).print()
-					// );
-					// console.log(
-					// 	'Unsettled Pnl: ',
-					// 	BigNum.from(marketPnl, QUOTE_PRECISION_EXP).print()
-					// );
-					// console.log('==================');
 
 					return marketPnl.eq(ZERO)
 						? []
