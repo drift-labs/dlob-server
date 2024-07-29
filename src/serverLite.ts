@@ -12,6 +12,7 @@ import {
 	initialize,
 	isVariant,
 	MarketType,
+	getVariant,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common';
 
@@ -52,8 +53,6 @@ const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
 const SLOT_STALENESS_TOLERANCE =
 	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 35;
 const ROTATION_COOLDOWN = parseInt(process.env.ROTATION_COOLDOWN) || 5000;
-const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
-const useRedis = process.env.USE_REDIS?.toLowerCase() === 'true';
 
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
@@ -108,7 +107,6 @@ const endpoint = process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
 logger.info(`RPC endpoint:       ${endpoint}`);
 logger.info(`WS endpoint:        ${wsEndpoint}`);
-logger.info(`useWebsocket:       ${useWebsocket}`);
 logger.info(`DriftEnv:           ${driftEnv}`);
 logger.info(`Commit:             ${commitHash}`);
 
@@ -143,28 +141,26 @@ const main = async (): Promise<void> => {
 			lock: boolean;
 		}
 	> = new Map();
-	if (useRedis) {
-		logger.info('Connecting to redis');
-		for (let i = 0; i < REDIS_CLIENTS.length; i++) {
-			redisClients.push(new RedisClient({ prefix: REDIS_CLIENTS[i] }));
-		}
+	logger.info('Connecting to redis');
+	for (let i = 0; i < REDIS_CLIENTS.length; i++) {
+		redisClients.push(new RedisClient({ prefix: REDIS_CLIENTS[i] }));
+	}
 
-		for (let i = 0; i < sdkConfig.SPOT_MARKETS.length; i++) {
-			spotMarketRedisMap.set(sdkConfig.SPOT_MARKETS[i].marketIndex, {
-				client: redisClients[0],
-				clientIndex: 0,
-				lastRotationTime: 0,
-				lock: false,
-			});
-		}
-		for (let i = 0; i < sdkConfig.PERP_MARKETS.length; i++) {
-			perpMarketRedisMap.set(sdkConfig.PERP_MARKETS[i].marketIndex, {
-				client: redisClients[0],
-				clientIndex: 0,
-				lastRotationTime: 0,
-				lock: false,
-			});
-		}
+	for (let i = 0; i < sdkConfig.SPOT_MARKETS.length; i++) {
+		spotMarketRedisMap.set(sdkConfig.SPOT_MARKETS[i].marketIndex, {
+			client: redisClients[0],
+			clientIndex: 0,
+			lastRotationTime: 0,
+			lock: false,
+		});
+	}
+	for (let i = 0; i < sdkConfig.PERP_MARKETS.length; i++) {
+		perpMarketRedisMap.set(sdkConfig.PERP_MARKETS[i].marketIndex, {
+			client: redisClients[0],
+			clientIndex: 0,
+			lastRotationTime: 0,
+			lock: false,
+		});
 	}
 
 	function canRotate(marketType: MarketType, marketIndex: number) {
@@ -323,8 +319,51 @@ const main = async (): Promise<void> => {
 		}
 	});
 
+	app.get('/l3', async (req, res, next) => {
+		try {
+			const { marketIndex, marketType } = req.query;
+
+			const isSpot = (marketType as string).toLowerCase() === 'spot';
+			const normedMarketIndex = parseInt(marketIndex as string);
+			const normedMarketType = isSpot ? MarketType.SPOT : MarketType.PERP;
+
+			const redisClient = (
+				isSpot ? spotMarketRedisMap : perpMarketRedisMap
+			).get(normedMarketIndex).client;
+			const redisL3 = await redisClient.getRaw(
+				`last_update_orderbook_l3_${getVariant(
+					normedMarketType
+				)}_${normedMarketIndex}`
+			);
+			if (
+				redisL3 &&
+				slotSubscriber.getSlot() - parseInt(JSON.parse(redisL3).slot) <
+					SLOT_STALENESS_TOLERANCE
+			) {
+				cacheHitCounter.add(1, {
+					miss: false,
+					path: req.baseUrl + req.path,
+				});
+				res.writeHead(200);
+				res.end(redisL3);
+				return;
+			} else {
+				cacheHitCounter.add(1, {
+					miss: true,
+					path: req.baseUrl + req.path,
+				});
+				res.writeHead(500);
+				res.end(JSON.stringify({ error: 'No cached L3 found' }));
+			}
+		} catch (err) {
+			next(err);
+		}
+	});
+
 	server.listen(serverPort, () => {
-		logger.info(`DLOB server listening on port http://localhost:${serverPort}`);
+		logger.info(
+			`DLOB server lite listening on port http://localhost:${serverPort}`
+		);
 	});
 };
 
