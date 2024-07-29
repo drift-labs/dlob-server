@@ -144,7 +144,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
 						.slot;
 		let includeVamm = marketArgs.includeVamm;
-		if (dlobSlot - oracleSlot > STALE_ORACLE_REMOVE_VAMM_THRESHOLD) {
+		if (dlobSlot - oracleSlot.toNumber() > STALE_ORACLE_REMOVE_VAMM_THRESHOLD) {
 			logger.info('Oracle is stale, removing vamm orders');
 			includeVamm = false;
 		}
