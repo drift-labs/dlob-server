@@ -249,6 +249,7 @@ const main = async (): Promise<void> => {
 				includeVamm,
 				includePhoenix,
 				includeSerum,
+				includeOpenbook,
 			} = req.query;
 
 			const isSpot = (marketType as string).toLowerCase() === 'spot';
@@ -282,7 +283,8 @@ const main = async (): Promise<void> => {
 			} else if (
 				isSpot &&
 				`${includeSerum}`?.toLowerCase() === 'true' &&
-				`${includePhoenix}`?.toLowerCase() === 'true'
+				`${includePhoenix}`?.toLowerCase() === 'true' &&
+				`${includeOpenbook}`?.toLowerCase() === 'true'
 			) {
 				const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
 				const redisL2 = await redisClient.get(

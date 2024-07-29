@@ -110,6 +110,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				fallbackL2Generators: [
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
 					config.spotMarketSubscribers[market.marketIndex].serum,
+					config.spotMarketSubscribers[market.marketIndex].openbook,
 				].filter((a) => !!a),
 			});
 		}
