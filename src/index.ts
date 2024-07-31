@@ -39,7 +39,6 @@ import {
 	SubscriberLookup,
 	addOracletoResponse,
 	errorHandler,
-	getSerumSubscriber,
 	l2WithBNToStrings,
 	normalizeBatchQueryParams,
 	sleep,
@@ -146,7 +145,6 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	for (const market of sdkConfig.SPOT_MARKETS) {
 		markets[market.marketIndex] = {
 			phoenix: undefined,
-			serum: undefined,
 			openbook: undefined,
 		};
 
@@ -174,29 +172,6 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 					phoenixSubscriber.getL2Asks();
 					phoenixSubscriber.getL2Bids();
 					markets[market.marketIndex].phoenix = phoenixSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
-
-		if (market.serumMarket) {
-			const serumConfigAccount = await driftClient.getSerumV3FulfillmentConfig(
-				market.serumMarket
-			);
-			if (isVariant(serumConfigAccount.status, 'enabled')) {
-				const serumSubscriber = getSerumSubscriber(
-					driftClient,
-					market,
-					sdkConfig
-				);
-				await serumSubscriber.subscribe();
-				try {
-					serumSubscriber.getL2Asks();
-					serumSubscriber.getL2Bids();
-					markets[market.marketIndex].serum = serumSubscriber;
 				} catch (e) {
 					logger.info(
 						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
@@ -682,7 +657,6 @@ const main = async (): Promise<void> => {
 				numVammOrders,
 				includeVamm,
 				includePhoenix,
-				includeSerum,
 				includeOpenbook,
 				includeOracle,
 			} = req.query;
@@ -729,7 +703,6 @@ const main = async (): Promise<void> => {
 					}
 				} else if (
 					isSpot &&
-					`${includeSerum}`?.toLowerCase() === 'true' &&
 					`${includePhoenix}`?.toLowerCase() === 'true' &&
 					`${includeOpenbook}`?.toLowerCase() === 'true'
 				) {
@@ -776,8 +749,6 @@ const main = async (): Promise<void> => {
 					? [
 							`${includePhoenix}`.toLowerCase() === 'true' &&
 								MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-							`${includeSerum}`.toLowerCase() === 'true' &&
-								MARKET_SUBSCRIBERS[normedMarketIndex].serum,
 							`${includeOpenbook}`.toLowerCase() === 'true' &&
 								MARKET_SUBSCRIBERS[normedMarketIndex].openbook,
 					  ].filter((a) => !!a)
@@ -815,7 +786,6 @@ const main = async (): Promise<void> => {
 				depth,
 				includeVamm,
 				includePhoenix,
-				includeSerum,
 				includeOpenbook,
 				includeOracle,
 			} = req.query;
@@ -827,7 +797,6 @@ const main = async (): Promise<void> => {
 				depth: depth as string | undefined,
 				includeVamm: includeVamm as string | undefined,
 				includePhoenix: includePhoenix as string | undefined,
-				includeSerum: includeSerum as string | undefined,
 				includeOpenbook: includeOpenbook as string | undefined,
 				includeOracle: includeOracle as string | undefined,
 			});
@@ -896,7 +865,6 @@ const main = async (): Promise<void> => {
 						} else if (
 							isSpot &&
 							normedParam['includePhoenix']?.toLowerCase() === 'true' &&
-							normedParam['includeSerum']?.toLowerCase() === 'true' &&
 							normedParam['includeOpenbook']?.toLowerCase() === 'true'
 						) {
 							const redisClient =
@@ -946,8 +914,6 @@ const main = async (): Promise<void> => {
 							? [
 									`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
 										MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-									`${normedParam['includeSerum']}`.toLowerCase() === 'true' &&
-										MARKET_SUBSCRIBERS[normedMarketIndex].serum,
 									`${normedParam['includeOpenbook']}`.toLowerCase() ===
 										'true' && MARKET_SUBSCRIBERS[normedMarketIndex].openbook,
 							  ].filter((a) => !!a)
