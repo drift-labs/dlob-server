@@ -22,12 +22,7 @@ import {
 import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 import { logger, setLogLevel } from '../utils/logger';
-import {
-	SubscriberLookup,
-	getSerumSubscriber,
-	parsePositiveIntArray,
-	sleep,
-} from '../utils/utils';
+import { SubscriberLookup, parsePositiveIntArray, sleep } from '../utils/utils';
 import {
 	DLOBSubscriberIO,
 	wsMarketInfo,
@@ -199,7 +194,6 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	for (const market of driftClient.getSpotMarketAccounts()) {
 		markets[market.marketIndex] = {
 			phoenix: undefined,
-			serum: undefined,
 		};
 		const marketConfig = sdkConfig.SPOT_MARKETS[market.marketIndex];
 
@@ -232,32 +226,6 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 					phoenixSubscriber.getL2Asks();
 					phoenixSubscriber.getL2Bids();
 					markets[market.marketIndex].phoenix = phoenixSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
-
-		if (marketConfig.serumMarket) {
-			const serumConfigAccount = await driftClient.getSerumV3FulfillmentConfig(
-				marketConfig.serumMarket
-			);
-			if (isVariant(serumConfigAccount.status, 'enabled')) {
-				logger.info(
-					`Loading serum subscriber for spot market ${market.marketIndex}`
-				);
-				const serumSubscriber = getSerumSubscriber(
-					driftClient,
-					marketConfig,
-					sdkConfig
-				);
-				await serumSubscriber.subscribe();
-				try {
-					serumSubscriber.getL2Asks();
-					serumSubscriber.getL2Bids();
-					markets[market.marketIndex].serum = serumSubscriber;
 				} catch (e) {
 					logger.info(
 						`Excluding phoenix for ${market.marketIndex}, error: ${e}`

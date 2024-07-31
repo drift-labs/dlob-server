@@ -41,10 +41,10 @@ To properly configure the DLOB server, set the following environment variables i
 | `RATE_LIMIT_CALLS_PER_SECOND` | Maximum number of API calls per second.               | `100`                                                              |
 | `PERP_MARKETS_TO_LOAD`    | Number of perpetual markets to load at startup.           | `0`                                                                |
 | `SPOT_MARKETS_TO_LOAD`    | Number of spot markets to load at startup.                | `5`                                                                |
-| `REDIS_HOSTS`             | (for websocket server) Redis host endpoint.               | `localhost`                                                        |
-| `REDIS_PASSWORDS`         | (for websocket server) Redis password.                    | `password`                                                         |
-| `REDIS_PORTS`              | (for websocket server) Redis port.                        | `6379`                                                             |
-| `WS_PORT`              | (for websocket server) The port to run the websocket server on.                        | `3000`                                                             |
+| `ELASTICACHE_HOST`        | (for websocket server) Redis host endpoint.               | `localhost`                                                        |
+| `ELASTICACHE_PORT`        | (for websocket server) Redis port.                        | `6379`                                                             |
+| `REDIS_CLIENT`            | (for websocket server) Redis client type (DLOB/DLOB_HELIUS).| `DLOB`                                                           |
+| `WS_PORT`                 | (for websocket server) The port to run the websocket server on.|  `3000`                                                       |
 
 
 Note: multiple Redis hosts can be provided by providing a comma separated string.
