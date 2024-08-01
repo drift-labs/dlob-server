@@ -236,91 +236,6 @@ const main = async (): Promise<void> => {
 		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSubscriber)
 	);
 
-	app.get('/l2', async (req, res, next) => {
-		try {
-			const {
-				marketIndex,
-				marketType,
-				depth,
-				includeVamm,
-				includePhoenix,
-				includeSerum,
-				includeOpenbook,
-			} = req.query;
-
-			const isSpot = (marketType as string).toLowerCase() === 'spot';
-			const normedMarketIndex = parseInt(marketIndex as string);
-			const normedMarketType = isSpot ? MarketType.SPOT : MarketType.PERP;
-
-			const adjustedDepth = depth ?? '100';
-			let l2Formatted: any;
-			if (!isSpot && `${includeVamm}`?.toLowerCase() === 'true') {
-				const redisClient = perpMarketRedisMap.get(normedMarketIndex).client;
-				const redisL2 = await redisClient.get(
-					`last_update_orderbook_perp_${normedMarketIndex}`
-				);
-				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-
-				if (
-					redisL2 &&
-					slotSubscriber.getSlot() - parseInt(redisL2['slot']) <
-						SLOT_STALENESS_TOLERANCE
-				) {
-					l2Formatted = JSON.stringify(redisL2);
-				} else {
-					if (redisL2 && redisClients.length > 1) {
-						if (canRotate(normedMarketType, normedMarketIndex)) {
-							rotateClient(normedMarketType, normedMarketIndex);
-						}
-					}
-				}
-			} else if (
-				isSpot &&
-				`${includeSerum}`?.toLowerCase() === 'true' &&
-				`${includePhoenix}`?.toLowerCase() === 'true' &&
-				`${includeOpenbook}`?.toLowerCase() === 'true'
-			) {
-				const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
-				const redisL2 = await redisClient.get(
-					`last_update_orderbook_spot_${normedMarketIndex}`
-				);
-				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-				if (
-					redisL2 &&
-					slotSubscriber.getSlot() - parseInt(redisL2['slot']) <
-						SLOT_STALENESS_TOLERANCE
-				) {
-					l2Formatted = JSON.stringify(redisL2);
-				} else {
-					if (redisL2 && redisClients.length > 1) {
-						if (canRotate(normedMarketType, normedMarketIndex)) {
-							rotateClient(normedMarketType, normedMarketIndex);
-						}
-					}
-				}
-			}
-
-			if (l2Formatted) {
-				cacheHitCounter.add(1, {
-					miss: false,
-					path: req.baseUrl + req.path,
-				});
-				res.writeHead(200);
-				res.end(l2Formatted);
-				return;
-			} else {
-				res.writeHead(400);
-				res.end({ error: 'No cached L2 found' });
-			}
-		} catch (err) {
-			next(err);
-		}
-	});
-
 	app.get('/l3', async (req, res, next) => {
 		try {
 			const { marketIndex, marketType } = req.query;
@@ -350,6 +265,11 @@ const main = async (): Promise<void> => {
 				res.end(redisL3);
 				return;
 			} else {
+				if (redisL3 && redisClients.length > 1) {
+					if (canRotate(normedMarketType, normedMarketIndex)) {
+						rotateClient(normedMarketType, normedMarketIndex);
+					}
+				}
 				cacheHitCounter.add(1, {
 					miss: true,
 					path: req.baseUrl + req.path,
