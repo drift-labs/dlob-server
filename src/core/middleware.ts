@@ -12,7 +12,6 @@ export const handleResponseTime = (
 	return responseTime((req: Request, res: Response, time: number) => {
 		const endpoint = req.path;
 
-		console.log(endpoint);
 		if (!measuredEndpoints.includes(endpoint)) {
 			return;
 		}
