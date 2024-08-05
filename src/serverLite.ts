@@ -65,7 +65,7 @@ app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
-app.use(handleResponseTime);
+app.use(handleResponseTime());
 
 // strip off /dlob, if the request comes from exchange history server LB
 app.use((req, _res, next) => {
