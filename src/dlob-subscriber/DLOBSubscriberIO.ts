@@ -136,14 +136,23 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		// Test for oracle staleness to know whether to include vamm
 		const dlobSlot = this.slotSource.getSlot();
-		const oracleSlot =
+		const oracleData =
 			marketType === 'perp'
 				? this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex)
-						.slot
-				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
-						.slot;
+				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex);
+		const oracleSlot = oracleData.slot;
+		const isPerpMarketAndPrelaunchMarket =
+			marketType === 'perp' &&
+			isVariant(
+				this.driftClient.getPerpMarketAccount(marketArgs.marketIndex).amm
+					.oracleSource,
+				'prelaunch'
+			);
 		let includeVamm = marketArgs.includeVamm;
-		if (dlobSlot - oracleSlot.toNumber() > STALE_ORACLE_REMOVE_VAMM_THRESHOLD) {
+		if (
+			dlobSlot - oracleSlot.toNumber() > STALE_ORACLE_REMOVE_VAMM_THRESHOLD &&
+			!isPerpMarketAndPrelaunchMarket
+		) {
 			logger.info('Oracle is stale, removing vamm orders');
 			includeVamm = false;
 		}
@@ -203,7 +212,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		if (
 			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
 				this.killSwitchSlotDiffThreshold &&
-			!skipSlotCheck
+			!skipSlotCheck &&
+			!isPerpMarketAndPrelaunchMarket
 		) {
 			console.log(`Unhealthy process due to slot diffs for market ${marketName}: 
 				dlobProvider slot: ${slot}
