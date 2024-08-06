@@ -72,3 +72,4 @@
     "lint:fix": "eslint . --ext ts --fix",
     "playground": "ts-node src/playground.ts"
   }
+}
