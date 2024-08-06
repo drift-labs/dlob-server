@@ -139,10 +139,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		const dlobSlot = this.slotSource.getSlot();
 		const oracleSlot =
 			marketType === 'perp'
-				? this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex)
-						.slot
-				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
-						.slot;
+				? this.driftClient
+						.getOracleDataForPerpMarket(marketArgs.marketIndex)
+						.slot.toNumber()
+				: this.driftClient
+						.getOracleDataForSpotMarket(marketArgs.marketIndex)
+						.slot.toNumber();
 		let includeVamm = marketArgs.includeVamm;
 		if (dlobSlot - oracleSlot > STALE_ORACLE_REMOVE_VAMM_THRESHOLD) {
 			logger.info('Oracle is stale, removing vamm orders');

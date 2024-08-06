@@ -1,10 +1,8 @@
 import { RedisClient, RedisClientPrefix } from '@drift/common';
 import {
-	BASE_PRECISION_EXP,
 	BigNum,
 	DriftClient,
 	OneShotUserAccountSubscriber,
-	PRICE_PRECISION_EXP,
 	PerpMarkets,
 	PublicKey,
 	QUOTE_PRECISION_EXP,
@@ -17,11 +15,12 @@ import {
 	decodeUser,
 } from '@drift-labs/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
+import { logger } from 'src/utils/logger';
 
 const dotenv = require('dotenv');
 dotenv.config();
 
-console.log('Starting script to publish unsettled pnl users');
+logger.info('Starting script to publish unsettled pnl users');
 
 type UserPnlMap = {
 	[perpMarketIndex: number]: {
@@ -77,6 +76,7 @@ const main = async () => {
 	await driftClient.subscribe();
 
 	const userStrings = await userMapRedisClient.lRange('user_pubkeys', 0, -1);
+
 	const redisUsers = await Promise.all(
 		userStrings.map((userStr) => getUserFromRedis(userStr))
 	);
@@ -84,15 +84,13 @@ const main = async () => {
 	// construct an object with the top 20/bottom 20 unsettled in each perp market
 	const userPnlMap = createMarketSpecificPnlLeaderboards(redisUsers);
 
-	// publish the user keys with pnl to the dlob redis client
-	writeToDlobRedis(userPnlMap).then((result) => {
-		// to do - metrics place to send this to?
-		console.log(
-			`Unsettled PnL publisher ${
-				result ? 'successfully completed' : 'failed'
-			} in ${Date.now() - startTime} ms`
-		);
-	});
+	const success = await writeToDlobRedis(userPnlMap);
+
+	logger.info(
+		`Unsettled PnL publisher ${
+			success ? 'successfully completed' : 'failed'
+		} in ${Date.now() - startTime} ms`
+	);
 
 	process.exit();
 };
@@ -104,14 +102,12 @@ const writeToDlobRedis = async (userPnlMap: UserPnlMap): Promise<boolean> => {
 				const gainersRedisKey = `perp_market_${perpMarketIndex}_gainers`;
 				const losersRedisKey = `perp_market_${perpMarketIndex}_losers`;
 
-				//await dlobRedisClient.delete(gainersRedisKey, losersRedisKey);
-
 				// write the new lists
-				await dlobRedisClient.set(
+				await dlobRedisClient.setRaw(
 					gainersRedisKey,
 					JSON.stringify(userPnlMap[perpMarketIndex].gain)
 				);
-				await dlobRedisClient.set(
+				await dlobRedisClient.setRaw(
 					losersRedisKey,
 					JSON.stringify(userPnlMap[perpMarketIndex].loss)
 				);
@@ -190,7 +186,7 @@ const createMarketSpecificPnlLeaderboards = (
 								pnl: BigNum.from(marketPnl, QUOTE_PRECISION_EXP).toNum(),
 						  };
 				} catch (e) {
-					console.log(
+					logger.error(
 						`Error reading pnl for user ${redisUser?.user?.userAccountPublicKey?.toString()}: `,
 						e
 					);
@@ -206,7 +202,7 @@ const createMarketSpecificPnlLeaderboards = (
 				loss: sortedPnls.slice(-20, -1),
 			};
 		} catch (e) {
-			console.log(`Could not fetch PnLs for ${perpMarket.symbol}: `, e);
+			logger.error(`Could not fetch PnLs for ${perpMarket.symbol}: `, e);
 		}
 	}
 
@@ -224,7 +220,7 @@ const getUserFromRedis = async (userAccountStr: string) => {
 		);
 		return { user, bufferString };
 	} catch (e) {
-		console.log(
+		logger.error(
 			`Error creating user account from buffer for user ${userAccountStr}`,
 			e.message
 		);

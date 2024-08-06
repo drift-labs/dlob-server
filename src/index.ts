@@ -648,10 +648,16 @@ const main = async (): Promise<void> => {
 		}
 	});
 
+	// returns top 20 unsettled gainers and losers
 	app.get('/unsettledPnlUsers', async (req, res, next) => {
 		try {
-			// will always be perp and return top 20 winners and losers, so no need for other params
 			const marketIndex = Number(req.query.marketIndex as string);
+
+			if (isNaN(marketIndex)) {
+				res.status(400).send('Bad Request: must include a marketIndex');
+				return;
+			}
+
 			const redisClient = perpMarketRedisMap.get(marketIndex).client;
 
 			const redisResponseGainers = await redisClient.getRaw(
@@ -661,17 +667,10 @@ const main = async (): Promise<void> => {
 				`perp_market_${marketIndex}_losers`
 			);
 
-			let response = {};
-
-			if (redisResponseGainers) {
-				const parsedResponseGainers = JSON.parse(redisResponseGainers);
-				response['gain'] = parsedResponseGainers;
-			}
-
-			if (redisResponseLosers) {
-				const parsedResponseLosers = JSON.parse(redisResponseLosers);
-				response['loss'] = parsedResponseLosers;
-			}
+			const response = {
+				gainers: JSON.parse(redisResponseGainers),
+				losers: JSON.parse(redisResponseLosers),
+			};
 
 			res.end(JSON.stringify(response));
 			return;
