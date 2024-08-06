@@ -4,14 +4,20 @@ import {
 	endpointResponseTimeHistogram,
 	responseStatusCounter,
 } from './metrics';
+import { MEASURED_ENDPOINTS } from '../utils/constants';
 
-export const handleResponseTime = responseTime(
-	(req: Request, res: Response, time: number) => {
+export const handleResponseTime = (
+	measuredEndpoints: string[] = MEASURED_ENDPOINTS
+) => {
+	return responseTime((req: Request, res: Response, time: number) => {
 		const endpoint = req.path;
 
-		if (endpoint === '/health' || req.url === '/') {
+		if (!measuredEndpoints.includes(endpoint)) {
 			return;
 		}
+		//if (endpoint === '/health' || req.url === '/') {
+		//  return;
+		//}
 
 		responseStatusCounter.add(1, {
 			endpoint,
@@ -22,5 +28,5 @@ export const handleResponseTime = responseTime(
 		endpointResponseTimeHistogram.record(responseTimeMs, {
 			endpoint,
 		});
-	}
-);
+	});
+};

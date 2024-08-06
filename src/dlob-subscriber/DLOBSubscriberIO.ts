@@ -109,7 +109,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				updateOnChange: false,
 				fallbackL2Generators: [
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
-					config.spotMarketSubscribers[market.marketIndex].serum,
 				].filter((a) => !!a),
 			});
 		}
@@ -137,16 +136,23 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		// Test for oracle staleness to know whether to include vamm
 		const dlobSlot = this.slotSource.getSlot();
-		const oracleSlot =
+		const oracleData =
 			marketType === 'perp'
-				? this.driftClient
-						.getOracleDataForPerpMarket(marketArgs.marketIndex)
-						.slot.toNumber()
-				: this.driftClient
-						.getOracleDataForSpotMarket(marketArgs.marketIndex)
-						.slot.toNumber();
+				? this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex)
+				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex);
+		const oracleSlot = oracleData.slot;
+		const isPerpMarketAndPrelaunchMarket =
+			marketType === 'perp' &&
+			isVariant(
+				this.driftClient.getPerpMarketAccount(marketArgs.marketIndex).amm
+					.oracleSource,
+				'prelaunch'
+			);
 		let includeVamm = marketArgs.includeVamm;
-		if (dlobSlot - oracleSlot > STALE_ORACLE_REMOVE_VAMM_THRESHOLD) {
+		if (
+			dlobSlot - oracleSlot.toNumber() > STALE_ORACLE_REMOVE_VAMM_THRESHOLD &&
+			!isPerpMarketAndPrelaunchMarket
+		) {
 			logger.info('Oracle is stale, removing vamm orders');
 			includeVamm = false;
 		}
@@ -206,7 +212,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		if (
 			Math.abs(slot - parseInt(l2Formatted['oracleData']['slot'])) >
 				this.killSwitchSlotDiffThreshold &&
-			!skipSlotCheck
+			!skipSlotCheck &&
+			!isPerpMarketAndPrelaunchMarket
 		) {
 			console.log(`Unhealthy process due to slot diffs for market ${marketName}: 
 				dlobProvider slot: ${slot}
@@ -250,14 +257,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			bids: l2Formatted.bids.slice(0, 100),
 			asks: l2Formatted.asks.slice(0, 100),
 		});
-		const l2Formatted_depth20 = Object.assign({}, l2Formatted, {
-			bids: l2Formatted.bids.slice(0, 20),
-			asks: l2Formatted.asks.slice(0, 20),
-		});
-		const l2Formatted_depth5 = Object.assign({}, l2Formatted, {
-			bids: l2Formatted.bids.slice(0, 5),
-			asks: l2Formatted.asks.slice(0, 5),
-		});
 
 		this.redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}`,
@@ -267,19 +266,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}`,
 			l2Formatted_depth100
 		);
-		this.redisClient.set(
-			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_100`,
-			l2Formatted_depth100
-		);
-		this.redisClient.set(
-			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_20`,
-			l2Formatted_depth20
-		);
-		this.redisClient.set(
-			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}_depth_5`,
-			l2Formatted_depth5
-		);
-
 		const oraclePriceData =
 			marketType === 'spot'
 				? this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
