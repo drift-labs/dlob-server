@@ -668,6 +668,7 @@ const main = async (): Promise<void> => {
 			);
 
 			const response = {
+				marketIndex,
 				gainers: JSON.parse(redisResponseGainers),
 				losers: JSON.parse(redisResponseLosers),
 			};

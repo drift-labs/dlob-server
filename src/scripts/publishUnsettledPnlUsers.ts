@@ -15,7 +15,7 @@ import {
 	decodeUser,
 } from '@drift-labs/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
-import { logger } from 'src/utils/logger';
+import { logger } from '../utils/logger';
 
 const dotenv = require('dotenv');
 dotenv.config();
