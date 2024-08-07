@@ -22,7 +22,12 @@ import {
 import { RedisClient, RedisClientPrefix } from '@drift/common';
 
 import { logger, setLogLevel } from '../utils/logger';
-import { SubscriberLookup, parsePositiveIntArray, sleep } from '../utils/utils';
+import {
+	SubscriberLookup,
+	getOpenbookSubscriber,
+	parsePositiveIntArray,
+	sleep,
+} from '../utils/utils';
 import {
 	DLOBSubscriberIO,
 	wsMarketInfo,
@@ -229,6 +234,34 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 				} catch (e) {
 					logger.info(
 						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
+					);
+				}
+			}
+		}
+
+		if (marketConfig.openbookMarket) {
+			const openbookMarketAccount =
+				await driftClient.getOpenbookV2FulfillmentConfig(
+					marketConfig.openbookMarket
+				);
+
+			if (isVariant(openbookMarketAccount.status, 'enabled')) {
+				logger.info(
+					`Loading openbook subscriber for spot market ${market.marketIndex}`
+				);
+				const openbookSubscriber = getOpenbookSubscriber(
+					driftClient,
+					marketConfig,
+					sdkConfig
+				);
+				await openbookSubscriber.subscribe();
+				try {
+					openbookSubscriber.getL2Asks();
+					openbookSubscriber.getL2Bids();
+					markets[market.marketIndex].openbook = openbookSubscriber;
+				} catch (e) {
+					logger.info(
+						`Excluding openbook for ${market.marketIndex}, error: ${e}`
 					);
 				}
 			}
