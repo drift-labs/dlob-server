@@ -212,6 +212,10 @@ const main = async () => {
 			pubkeysForMarket.push(market.phoenixMarket.toString());
 		}
 
+		if (market.openbookMarket) {
+			pubkeysForMarket.push(market.openbookMarket.toString());
+		}
+
 		spotMarketPubkeys.push({
 			marketIndex: market.marketIndex,
 			pubkeys: pubkeysForMarket,
