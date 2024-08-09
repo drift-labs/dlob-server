@@ -89,6 +89,8 @@ const main = async () => {
 	let finishedCount = 0;
 	let allNonZeroPnls = {};
 
+	logger.info(`Starting loop for total of ${totalCount} users`);
+
 	while (finishedCount < totalCount) {
 		const redisUsers = await Promise.all(
 			userStrings
@@ -101,8 +103,8 @@ const main = async () => {
 
 		finishedCount += chunkSize;
 
-		console.log(`Wrote ${finishedCount} users, sleeping for 10s`);
-		await sleep(10000);
+		logger.info(`Wrote ${finishedCount} users, sleeping for 5s`);
+		await sleep(5000);
 	}
 
 	const userPnlMap = createMarketPnlLeaderboards(allNonZeroPnls);
@@ -141,7 +143,7 @@ const writeToDlobRedis = async (userPnlMap: UserPnlMap): Promise<boolean> => {
 
 		return true;
 	} catch (e) {
-		console.log('Error writing to dlob redis client: ', e);
+		logger.info(`Error writing to dlob redis client: ${e}`);
 		return false;
 	}
 };
@@ -150,14 +152,25 @@ const createMarketPnlLeaderboards = (allPnlUsers: AllPnlUsers): UserPnlMap => {
 	let pnlMap = {};
 
 	Object.keys(allPnlUsers).forEach((perpMarketIndex) => {
-		const sortedPnls = allPnlUsers[perpMarketIndex].sort(
-			(a, b) => b.pnl - a.pnl
-		);
-		// store the top 20 winners and losers in each perp market
-		pnlMap[perpMarketIndex] = {
-			gain: sortedPnls.slice(0, 20),
-			loss: sortedPnls.slice(-20, -1),
-		};
+		try {
+			const sortedPnls = allPnlUsers[perpMarketIndex].users.sort(
+				(a, b) => b.pnl - a.pnl
+			);
+			// store the top 20 winners and losers in each perp market
+			pnlMap[perpMarketIndex] = {
+				gain: sortedPnls.slice(0, 20),
+				loss: sortedPnls.slice(-20, -1),
+			};
+		} catch (e) {
+			logger.info(
+				`Error in ${PerpMarkets[driftEnv][perpMarketIndex].symbol}: ${e}`
+			);
+
+			pnlMap[perpMarketIndex] = {
+				gain: [],
+				loss: [],
+			};
+		}
 	});
 
 	return pnlMap;
