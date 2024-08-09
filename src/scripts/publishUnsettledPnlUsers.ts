@@ -16,6 +16,7 @@ import {
 } from '@drift-labs/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
 import { logger } from '../utils/logger';
+import Bottleneck from 'bottleneck';
 
 const dotenv = require('dotenv');
 dotenv.config();
@@ -40,6 +41,8 @@ const endpoint = process.env.ENDPOINT as string;
 const wsEndpoint = process.env.WS_ENDPOINT as string;
 const driftEnv = process.env.ENV as string;
 const chunkSize = Number(process.env.CHUNK_SIZE) || 100;
+const sleepTimeMs = Number(process.env.SLEEP_TIME_MS) || 5000;
+const delayMs = Number(process.env.DEFAULT_DELAY_MS) || 100;
 
 const connection = new Connection(endpoint, {
 	commitment: 'confirmed',
@@ -63,6 +66,11 @@ const main = async () => {
 	// get the users from usermap redis client
 	await driftClient.subscribe();
 
+	const limiter = new Bottleneck({
+		maxConcurrent: 10,
+		minTime: delayMs,
+	});
+
 	const userStrings = await userMapRedisClient.lRange('user_pubkeys', 0, -1);
 
 	const totalCount = userStrings.length;
@@ -72,19 +80,23 @@ const main = async () => {
 	logger.info(`Starting loop for total of ${totalCount} users`);
 
 	while (finishedCount < totalCount) {
-		const redisUsers = await Promise.all(
-			userStrings
-				.slice(finishedCount, finishedCount + chunkSize)
-				.map((userStr) => getUserFromRedis(userStr))
+		const userChunk = userStrings.slice(
+			finishedCount,
+			finishedCount + chunkSize
 		);
 
-		// add all the nonzero pnl users from each market in chunks
-		allNonZeroPnls = buildUserMarketLists(redisUsers, allNonZeroPnls);
+		limiter.schedule(async () => {
+			const redisUsers = await Promise.all(
+				userChunk.map((userStr) => getUserFromRedis(userStr))
+			);
+			// add all the nonzero pnl users from each market in chunks
+			allNonZeroPnls = buildUserMarketLists(redisUsers, allNonZeroPnls);
+		});
 
 		finishedCount += chunkSize;
 
-		logger.info(`Wrote ${finishedCount} users, sleeping for 5s`);
-		await sleep(5000);
+		logger.info(`Wrote ${finishedCount} users, sleeping for ${sleepTimeMs}ms`);
+		await sleep(sleepTimeMs);
 	}
 
 	const userPnlMap = createMarketPnlLeaderboards(allNonZeroPnls);
