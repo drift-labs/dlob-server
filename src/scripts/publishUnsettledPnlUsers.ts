@@ -51,33 +51,13 @@ const driftClient = new DriftClient({
 	wallet: new Wallet(new Keypair()),
 });
 
-const runningLocal = (process.env.RUNNING_LOCAL as string) === 'true';
+const userMapRedisClient = new RedisClient({
+	prefix: RedisClientPrefix.USER_MAP,
+});
 
-const userMapRedisClient = runningLocal
-	? new RedisClient({
-			host: 'localhost',
-			port: '6379',
-			cluster: false,
-			opts: {
-				tls: null,
-			},
-	  })
-	: new RedisClient({
-			prefix: RedisClientPrefix.USER_MAP,
-	  });
-
-const dlobRedisClient = runningLocal
-	? new RedisClient({
-			host: 'localhost',
-			port: '6378',
-			cluster: false,
-			opts: {
-				tls: null,
-			},
-	  })
-	: new RedisClient({
-			prefix: RedisClientPrefix.DLOB,
-	  });
+const dlobRedisClient = new RedisClient({
+	prefix: RedisClientPrefix.DLOB,
+});
 
 const main = async () => {
 	// get the users from usermap redis client
