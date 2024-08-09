@@ -1,4 +1,4 @@
-import { RedisClient, RedisClientPrefix } from '@drift/common';
+import { RedisClient, RedisClientPrefix, sleep } from '@drift/common';
 import {
 	BigNum,
 	DriftClient,
@@ -16,6 +16,7 @@ import {
 } from '@drift-labs/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
 import { logger } from '../utils/logger';
+import Bottleneck from 'bottleneck';
 
 const dotenv = require('dotenv');
 dotenv.config();
@@ -29,10 +30,19 @@ type UserPnlMap = {
 	};
 };
 
+type AllPnlUsers = {
+	[perpMarketIndex: number]: {
+		users: { userPubKey: string; pnl: number }[];
+	};
+};
+
 const startTime = Date.now();
 const endpoint = process.env.ENDPOINT as string;
 const wsEndpoint = process.env.WS_ENDPOINT as string;
 const driftEnv = process.env.ENV as string;
+const chunkSize = Number(process.env.CHUNK_SIZE) || 100;
+const sleepTimeMs = Number(process.env.SLEEP_TIME_MS) || 5000;
+const delayMs = Number(process.env.DEFAULT_DELAY_MS) || 100;
 
 const connection = new Connection(endpoint, {
 	commitment: 'confirmed',
@@ -56,14 +66,40 @@ const main = async () => {
 	// get the users from usermap redis client
 	await driftClient.subscribe();
 
+	const limiter = new Bottleneck({
+		maxConcurrent: 10,
+		minTime: delayMs,
+	});
+
 	const userStrings = await userMapRedisClient.lRange('user_pubkeys', 0, -1);
 
-	const redisUsers = await Promise.all(
-		userStrings.map((userStr) => getUserFromRedis(userStr))
-	);
+	const totalCount = userStrings.length;
+	let finishedCount = 0;
+	let allNonZeroPnls = {};
 
-	// construct an object with the top 20/bottom 20 unsettled in each perp market
-	const userPnlMap = createMarketSpecificPnlLeaderboards(redisUsers);
+	logger.info(`Starting loop for total of ${totalCount} users`);
+
+	while (finishedCount < totalCount) {
+		const userChunk = userStrings.slice(
+			finishedCount,
+			finishedCount + chunkSize
+		);
+
+		limiter.schedule(async () => {
+			const redisUsers = await Promise.all(
+				userChunk.map((userStr) => getUserFromRedis(userStr))
+			);
+			// add all the nonzero pnl users from each market in chunks
+			allNonZeroPnls = buildUserMarketLists(redisUsers, allNonZeroPnls);
+		});
+
+		finishedCount += chunkSize;
+
+		logger.info(`Wrote ${finishedCount} users, sleeping for ${sleepTimeMs}ms`);
+		await sleep(sleepTimeMs);
+	}
+
+	const userPnlMap = createMarketPnlLeaderboards(allNonZeroPnls);
 
 	const success = await writeToDlobRedis(userPnlMap);
 
@@ -99,15 +135,44 @@ const writeToDlobRedis = async (userPnlMap: UserPnlMap): Promise<boolean> => {
 
 		return true;
 	} catch (e) {
-		console.log('Error writing to dlob redis client: ', e);
+		logger.info(`Error writing to dlob redis client: ${e}`);
 		return false;
 	}
 };
 
-const createMarketSpecificPnlLeaderboards = (
-	redisUsers: { user: User; bufferString: string }[]
-): UserPnlMap => {
-	const pnlMap = {};
+const createMarketPnlLeaderboards = (allPnlUsers: AllPnlUsers): UserPnlMap => {
+	let pnlMap = {};
+
+	Object.keys(allPnlUsers).forEach((perpMarketIndex) => {
+		try {
+			const sortedPnls = allPnlUsers[perpMarketIndex].users.sort(
+				(a, b) => b.pnl - a.pnl
+			);
+			// store the top 20 winners and losers in each perp market
+			pnlMap[perpMarketIndex] = {
+				gain: sortedPnls.slice(0, 20),
+				loss: sortedPnls.slice(-20, -1),
+			};
+		} catch (e) {
+			logger.info(
+				`Error in ${PerpMarkets[driftEnv][perpMarketIndex].symbol}: ${e}`
+			);
+
+			pnlMap[perpMarketIndex] = {
+				gain: [],
+				loss: [],
+			};
+		}
+	});
+
+	return pnlMap;
+};
+
+const buildUserMarketLists = (
+	redisUsers: { user: User; bufferString: string }[],
+	allPnlUsers: AllPnlUsers
+): AllPnlUsers => {
+	let newPnlUsers = allPnlUsers;
 
 	const usdcSpotMarket = driftClient.getSpotMarketAccount(
 		QUOTE_SPOT_MARKET_INDEX
@@ -123,7 +188,7 @@ const createMarketSpecificPnlLeaderboards = (
 				perpMarket.marketIndex
 			);
 
-			const allNonZeroPnls = redisUsers.flatMap((redisUser) => {
+			const allNonZeroPnlsInMarket = redisUsers.flatMap((redisUser) => {
 				try {
 					const perpPosition = redisUser.user.getPerpPosition(
 						perpMarket.marketIndex
@@ -175,19 +240,21 @@ const createMarketSpecificPnlLeaderboards = (
 				}
 			});
 
-			const sortedPnls = allNonZeroPnls.sort((a, b) => b.pnl - a.pnl);
-
-			// store the top 20 winners and losers in each perp market
-			pnlMap[perpMarket.marketIndex] = {
-				gain: sortedPnls.slice(0, 20),
-				loss: sortedPnls.slice(-20, -1),
-			};
+			if (!allPnlUsers[perpMarket.marketIndex]) {
+				newPnlUsers[perpMarket.marketIndex] = { users: allNonZeroPnlsInMarket };
+			} else {
+				newPnlUsers[perpMarket.marketIndex] = {
+					users: allPnlUsers[perpMarket.marketIndex].users.concat(
+						allNonZeroPnlsInMarket
+					),
+				};
+			}
 		} catch (e) {
 			logger.error(`Could not fetch PnLs for ${perpMarket.symbol}: `, e);
 		}
 	}
 
-	return pnlMap;
+	return newPnlUsers;
 };
 
 const getUserFromRedis = async (userAccountStr: string) => {
