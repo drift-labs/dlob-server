@@ -4,6 +4,7 @@ import {
 	L2OrderBook,
 	L3OrderBook,
 	MarketType,
+	OpenbookV2Subscriber,
 	OraclePriceData,
 	PerpMarkets,
 	PhoenixSubscriber,
@@ -436,9 +437,25 @@ export const getSerumSubscriber = (
 	});
 };
 
+export const getOpenbookSubscriber = (
+	driftClient: DriftClient,
+	marketConfig: SpotMarketConfig,
+	sdkConfig
+): OpenbookV2Subscriber => {
+	return new OpenbookV2Subscriber({
+		connection: driftClient.connection,
+		programId: new PublicKey(sdkConfig.OPENBOOK),
+		marketAddress: marketConfig.openbookMarket,
+		accountSubscription: {
+			type: 'websocket',
+		},
+	});
+};
+
 export type SubscriberLookup = {
 	[marketIndex: number]: {
 		phoenix?: PhoenixSubscriber;
 		serum?: SerumSubscriber;
+		openbook?: OpenbookV2Subscriber;
 	};
 };

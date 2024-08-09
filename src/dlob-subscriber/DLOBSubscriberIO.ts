@@ -33,7 +33,7 @@ require('dotenv').config();
 
 const PERP_MAKRET_STALENESS_THRESHOLD = 30 * 60 * 1000;
 const SPOT_MAKRET_STALENESS_THRESHOLD = 60 * 60 * 1000;
-const STALE_ORACLE_REMOVE_VAMM_THRESHOLD = 100;
+const STALE_ORACLE_REMOVE_VAMM_THRESHOLD = 80;
 
 const PERP_MARKETS_TO_SKIP_SLOT_CHECK =
 	process.env.PERP_MARKETS_TO_SKIP_SLOT_CHECK !== undefined
@@ -109,6 +109,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				updateOnChange: false,
 				fallbackL2Generators: [
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
+					config.spotMarketSubscribers[market.marketIndex].openbook,
 				].filter((a) => !!a),
 			});
 		}
