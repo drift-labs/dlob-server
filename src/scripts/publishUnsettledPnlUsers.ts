@@ -11,7 +11,6 @@ import {
 	Wallet,
 	ZERO,
 	calculateClaimablePnl,
-	calculatePositionPNL,
 	decodeUser,
 } from '@drift-labs/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
@@ -41,7 +40,7 @@ const endpoint = process.env.ENDPOINT as string;
 const wsEndpoint = process.env.WS_ENDPOINT as string;
 const driftEnv = process.env.ENV as string;
 const chunkSize = Number(process.env.CHUNK_SIZE) || 100;
-const sleepTimeMs = Number(process.env.SLEEP_TIME_MS) || 5000;
+const sleepTimeMs = Number(process.env.SLEEP_TIME_MS) || 500;
 const delayMs = Number(process.env.DEFAULT_DELAY_MS) || 100;
 
 const connection = new Connection(endpoint, {
@@ -96,6 +95,7 @@ const main = async () => {
 		finishedCount += chunkSize;
 
 		logger.info(`Wrote ${finishedCount} users, sleeping for ${sleepTimeMs}ms`);
+
 		await sleep(sleepTimeMs);
 	}
 
@@ -109,6 +109,12 @@ const main = async () => {
 		} in ${Date.now() - startTime} ms`
 	);
 
+	await sleep(5000);
+
+	logger.info('==== TEST PRINT LOSERS FROM BTC-PERP ====');
+	const losers = await dlobRedisClient.getRaw(`perp_market_1_losers`);
+	logger.info(losers);
+
 	process.exit();
 };
 
@@ -120,16 +126,23 @@ const writeToDlobRedis = async (userPnlMap: UserPnlMap): Promise<boolean> => {
 				const losersRedisKey = `perp_market_${perpMarketIndex}_losers`;
 
 				// write the new lists
-				await dlobRedisClient.setRaw(
-					gainersRedisKey,
-					JSON.stringify(userPnlMap[perpMarketIndex].gain)
-				);
-				await dlobRedisClient.setRaw(
-					losersRedisKey,
-					JSON.stringify(userPnlMap[perpMarketIndex].loss)
-				);
-
-				return;
+				await Promise.all([
+					dlobRedisClient.setRaw(
+						gainersRedisKey,
+						JSON.stringify(userPnlMap[perpMarketIndex].gain)
+					),
+					dlobRedisClient.setRaw(
+						losersRedisKey,
+						JSON.stringify(userPnlMap[perpMarketIndex].loss)
+					),
+				]).then(([_winnersResult, _losersResult]) => {
+					logger.info(
+						`Wrote ${userPnlMap[perpMarketIndex].gain.length} users to redis key: ${gainersRedisKey}`
+					);
+					logger.info(
+						`Wrote ${userPnlMap[perpMarketIndex].loss.length} users to redis key: ${losersRedisKey}`
+					);
+				});
 			})
 		);
 
@@ -151,7 +164,7 @@ const createMarketPnlLeaderboards = (allPnlUsers: AllPnlUsers): UserPnlMap => {
 			// store the top 20 winners and losers in each perp market
 			pnlMap[perpMarketIndex] = {
 				gain: sortedPnls.slice(0, 20),
-				loss: sortedPnls.slice(-20, -1),
+				loss: sortedPnls.slice(-20).reverse(),
 			};
 		} catch (e) {
 			logger.info(
@@ -209,21 +222,12 @@ const buildUserMarketLists = (
 							false
 						)[0];
 
-					let marketPnl = calculatePositionPNL(
+					const marketPnl = calculateClaimablePnl(
 						perpMarketAccount,
+						usdcSpotMarket,
 						perpPositionWithLpSettle,
-						true,
 						oraclePriceData
 					);
-
-					if (marketPnl.gt(ZERO)) {
-						marketPnl = calculateClaimablePnl(
-							perpMarketAccount,
-							usdcSpotMarket,
-							perpPositionWithLpSettle,
-							oraclePriceData
-						);
-					}
 
 					return marketPnl.eq(ZERO)
 						? []
