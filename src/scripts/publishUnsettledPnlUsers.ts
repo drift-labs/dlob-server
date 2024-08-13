@@ -54,6 +54,8 @@ const driftClient = new DriftClient({
 });
 
 const userMapRedisClient = new RedisClient({
+	host: process.env.ELASTICACHE_USERMAP_HOST ?? process.env.ELASTICACHE_HOST,
+	port: process.env.ELASTICACHE_USERMAP_PORT ?? process.env.ELASTICACHE_PORT,
 	prefix: RedisClientPrefix.USER_MAP,
 });
 
