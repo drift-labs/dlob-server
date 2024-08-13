@@ -86,7 +86,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			const perpMarket = this.driftClient.getPerpMarketAccount(
 				market.marketIndex
 			);
-			const includeVamm = !isVariant(perpMarket.status, 'ammPaused');
+			const includeVamm =
+				!isVariant(perpMarket.status, 'ammPaused') &&
+				!isVariant(perpMarket.status, 'initialized');
 
 			this.marketArgs.push({
 				marketIndex: market.marketIndex,
