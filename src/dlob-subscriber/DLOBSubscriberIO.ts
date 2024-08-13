@@ -4,7 +4,9 @@ import {
 	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
+	PerpOperation,
 	PositionDirection,
+	isOperationPaused,
 	isVariant,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common';
@@ -86,9 +88,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			const perpMarket = this.driftClient.getPerpMarketAccount(
 				market.marketIndex
 			);
-			const includeVamm =
-				!isVariant(perpMarket.status, 'ammPaused') &&
-				!isVariant(perpMarket.status, 'initialized');
+			const includeVamm = !isOperationPaused(
+				perpMarket.pausedOperations,
+				PerpOperation.AMM_FILL
+			);
 
 			this.marketArgs.push({
 				marketIndex: market.marketIndex,

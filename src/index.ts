@@ -20,6 +20,8 @@ import {
 	MarketType,
 	PhoenixSubscriber,
 	BulkAccountLoader,
+	isOperationPaused,
+	PerpOperation,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common';
 
@@ -777,9 +779,10 @@ const main = async (): Promise<void> => {
 			let validateIncludeVamm = false;
 			if (!isSpot && `${includeVamm}`.toLowerCase() === 'true') {
 				const perpMarket = driftClient.getPerpMarketAccount(normedMarketIndex);
-				validateIncludeVamm =
-					!isVariant(perpMarket.status, 'ammPaused') &&
-					!isVariant(perpMarket.status, 'initialized');
+				validateIncludeVamm = !isOperationPaused(
+					perpMarket.pausedOperations,
+					PerpOperation.AMM_FILL
+				);
 			}
 			const l2 = dlobSubscriber.getL2({
 				marketIndex: normedMarketIndex,
@@ -949,9 +952,10 @@ const main = async (): Promise<void> => {
 					if (!isSpot && `${includeVamm}`.toLowerCase() === 'true') {
 						const perpMarket =
 							driftClient.getPerpMarketAccount(normedMarketIndex);
-						validateIncludeVamm =
-							!isVariant(perpMarket.status, 'ammPaused') &&
-							!isVariant(perpMarket.status, 'initialized');
+						validateIncludeVamm = !isOperationPaused(
+							perpMarket.pausedOperations,
+							PerpOperation.AMM_FILL
+						);
 					}
 					const l2 = dlobSubscriber.getL2({
 						marketIndex: normedMarketIndex,
