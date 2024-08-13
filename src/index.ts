@@ -20,6 +20,8 @@ import {
 	MarketType,
 	PhoenixSubscriber,
 	BulkAccountLoader,
+	isOperationPaused,
+	PerpOperation,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common';
 
@@ -774,11 +776,19 @@ const main = async (): Promise<void> => {
 				}
 			}
 
+			let validateIncludeVamm = false;
+			if (!isSpot && `${includeVamm}`.toLowerCase() === 'true') {
+				const perpMarket = driftClient.getPerpMarketAccount(normedMarketIndex);
+				validateIncludeVamm = !isOperationPaused(
+					perpMarket.pausedOperations,
+					PerpOperation.AMM_FILL
+				);
+			}
 			const l2 = dlobSubscriber.getL2({
 				marketIndex: normedMarketIndex,
 				marketType: normedMarketType,
 				depth: parseInt(adjustedDepth as string),
-				includeVamm: isSpot ? false : `${includeVamm}`.toLowerCase() === 'true',
+				includeVamm: validateIncludeVamm,
 				numVammOrders: parseInt((numVammOrders ?? '100') as string),
 				fallbackL2Generators: isSpot
 					? [
@@ -938,13 +948,20 @@ const main = async (): Promise<void> => {
 						}
 					}
 
+					let validateIncludeVamm = false;
+					if (!isSpot && `${includeVamm}`.toLowerCase() === 'true') {
+						const perpMarket =
+							driftClient.getPerpMarketAccount(normedMarketIndex);
+						validateIncludeVamm = !isOperationPaused(
+							perpMarket.pausedOperations,
+							PerpOperation.AMM_FILL
+						);
+					}
 					const l2 = dlobSubscriber.getL2({
 						marketIndex: normedMarketIndex,
 						marketType: normedMarketType,
 						depth: parseInt(adjustedDepth as string),
-						includeVamm: isSpot
-							? false
-							: `${normedParam['includeVamm']}`.toLowerCase() === 'true',
+						includeVamm: validateIncludeVamm,
 						fallbackL2Generators: isSpot
 							? [
 									`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
