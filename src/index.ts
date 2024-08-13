@@ -657,7 +657,10 @@ const main = async (): Promise<void> => {
 				return;
 			}
 
-			const redisClient = perpMarketRedisMap.get(marketIndex).client;
+			const redisClient = redisClients.find(
+				(client) =>
+					client.forceGetClient().options.keyPrefix === RedisClientPrefix.DLOB
+			);
 
 			const redisResponseGainers = await redisClient.getRaw(
 				`perp_market_${marketIndex}_gainers`
