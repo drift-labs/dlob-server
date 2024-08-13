@@ -129,11 +129,11 @@ const writeToDlobRedis = async (userPnlMap: UserPnlMap): Promise<boolean> => {
 				await Promise.all([
 					dlobRedisClient.setRaw(
 						gainersRedisKey,
-						JSON.stringify(userPnlMap[perpMarketIndex].gain)
+						JSON.stringify(userPnlMap[perpMarketIndex].gain ?? [])
 					),
 					dlobRedisClient.setRaw(
 						losersRedisKey,
-						JSON.stringify(userPnlMap[perpMarketIndex].loss)
+						JSON.stringify(userPnlMap[perpMarketIndex].loss ?? [])
 					),
 				]).then(([_winnersResult, _losersResult]) => {
 					logger.info(
