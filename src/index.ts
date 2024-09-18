@@ -331,7 +331,11 @@ const main = async (): Promise<void> => {
 		}
 	}
 
-	const userMapClient = new RedisClient({ prefix: RedisClientPrefix.USER_MAP });
+	const userMapClient = new RedisClient({
+		host: process.env.ELASTICACHE_USERMAP_HOST ?? process.env.ELASTICACHE_HOST,
+		port: process.env.ELASTICACHE_USERMAP_PORT ?? process.env.ELASTICACHE_PORT,
+		prefix: RedisClientPrefix.USER_MAP,
+	});
 
 	function canRotate(marketType: MarketType, marketIndex: number) {
 		if (isVariant(marketType, 'spot')) {
