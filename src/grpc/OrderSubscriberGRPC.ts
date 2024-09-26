@@ -234,7 +234,7 @@ export class GeyserOrderSubscriber {
 					transactions: {},
 					blocks: {},
 					blocksMeta: {},
-					accountsDataSlice: [],
+					accountsDataSlice: [],w
 					entry: {},
 				},
 				(err) => {
