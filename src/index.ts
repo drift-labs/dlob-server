@@ -22,6 +22,7 @@ import {
 	BulkAccountLoader,
 	isOperationPaused,
 	PerpOperation,
+	DelistedMarketSetting,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common';
 
@@ -232,6 +233,7 @@ const main = async (): Promise<void> => {
 			resubTimeoutMs: 60_000,
 		},
 		env: driftEnv,
+		delistedMarketSetting: DelistedMarketSetting.Discard,
 	});
 
 	let updatesReceivedTotal = 0;
