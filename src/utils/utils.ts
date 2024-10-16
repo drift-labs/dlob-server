@@ -6,12 +6,10 @@ import {
 	MarketType,
 	OpenbookV2Subscriber,
 	OraclePriceData,
-	PerpMarkets,
 	PhoenixSubscriber,
 	PublicKey,
 	SerumSubscriber,
 	SpotMarketConfig,
-	SpotMarkets,
 	decodeUser,
 	isVariant,
 } from '@drift-labs/sdk';
@@ -294,9 +292,9 @@ export const validateDlobQuery = (
 			case 'spot': {
 				normedMarketType = MarketType.SPOT;
 				normedMarketIndex = parseInt(marketIndex as string);
-				const spotMarketIndicies = SpotMarkets[driftEnv].map(
-					(mkt) => mkt.marketIndex
-				);
+				const spotMarketIndicies = driftClient
+					.getSpotMarketAccounts()
+					.map((mkt) => mkt.marketIndex);
 				if (!spotMarketIndicies.includes(normedMarketIndex)) {
 					return {
 						error: 'Bad Request: invalid marketIndex',
@@ -307,9 +305,9 @@ export const validateDlobQuery = (
 			case 'perp': {
 				normedMarketType = MarketType.PERP;
 				normedMarketIndex = parseInt(marketIndex as string);
-				const perpMarketIndicies = PerpMarkets[driftEnv].map(
-					(mkt) => mkt.marketIndex
-				);
+				const perpMarketIndicies = driftClient
+					.getPerpMarketAccounts()
+					.map((mkt) => mkt.marketIndex);
 				if (!perpMarketIndicies.includes(normedMarketIndex)) {
 					return {
 						error: 'Bad Request: invalid marketIndex',
