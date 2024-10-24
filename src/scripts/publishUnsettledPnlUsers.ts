@@ -1,4 +1,5 @@
-import { RedisClient, RedisClientPrefix, sleep } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
+import { sleep } from '@drift/common';
 import {
 	BigNum,
 	DriftClient,
@@ -156,7 +157,7 @@ const writeToDlobRedis = async (userPnlMap: UserPnlMap): Promise<boolean> => {
 };
 
 const createMarketPnlLeaderboards = (allPnlUsers: AllPnlUsers): UserPnlMap => {
-	let pnlMap = {};
+	const pnlMap = {};
 
 	Object.keys(allPnlUsers).forEach((perpMarketIndex) => {
 		try {
@@ -187,7 +188,7 @@ const buildUserMarketLists = (
 	redisUsers: { user: User; bufferString: string }[],
 	allPnlUsers: AllPnlUsers
 ): AllPnlUsers => {
-	let newPnlUsers = allPnlUsers;
+	const newPnlUsers = allPnlUsers;
 
 	const usdcSpotMarket = driftClient.getSpotMarketAccount(
 		QUOTE_SPOT_MARKET_INDEX
