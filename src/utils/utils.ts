@@ -13,7 +13,7 @@ import {
 	decodeUser,
 	isVariant,
 } from '@drift-labs/sdk';
-import { RedisClient } from '@drift/common';
+import { RedisClient } from '@drift/common/clients';
 
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
