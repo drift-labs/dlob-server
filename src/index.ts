@@ -24,7 +24,7 @@ import {
 	PerpOperation,
 	DelistedMarketSetting,
 } from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
 import { logger, setLogLevel } from './utils/logger';
 
