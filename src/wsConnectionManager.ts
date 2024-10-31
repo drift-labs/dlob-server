@@ -6,7 +6,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
 import { register, Gauge } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
 // Set up env constants
 require('dotenv').config();
