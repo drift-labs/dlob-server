@@ -29,6 +29,7 @@ const stateCommitment: Commitment = 'confirmed';
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
 const redisClientPrefix = RedisClientPrefix.DLOB_HELIUS;
+const RPCPOOL_PERCENTILE = 500; // p5
 // Set up express for health checks
 const app = express();
 
@@ -47,14 +48,15 @@ const wsEndpoint = process.env.WS_ENDPOINT;
 const FEE_POLLING_FREQUENCY =
 	parseInt(process.env.FEE_POLLING_FREQUENCY) || 5000;
 
-if (!endpoint.includes('helius')) {
-	throw new Error('We use helius for fee publisher fellas');
-}
-
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
+
+enum RpcEndpointProvider {
+	HELIUS = 'helius',
+	RPCPOOL = 'rpcpool',
+}
 
 class PriorityFeeSubscriber {
 	endpoint: string;
@@ -62,6 +64,7 @@ class PriorityFeeSubscriber {
 	spotMarketPubkeys: { marketIndex: number; pubkeys: string[] }[];
 	redisClient: RedisClient;
 	frequencyMs: number;
+	rpcEndpointProvider: RpcEndpointProvider;
 
 	constructor(config: {
 		endpoint: string;
@@ -70,6 +73,13 @@ class PriorityFeeSubscriber {
 		spotMarketPubkeys: { marketIndex: number; pubkeys: string[] }[];
 		frequencyMs?: number;
 	}) {
+		if (endpoint.includes('helius')) {
+			this.rpcEndpointProvider = RpcEndpointProvider.HELIUS;
+		} else if (endpoint.includes('rpcpool')) {
+			this.rpcEndpointProvider = RpcEndpointProvider.RPCPOOL;
+		} else {
+			throw new Error(`Fella what are you doing, why are you using another RPC, we cannot process priority fees, got: ${endpoint}`);
+		}
 		this.endpoint = config.endpoint;
 		this.perpMarketPubkeys = config.perpMarketPubkeys;
 		this.spotMarketPubkeys = config.spotMarketPubkeys;
@@ -85,6 +95,16 @@ class PriorityFeeSubscriber {
 	}
 
 	async fetchAndPushPriorityFees() {
+		if (this.rpcEndpointProvider === RpcEndpointProvider.HELIUS) {
+			await this.fetchAndPushPriorityFeesHelius();
+		} else if (this.rpcEndpointProvider === RpcEndpointProvider.RPCPOOL) {
+			await this.fetchAndPushPriorityFeesRpcPool();
+		} else {
+			throw new Error(`Unknown RPC endpoint provider: ${this.rpcEndpointProvider}`);
+		}
+	}
+
+	async fetchAndPushPriorityFeesHelius() {
 		const [resultPerp, resultSpot] = await Promise.all([
 			fetch(this.endpoint, {
 				method: 'POST',
@@ -141,6 +161,8 @@ class PriorityFeeSubscriber {
 
 		dataPerp.forEach((result: any) => {
 			const marketIndex = parseInt(result['id']);
+			console.log(`perp market: ${marketIndex}`);
+			console.log(result.result);
 			this.redisClient.publish(
 				`${redisClientPrefix}priorityFees_perp_${marketIndex}`,
 				result.result['priorityFeeLevels']
@@ -153,6 +175,8 @@ class PriorityFeeSubscriber {
 
 		dataSpot.forEach((result: any) => {
 			const marketIndex = parseInt(result['id']) - 100;
+			console.log(`spot market: ${marketIndex}`);
+			console.log(result.result);
 			this.redisClient.publish(
 				`${redisClientPrefix}priorityFees_spot_${marketIndex}`,
 				result.result['priorityFeeLevels']
@@ -160,6 +184,108 @@ class PriorityFeeSubscriber {
 			this.redisClient.set(
 				`priorityFees_spot_${marketIndex}`,
 				result.result['priorityFeeLevels']
+			);
+		});
+	}
+
+	// Processes a result from getRecentPrioritizationFees and formats it to helius' priorityFeeLevels format.
+	// RPCPool gives us an array of percentile observations at each slot (over 150 slots), we use the max over all slots as the priorityFeeLevels.
+	//
+	// @param result: is with ascending slots: [{"prioritizationFee": 1163819,"slot": 301026956},{"prioritizationFee": 221862,"slot": 301026957}, { "prioritizationFee": 0, "slot": 301026958 }, ...]
+	processRpcPoolResult(result: Array<{ prioritizationFee: number, slot: number }>): any {
+		// "{\"min\":0,\"low\":0,\"medium\":500,\"high\":469622,\"veryHigh\":10539741,\"unsafeMax\":1681742424}"
+		// const value = result.reduce((max, current) => Math.max(max, current.prioritizationFee), 0);
+		const value = Math.floor(result.reduce((sum, current) => sum + current.prioritizationFee, 0) / result.length);
+		return {
+			min: value,
+			low: value,
+			medium: value,
+			high: value,
+			veryHigh: value,
+			unsafeMax: value,
+		}
+	}
+
+	async fetchAndPushPriorityFeesRpcPool() {
+		const [resultPerp, resultSpot] = await Promise.all([
+			fetch(this.endpoint, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(
+					this.perpMarketPubkeys.map((xx) => {
+						return {
+							jsonrpc: '2.0',
+							id: xx.marketIndex.toString(),
+							method: 'getRecentPrioritizationFees',
+							params: [
+								[xx.pubkey],
+								// [],
+								{
+									percentile: RPCPOOL_PERCENTILE,
+								},
+							],
+						};
+					})
+				),
+			}),
+			fetch(this.endpoint, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(
+					this.spotMarketPubkeys.map((xx) => {
+						return {
+							jsonrpc: '2.0',
+							id: (100 + xx.marketIndex).toString(),
+							method: 'getRecentPrioritizationFees',
+							params: [
+								xx.pubkeys,
+								// [],
+								{
+									percentile: RPCPOOL_PERCENTILE,
+								},
+							],
+						};
+					})
+				),
+			}),
+		]);
+
+		const [dataPerp, dataSpot] = await Promise.all([
+			resultPerp.json(),
+			resultSpot.json(),
+		]);
+
+		dataPerp.forEach((result: any) => {
+			const marketIndex = parseInt(result['id']);
+			const payload = this.processRpcPoolResult(result.result);
+			console.log(`perp market: ${marketIndex}`);
+			console.log(payload);
+			this.redisClient.publish(
+				`${redisClientPrefix}priorityFees_perp_${marketIndex}`,
+				payload
+			);
+			this.redisClient.set(
+				`priorityFees_perp_${marketIndex}`,
+				payload
+			);
+		});
+
+		dataSpot.forEach((result: any) => {
+			const marketIndex = parseInt(result['id']) - 100;
+			const payload = this.processRpcPoolResult(result.result);
+			console.log(`spot market: ${marketIndex}`);
+			console.log(payload);
+			this.redisClient.publish(
+				`${redisClientPrefix}priorityFees_spot_${marketIndex}`,
+				payload
+			);
+			this.redisClient.set(
+				`priorityFees_spot_${marketIndex}`,
+				payload
 			);
 		});
 	}
@@ -172,6 +298,9 @@ const main = async () => {
 	});
 
 	const redisClient = new RedisClient({
+		host: '127.0.0.1',
+		port: '6379',
+
 		prefix: redisClientPrefix,
 	});
 	await redisClient.connect();
