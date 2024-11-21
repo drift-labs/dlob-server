@@ -63,7 +63,7 @@ setGlobalDispatcher(
 require('dotenv').config();
 
 // Reading in Redis env vars
-const REDIS_CLIENTS = [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
+const REDIS_CLIENTS = [RedisClientPrefix.DLOB_HELIUS];
 console.log('Redis Clients:', REDIS_CLIENTS);
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
