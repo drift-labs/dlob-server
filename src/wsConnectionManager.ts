@@ -34,7 +34,9 @@ const WS_PORT = process.env.WS_PORT || '3000';
 console.log(`WS LISTENER PORT : ${WS_PORT}`);
 
 const MAX_BUFFERED_AMOUNT = 300000;
-const CHANNEL_PREFIX = RedisClientPrefix.DLOB_HELIUS;
+const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
+const CHANNEL_PREFIX = RedisClientPrefix[REDIS_CLIENT];
+console.log('Redis Clients:', REDIS_CLIENT);
 const CHANNEL_PREFIX_HELIUS = RedisClientPrefix.DLOB_HELIUS;
 
 const sanitiseChannelForClient = (channel: string | undefined): string => {
