@@ -63,11 +63,11 @@ setGlobalDispatcher(
 require('dotenv').config();
 
 const envClients = [];
-const clients = process.env.REDIS_CLIENT.trim()
+const clients = process.env.REDIS_CLIENT?.trim()
 	.replace(/^\[|\]$/g, '')
 	.split(/\s*,\s*/);
 
-clients.forEach((client) => envClients.push(RedisClientPrefix[client]));
+clients?.forEach((client) => envClients.push(RedisClientPrefix[client]));
 
 const REDIS_CLIENTS = envClients.length ? envClients : [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
 console.log('Redis Clients:', REDIS_CLIENTS);
