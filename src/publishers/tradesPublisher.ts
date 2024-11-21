@@ -36,7 +36,9 @@ setGlobalDispatcher(
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
-const redisClientPrefix = RedisClientPrefix.DLOB;
+const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
+console.log('Redis Clients:', REDIS_CLIENT);
+const redisClientPrefix = RedisClientPrefix[REDIS_CLIENT];
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
 
