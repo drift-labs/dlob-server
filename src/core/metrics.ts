@@ -181,9 +181,7 @@ export const setHealthStatus = (status: HEALTH_STATUS): void => {
  * We may be hit by multiple sources performing health checks on us, so this middleware will latch
  * to its health state and only update every `healthCheckInterval`.
  *
- * A grace period is also used to only report unhealthy if we have been unhealthy for a certain
- * amount of time. This prevents reporting unhealthy even if we are just in the middle of a
- * bulk account load.
+ * A grace period is also used to report unhealthy only if we have been unhealthy beyond the grace period.
  */
 const handleHealthCheck = (
 	healthCheckGracePeriod: number,
@@ -191,6 +189,7 @@ const handleHealthCheck = (
 ) => {
 	return async (_req, res, _next) => {
 		if (healthStatus === HEALTH_STATUS.Restart) {
+			logger.error(`Health status: Restart`);
 			res.writeHead(500);
 			res.end(`NOK`);
 			return;
@@ -227,14 +226,14 @@ const handleHealthCheck = (
 		lastHealthCheckPerformed = Date.now();
 
 		if (!lastHealthCheckState && !inGracePeriod) {
-			healthStatus = HEALTH_STATUS.UnhealthySlotSubscriber;
+			setHealthStatus(HEALTH_STATUS.UnhealthySlotSubscriber);
 
 			res.writeHead(500);
 			res.end(`NOK`);
 			return;
 		}
 
-		healthStatus = HEALTH_STATUS.Ok;
+		setHealthStatus(HEALTH_STATUS.Ok);
 		res.writeHead(200);
 		res.end('OK');
 	};

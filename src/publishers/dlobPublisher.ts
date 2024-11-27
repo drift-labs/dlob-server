@@ -455,10 +455,10 @@ const main = async () => {
 
 	app.get(
 		'/health',
-		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider)
+		handleHealthCheck(WS_FALLBACK_FETCH_INTERVAL, dlobProvider)
 	);
 	app.get('/startup', handleStartup);
-	app.get('/', handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider));
+	app.get('/', handleHealthCheck(WS_FALLBACK_FETCH_INTERVAL, dlobProvider));
 	const server = app.listen(8080);
 
 	// Default keepalive is 5s, since the AWS ALB timeout is 60 seconds, clients
