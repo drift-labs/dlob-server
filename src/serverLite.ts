@@ -45,7 +45,9 @@ const clients = process.env.REDIS_CLIENT?.trim()
 
 clients?.forEach((client) => envClients.push(RedisClientPrefix[client]));
 
-const REDIS_CLIENTS = envClients.length ? envClients : [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
+const REDIS_CLIENTS = envClients.length
+	? envClients
+	: [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
 console.log('Redis Clients:', REDIS_CLIENTS);
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
