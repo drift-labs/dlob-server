@@ -221,10 +221,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			!skipSlotCheck &&
 			!isPerpMarketAndPrelaunchMarket
 		) {
-			console.log(`Unhealthy process due to slot diffs for market ${marketName}: 
-				dlobProvider slot: ${slot}
-				oracle slot: ${l2Formatted['oracleData']['slot']}
-			`);
+			console.log(
+				`Unhealthy process due to slot diffs for market ${marketName}. dlobProviderSlot: ${slot}, oracleSlot: ${l2Formatted['oracleData']['slot']}`
+			);
 			setHealthStatus(HEALTH_STATUS.Restart);
 		}
 
@@ -239,10 +238,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD &&
 			!skipSlotCheck
 		) {
-			console.log(`Unhealthy process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms: 
-				dlobProvider slot: ${slot}
-				market slot: ${l2Formatted['marketSlot']}
-			`);
+			console.log(
+				`Unhealthy process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms. dlobProviderSlot: ${slot}, marketSlot: ${l2Formatted['marketSlot']}`
+			);
 			setHealthStatus(HEALTH_STATUS.Restart);
 		} else if (
 			lastMarketSlotAndTime &&
