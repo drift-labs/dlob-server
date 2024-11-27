@@ -238,7 +238,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD &&
 			!skipSlotCheck
 		) {
-			console.log(
+			logger.warn(
 				`Unhealthy process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms. dlobProviderSlot: ${slot}, marketSlot: ${l2Formatted['marketSlot']}`
 			);
 			setHealthStatus(HEALTH_STATUS.Restart);
@@ -246,7 +246,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			lastMarketSlotAndTime &&
 			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot
 		) {
-			console.log(
+			logger.warn(
 				`Updating market slot for ${marketArgs.marketName} with slot ${l2Formatted['marketSlot']}`
 			);
 			this.lastMarketSlotMap
