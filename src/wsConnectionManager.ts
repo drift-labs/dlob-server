@@ -3,7 +3,7 @@ import express from 'express';
 import * as http from 'http';
 import compression from 'compression';
 import { WebSocket, WebSocketServer } from 'ws';
-import { sleep } from './utils/utils';
+import { sleep, selectMostRecentBySlot } from './utils/utils';
 import { register, Gauge, Counter } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
@@ -373,21 +373,6 @@ async function main() {
 		console.error('Server error:', error);
 	});
 }
-
-const selectMostRecentBySlot = (responses: any[]): any => {
-	const parsedResponses = responses
-		.map((response) => {
-			try {
-				return JSON.parse(response);
-			} catch {
-				return null;
-			}
-		})
-		.filter((parsed) => parsed && typeof parsed.slot === 'number');
-	return parsedResponses.reduce((mostRecent, current) => {
-		return !mostRecent || current.slot > mostRecent.slot ? current : mostRecent;
-	}, null);
-};
 
 async function recursiveTryCatch(f: () => void) {
 	try {

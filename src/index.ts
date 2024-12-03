@@ -48,6 +48,7 @@ import {
 	getAccountFromId,
 	getRawAccountFromId,
 	getOpenbookSubscriber,
+	selectMostRecentBySlot,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
@@ -309,23 +310,6 @@ const main = async (): Promise<void> => {
 			redisClients.map((client) => client.getRaw(key))
 		);
 		return selectionCriteria(redisResponses);
-	};
-
-	const selectMostRecentBySlot = (responses: any[]): any => {
-		const parsedResponses = responses
-			.map((response) => {
-				try {
-					return JSON.parse(response);
-				} catch {
-					return null;
-				}
-			})
-			.filter((parsed) => parsed && typeof parsed.slot === 'number');
-		return parsedResponses.reduce((mostRecent, current) => {
-			return !mostRecent || current.slot > mostRecent.slot
-				? current
-				: mostRecent;
-		}, null);
 	};
 
 	const userMapClient = new RedisClient({
