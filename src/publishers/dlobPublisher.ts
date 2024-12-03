@@ -37,12 +37,10 @@ import {
 } from '../dlob-subscriber/DLOBSubscriberIO';
 import {
 	DLOBProvider,
-	getDLOBProviderFromGrpcOrderSubscriber,
 	getDLOBProviderFromOrderSubscriber,
 	getDLOBProviderFromUserMap,
 } from '../dlobProvider';
 import FEATURE_FLAGS from '../utils/featureFlags';
-import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
 import express, { Response, Request } from 'express';
 import { handleHealthCheck } from '../core/metrics';
 import { setGlobalDispatcher, Agent } from 'undici';
@@ -68,6 +66,17 @@ const app = express();
 const dlobSlotGauge = new Gauge({
 	name: 'dlob_slot',
 	help: 'Last updated slot of DLOB',
+	labelNames: [
+		'marketIndex',
+		'marketType',
+		'marketName',
+		'redisPrefix',
+		'redisClient',
+	],
+});
+const oracleSlotGauge = new Gauge({
+	name: 'oracle_slot',
+	help: 'Last updated slot of oracle',
 	labelNames: [
 		'marketIndex',
 		'marketType',
@@ -116,6 +125,10 @@ const SPOT_MARKETS_TO_LOAD =
 
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
+logger.info(`Token:        ${token}`);
+logger.info(
+	`useOrderSubscriber: ${useOrderSubscriber}, useWebsocket: ${useWebsocket}, useGrpc: ${useGrpc}`
+);
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
 
@@ -377,17 +390,38 @@ const main = async () => {
 
 	let dlobProvider: DLOBProvider;
 	if (useOrderSubscriber) {
-		let subscriptionConfig;
+		let subscriptionConfig: any = {
+			type: 'polling',
+			commitment: stateCommitment,
+			frequency: ORDERBOOK_UPDATE_INTERVAL,
+		};
+
 		if (useWebsocket) {
 			subscriptionConfig = {
 				type: 'websocket',
 				commitment: stateCommitment,
 			};
-		} else {
+		}
+
+		// USE_GRPC=true will override websocket
+		if (useGrpc) {
+			if (!token) {
+				throw new Error('TOKEN is required for grpc');
+			}
+			if (!endpoint) {
+				throw new Error('ENDPOINT is required for grpc');
+			}
+			if (useWebsocket) {
+				logger.warn('USE_GRPC overriding USE_WEBSOCKET');
+			}
 			subscriptionConfig = {
-				type: 'polling',
+				type: 'grpc',
+				grpcConfigs: {
+					endpoint: endpoint,
+					token: token,
+					commitmentLevel: stateCommitment,
+				},
 				commitment: stateCommitment,
-				frequency: ORDERBOOK_UPDATE_INTERVAL,
 			};
 		}
 
@@ -400,17 +434,6 @@ const main = async () => {
 
 		slotSource = {
 			getSlot: () => orderSubscriber.getSlot(),
-		};
-	} else if (useGrpc) {
-		const grpcOrderSubscriber = new GeyserOrderSubscriber(driftClient, {
-			endpoint: endpoint,
-			token: token,
-		});
-
-		dlobProvider = getDLOBProviderFromGrpcOrderSubscriber(grpcOrderSubscriber);
-
-		slotSource = {
-			getSlot: () => grpcOrderSubscriber.getSlot(),
 		};
 	} else {
 		const userMap = new UserMap({
@@ -463,6 +486,9 @@ const main = async () => {
 	setInterval(() => {
 		const slot = slotSource.getSlot();
 		perpMarketInfos.forEach((market) => {
+			const oracleDataAndSlot = driftClient.getOracleDataForPerpMarket(
+				market.marketIndex
+			);
 			dlobSlotGauge.set(
 				{
 					marketIndex: market.marketIndex,
@@ -473,8 +499,21 @@ const main = async () => {
 				},
 				slot
 			);
+			oracleSlotGauge.set(
+				{
+					marketIndex: market.marketIndex,
+					marketType: 'perp',
+					marketName: market.marketName,
+					redisClient: REDIS_CLIENT,
+					redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+				},
+				oracleDataAndSlot.slot.toNumber()
+			);
 		});
 		spotMarketInfos.forEach((market) => {
+			const oracleDataAndSlot = driftClient.getOracleDataForSpotMarket(
+				market.marketIndex
+			);
 			dlobSlotGauge.set(
 				{
 					marketIndex: market.marketIndex,
@@ -483,7 +522,7 @@ const main = async () => {
 					redisClient: REDIS_CLIENT,
 					redisPrefix: RedisClientPrefix[REDIS_CLIENT],
 				},
-				slot
+				oracleDataAndSlot.slot.toNumber()
 			);
 		});
 	}, 10_000);
