@@ -20,7 +20,6 @@ import {
 	PhoenixSubscriber,
 	MarketType,
 	OraclePriceData,
-	OrderSubscriberConfig,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 

@@ -79,7 +79,9 @@ const main = async () => {
 	const redisClient = new RedisClient({ prefix: redisClientPrefix });
 	await redisClient.connect();
 
-	const slotSubscriber = new SlotSubscriber(connection, {});
+	const slotSubscriber = new SlotSubscriber(connection, {
+		resubTimeoutMs: 10_000,
+	});
 
 	const lamportsBalance = await connection.getBalance(wallet.publicKey);
 	logger.info(
