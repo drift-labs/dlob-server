@@ -34,15 +34,25 @@ const WS_PORT = process.env.WS_PORT || '3000';
 console.log(`WS LISTENER PORT : ${WS_PORT}`);
 
 const MAX_BUFFERED_AMOUNT = 300000;
-const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
-const CHANNEL_PREFIX = RedisClientPrefix[REDIS_CLIENT];
-console.log('Redis Clients:', REDIS_CLIENT);
-const CHANNEL_PREFIX_HELIUS = RedisClientPrefix.DLOB_HELIUS;
 
+const envClients = [];
+const clients = process.env.REDIS_CLIENT?.trim()
+	.replace(/^\[|\]$/g, '')
+	.split(/\s*,\s*/);
+
+clients?.forEach((client) => envClients.push(RedisClientPrefix[client]));
+
+const REDIS_CLIENTS = envClients.length
+	? envClients
+	: [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
+console.log('Redis Clients:', REDIS_CLIENTS);
+
+const CHANNEL_PREFIXES = REDIS_CLIENTS.map(
+	(client) => RedisClientPrefix[client]
+);
+const regexp = new RegExp(CHANNEL_PREFIXES.join('|'), 'g');
 const sanitiseChannelForClient = (channel: string | undefined): string => {
-	return channel
-		?.replace(CHANNEL_PREFIX, '')
-		?.replace(CHANNEL_PREFIX_HELIUS, '');
+	return channel?.replace(regexp, '');
 };
 
 const getRedisChannelFromMessage = (message: any): string => {
@@ -70,11 +80,11 @@ const getRedisChannelFromMessage = (message: any): string => {
 
 	switch (channel.toLowerCase()) {
 		case 'trades':
-			return `${CHANNEL_PREFIX}trades_${marketType}_${marketIndex}`;
+			return `trades_${marketType}_${marketIndex}`;
 		case 'orderbook':
-			return `${CHANNEL_PREFIX}orderbook_${marketType}_${marketIndex}`;
+			return `orderbook_${marketType}_${marketIndex}`;
 		case 'priorityfees':
-			return `${CHANNEL_PREFIX_HELIUS}priorityFees_${marketType}_${marketIndex}`;
+			return `priorityFees_${marketType}_${marketIndex}`;
 		case undefined:
 		default:
 			throw new Error('Bad channel specified');
@@ -82,46 +92,58 @@ const getRedisChannelFromMessage = (message: any): string => {
 };
 
 async function main() {
-	const redisClient = new RedisClient({});
-	const lastMessageRetriever = new RedisClient({ prefix: CHANNEL_PREFIX });
+	const subscribedChannelToSlot: Map<string, number> = new Map();
 
-	await redisClient.connect();
-	await lastMessageRetriever.connect();
+	const redisClients: Array<RedisClient> = [];
+	for (let i = 0; i < REDIS_CLIENTS.length; i++) {
+		const redisClient = new RedisClient({ prefix: REDIS_CLIENTS[i] });
+		redisClients.push(redisClient);
+
+		redisClient.forceGetClient().on('connect', () => {
+			subscribedChannels.forEach(async (channel) => {
+				try {
+					await redisClient.subscribe(channel);
+				} catch (error) {
+					console.error(`Error subscribing to ${channel}:`, error);
+				}
+			});
+		});
+
+		redisClient.forceGetClient().on('message', (subscribedChannel, message) => {
+			const subscribers = channelSubscribers.get(subscribedChannel);
+			if (subscribers) {
+				const messageSlot = JSON.parse(message)['slot'];
+				if (!subscribedChannel.includes('priorityFees')) {
+					const lastMessageSlot =
+						subscribedChannelToSlot.get(subscribedChannel);
+					if (!lastMessageSlot || lastMessageSlot <= messageSlot) {
+						subscribedChannelToSlot.set(subscribedChannel, messageSlot);
+					} else if (lastMessageSlot > messageSlot) {
+						return;
+					}
+				}
+				subscribers.forEach((ws) => {
+					if (
+						ws.readyState === WebSocket.OPEN &&
+						ws.bufferedAmount < MAX_BUFFERED_AMOUNT
+					)
+						ws.send(
+							JSON.stringify({
+								channel: sanitiseChannelForClient(subscribedChannel),
+								data: message,
+							})
+						);
+				});
+			}
+		});
+
+		redisClient.forceGetClient().on('error', (error) => {
+			console.error('Redis client error:', error);
+		});
+	}
 
 	const channelSubscribers = new Map<string, Set<WebSocket>>();
 	const subscribedChannels = new Set<string>();
-
-	redisClient.forceGetClient().on('connect', () => {
-		subscribedChannels.forEach(async (channel) => {
-			try {
-				await redisClient.subscribe(channel);
-			} catch (error) {
-				console.error(`Error subscribing to ${channel}:`, error);
-			}
-		});
-	});
-
-	redisClient.forceGetClient().on('message', (subscribedChannel, message) => {
-		const subscribers = channelSubscribers.get(subscribedChannel);
-		if (subscribers) {
-			subscribers.forEach((ws) => {
-				if (
-					ws.readyState === WebSocket.OPEN &&
-					ws.bufferedAmount < MAX_BUFFERED_AMOUNT
-				)
-					ws.send(
-						JSON.stringify({
-							channel: sanitiseChannelForClient(subscribedChannel),
-							data: message,
-						})
-					);
-			});
-		}
-	});
-
-	redisClient.forceGetClient().on('error', (error) => {
-		console.error('Redis client error:', error);
-	});
 
 	wss.on('connection', (ws: WebSocket) => {
 		console.log('Client connected');
@@ -166,19 +188,38 @@ async function main() {
 
 					if (!subscribedChannels.has(redisChannel)) {
 						console.log('Trying to subscribe to channel', redisChannel);
-						redisClient
-							.subscribe(redisChannel)
-							.then(() => {
-								subscribedChannels.add(redisChannel);
-							})
-							.catch(() => {
-								ws.send(
-									JSON.stringify({
-										error: `Error subscribing to channel: ${parsedMessage}`,
+						// Special case for priority fees since they only have one source
+						if (redisChannel.includes('priorityFees')) {
+							redisClients[0]
+								.subscribe(`dlob-helius:${redisChannel}`)
+								.then(() => {
+									subscribedChannels.add(redisChannel);
+								})
+								.catch(() => {
+									ws.send(
+										JSON.stringify({
+											error: `Error subscribing to channel: ${parsedMessage}`,
+										})
+									);
+									return;
+								});
+						} else {
+							redisClients.map((redisClient) =>
+								redisClient
+									.subscribe(`${redisClient.getPrefix()}${redisChannel}`)
+									.then(() => {
+										subscribedChannels.add(redisChannel);
 									})
-								);
-								return;
-							});
+									.catch(() => {
+										ws.send(
+											JSON.stringify({
+												error: `Error subscribing to channel: ${parsedMessage}`,
+											})
+										);
+										return;
+									})
+							);
+						}
 					}
 
 					if (!channelSubscribers.get(redisChannel)) {
@@ -194,17 +235,21 @@ async function main() {
 					);
 					// Fetch and send last message
 					if (redisChannel.includes('orderbook')) {
-						const lastUpdateChannel = `last_update_${redisChannel}`.replace(
-							CHANNEL_PREFIX,
-							''
+						const lastMessages = await Promise.all(
+							redisClients.map((redisClient) =>
+								redisClient.getRaw(
+									`last_update_${redisChannel}`.replace(
+										redisClient.getPrefix(),
+										''
+									)
+								)
+							)
 						);
-						const lastMessage = await lastMessageRetriever.getRaw(
-							lastUpdateChannel
-						);
+						const lastMessage = selectMostRecentBySlot(lastMessages);
 						if (lastMessage) {
 							ws.send(
 								JSON.stringify({
-									channel: lastUpdateChannel,
+									channel: redisChannel,
 									data: lastMessage,
 								})
 							);
@@ -278,7 +323,7 @@ async function main() {
 			clearInterval(bufferInterval);
 			channelSubscribers.forEach((subscribers, channel) => {
 				if (subscribers.delete(ws) && subscribers.size === 0) {
-					redisClient.unsubscribe(channel);
+					redisClients.map((redisClient) => redisClient.unsubscribe(channel));
 					channelSubscribers.delete(channel);
 					subscribedChannels.delete(channel);
 				}
@@ -304,6 +349,21 @@ async function main() {
 		console.error('Server error:', error);
 	});
 }
+
+const selectMostRecentBySlot = (responses: any[]): any => {
+	const parsedResponses = responses
+		.map((response) => {
+			try {
+				return JSON.parse(response);
+			} catch {
+				return null;
+			}
+		})
+		.filter((parsed) => parsed && typeof parsed.slot === 'number');
+	return parsedResponses.reduce((mostRecent, current) => {
+		return !mostRecent || current.slot > mostRecent.slot ? current : mostRecent;
+	}, null);
+};
 
 async function recursiveTryCatch(f: () => void) {
 	try {

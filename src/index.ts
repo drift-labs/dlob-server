@@ -17,7 +17,6 @@ import {
 	initialize,
 	isVariant,
 	OrderSubscriber,
-	MarketType,
 	PhoenixSubscriber,
 	BulkAccountLoader,
 	isOperationPaused,
@@ -84,10 +83,8 @@ const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
 const SLOT_STALENESS_TOLERANCE =
-	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 35;
-const ROTATION_COOLDOWN = parseInt(process.env.ROTATION_COOLDOWN) || 5000;
+	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 1000;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
-const useRedis = process.env.USE_REDIS?.toLowerCase() === 'true';
 
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
@@ -299,106 +296,43 @@ const main = async (): Promise<void> => {
 
 	// Handle redis client initialization and rotation maps
 	const redisClients: Array<RedisClient> = [];
-	const spotMarketRedisMap: Map<
-		number,
-		{
-			client: RedisClient;
-			clientIndex: number;
-			lastRotationTime: number;
-			lock: boolean;
-		}
-	> = new Map();
-	const perpMarketRedisMap: Map<
-		number,
-		{
-			client: RedisClient;
-			clientIndex: number;
-			lastRotationTime: number;
-			lock: boolean;
-		}
-	> = new Map();
-	if (useRedis) {
-		logger.info('Connecting to redis');
-		for (let i = 0; i < REDIS_CLIENTS.length; i++) {
-			redisClients.push(new RedisClient({ prefix: REDIS_CLIENTS[i] }));
-		}
-
-		for (let i = 0; i < sdkConfig.SPOT_MARKETS.length; i++) {
-			spotMarketRedisMap.set(sdkConfig.SPOT_MARKETS[i].marketIndex, {
-				client: redisClients[0],
-				clientIndex: 0,
-				lastRotationTime: 0,
-				lock: false,
-			});
-		}
-		for (let i = 0; i < sdkConfig.PERP_MARKETS.length; i++) {
-			perpMarketRedisMap.set(sdkConfig.PERP_MARKETS[i].marketIndex, {
-				client: redisClients[0],
-				clientIndex: 0,
-				lastRotationTime: 0,
-				lock: false,
-			});
-		}
+	logger.info('Connecting to redis');
+	for (let i = 0; i < REDIS_CLIENTS.length; i++) {
+		redisClients.push(new RedisClient({ prefix: REDIS_CLIENTS[i] }));
 	}
+
+	const fetchFromRedis = async (
+		key: string,
+		selectionCriteria: (responses: any) => any
+	): Promise<JSON> => {
+		const redisResponses = await Promise.all(
+			redisClients.map((client) => client.getRaw(key))
+		);
+		return selectionCriteria(redisResponses);
+	};
+
+	const selectMostRecentBySlot = (responses: any[]): any => {
+		const parsedResponses = responses
+			.map((response) => {
+				try {
+					return JSON.parse(response);
+				} catch {
+					return null;
+				}
+			})
+			.filter((parsed) => parsed && typeof parsed.slot === 'number');
+		return parsedResponses.reduce((mostRecent, current) => {
+			return !mostRecent || current.slot > mostRecent.slot
+				? current
+				: mostRecent;
+		}, null);
+	};
 
 	const userMapClient = new RedisClient({
 		host: process.env.ELASTICACHE_USERMAP_HOST ?? process.env.ELASTICACHE_HOST,
 		port: process.env.ELASTICACHE_USERMAP_PORT ?? process.env.ELASTICACHE_PORT,
 		prefix: RedisClientPrefix.USER_MAP,
 	});
-
-	function canRotate(marketType: MarketType, marketIndex: number) {
-		if (isVariant(marketType, 'spot')) {
-			const state = spotMarketRedisMap.get(marketIndex);
-			if (state) {
-				const now = Date.now();
-				if (now - state.lastRotationTime > ROTATION_COOLDOWN && !state.lock) {
-					state.lastRotationTime = now;
-					return true;
-				}
-			}
-		} else {
-			const state = perpMarketRedisMap.get(marketIndex);
-			if (state) {
-				const now = Date.now();
-				if (now - state.lastRotationTime > ROTATION_COOLDOWN && !state.lock) {
-					state.lastRotationTime = now;
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	function rotateClient(marketType: MarketType, marketIndex: number) {
-		if (isVariant(marketType, 'spot')) {
-			const state = spotMarketRedisMap.get(marketIndex);
-			if (state) {
-				state.lock = true;
-				const nextClientIndex = (state.clientIndex + 1) % redisClients.length;
-				state.client = redisClients[nextClientIndex];
-				state.clientIndex = nextClientIndex;
-				logger.info(
-					`Rotated redis client to index ${nextClientIndex} for spot market ${marketIndex}`
-				);
-				state.lastRotationTime = Date.now();
-				state.lock = false;
-			}
-		} else {
-			const state = perpMarketRedisMap.get(marketIndex);
-			if (state) {
-				state.lock = true;
-				const nextClientIndex = (state.clientIndex + 1) % redisClients.length;
-				state.client = redisClients[nextClientIndex];
-				state.clientIndex = nextClientIndex;
-				logger.info(
-					`Rotated redis client to index ${nextClientIndex} for perp market ${marketIndex}`
-				);
-				state.lastRotationTime = Date.now();
-				state.lock = false;
-			}
-		}
-	}
 
 	logger.info(`Initializing all market subscribers...`);
 	const initAllMarketSubscribersStart = Date.now();
@@ -555,27 +489,22 @@ const main = async (): Promise<void> => {
 			}
 
 			let topMakers: string[];
-			if (useRedis) {
-				const redisClient = isVariant(normedMarketType, 'perp')
-					? perpMarketRedisMap.get(normedMarketIndex).client
-					: spotMarketRedisMap.get(normedMarketIndex).client;
-				const redisResponse = await redisClient.getRaw(
-					`last_update_orderbook_best_makers_${getVariant(
-						normedMarketType
-					)}_${marketIndex}`
-				);
-				if (redisResponse) {
-					const parsedResponse = JSON.parse(redisResponse);
-					if (
-						parsedResponse &&
-						dlobProvider.getSlot() - parsedResponse.slot <
-							SLOT_STALENESS_TOLERANCE
-					) {
-						if (side === 'bid') {
-							topMakers = parsedResponse.bids;
-						} else {
-							topMakers = parsedResponse.asks;
-						}
+
+			const redisResponse = await fetchFromRedis(
+				`last_update_orderbook_best_makers_${getVariant(
+					normedMarketType
+				)}_${marketIndex}`,
+				selectMostRecentBySlot
+			);
+			if (redisResponse) {
+				if (
+					dlobProvider.getSlot() - redisResponse['slot'] <
+					SLOT_STALENESS_TOLERANCE
+				) {
+					if (side === 'bid') {
+						topMakers = redisResponse['bids'];
+					} else {
+						topMakers = redisResponse['asks'];
 					}
 				}
 			}
@@ -729,54 +658,38 @@ const main = async (): Promise<void> => {
 			const adjustedDepth = depth ?? '100';
 
 			let l2Formatted: any;
-			if (useRedis) {
-				if (!isSpot && `${includeVamm}`?.toLowerCase() === 'true') {
-					const redisClient = perpMarketRedisMap.get(normedMarketIndex).client;
-					const redisL2 = await redisClient.get(
-						`last_update_orderbook_perp_${normedMarketIndex}`
-					);
-					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
+			if (!isSpot && `${includeVamm}`?.toLowerCase() === 'true') {
+				const redisL2 = await fetchFromRedis(
+					`last_update_orderbook_perp_${normedMarketIndex}`,
+					selectMostRecentBySlot
+				);
+				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 
-					if (
-						redisL2 &&
-						dlobProvider.getSlot() - parseInt(redisL2['slot']) <
-							SLOT_STALENESS_TOLERANCE
-					) {
-						l2Formatted = JSON.stringify(redisL2);
-					} else {
-						if (redisL2 && redisClients.length > 1) {
-							if (canRotate(normedMarketType, normedMarketIndex)) {
-								rotateClient(normedMarketType, normedMarketIndex);
-							}
-						}
-					}
-				} else if (
-					isSpot &&
-					`${includePhoenix}`?.toLowerCase() === 'true' &&
-					`${includeOpenbook}`?.toLowerCase() === 'true'
+				if (
+					redisL2 &&
+					dlobProvider.getSlot() - redisL2['slot'] < SLOT_STALENESS_TOLERANCE
 				) {
-					const redisClient = spotMarketRedisMap.get(normedMarketIndex).client;
-					const redisL2 = await redisClient.get(
-						`last_update_orderbook_spot_${normedMarketIndex}`
-					);
-					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-					if (
-						redisL2 &&
-						dlobProvider.getSlot() - parseInt(redisL2['slot']) <
-							SLOT_STALENESS_TOLERANCE
-					) {
-						l2Formatted = JSON.stringify(redisL2);
-					} else {
-						if (redisL2 && redisClients.length > 1) {
-							if (canRotate(normedMarketType, normedMarketIndex)) {
-								rotateClient(normedMarketType, normedMarketIndex);
-							}
-						}
-					}
+					l2Formatted = JSON.stringify(redisL2);
+				}
+			} else if (
+				isSpot &&
+				`${includePhoenix}`?.toLowerCase() === 'true' &&
+				`${includeOpenbook}`?.toLowerCase() === 'true'
+			) {
+				const redisL2 = await fetchFromRedis(
+					`last_update_orderbook_spot_${normedMarketIndex}`,
+					selectMostRecentBySlot
+				);
+				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
+				if (
+					redisL2 &&
+					dlobProvider.getSlot() - redisL2['slot'] < SLOT_STALENESS_TOLERANCE
+				) {
+					l2Formatted = JSON.stringify(redisL2);
 				}
 
 				if (l2Formatted) {
@@ -891,65 +804,40 @@ const main = async (): Promise<void> => {
 
 					const adjustedDepth = normedParam['depth'] ?? '100';
 					let l2Formatted: any;
-					if (useRedis) {
-						if (
-							!isSpot &&
-							normedParam['includeVamm']?.toLowerCase() === 'true'
-						) {
-							const redisClient =
-								perpMarketRedisMap.get(normedMarketIndex).client;
-							const redisL2 = await redisClient.get(
-								`last_update_orderbook_perp_${normedMarketIndex}`
-							);
-							const depth = Math.min(
-								parseInt(adjustedDepth as string) ?? 1,
-								100
-							);
-							redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-							redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-							if (redisL2) {
-								if (
-									dlobProvider.getSlot() - parseInt(redisL2['slot']) <
-									SLOT_STALENESS_TOLERANCE
-								) {
-									l2Formatted = redisL2;
-								} else {
-									if (redisClients.length > 1) {
-										if (canRotate(normedMarketType, normedMarketIndex)) {
-											rotateClient(normedMarketType, normedMarketIndex);
-										}
-									}
-								}
+					if (!isSpot && normedParam['includeVamm']?.toLowerCase() === 'true') {
+						const redisL2 = await fetchFromRedis(
+							`last_update_orderbook_perp_${normedMarketIndex}`,
+							selectMostRecentBySlot
+						);
+						const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+						redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+						redisL2['asks'] = redisL2['asks']?.slice(0, depth);
+						if (redisL2) {
+							if (
+								dlobProvider.getSlot() - redisL2['slot'] <
+								SLOT_STALENESS_TOLERANCE
+							) {
+								l2Formatted = redisL2;
 							}
-						} else if (
-							isSpot &&
-							normedParam['includePhoenix']?.toLowerCase() === 'true' &&
-							normedParam['includeOpenbook']?.toLowerCase() === 'true'
-						) {
-							const redisClient =
-								spotMarketRedisMap.get(normedMarketIndex).client;
-							const redisL2 = await redisClient.get(
-								`last_update_orderbook_spot_${normedMarketIndex}`
-							);
-							const depth = Math.min(
-								parseInt(adjustedDepth as string) ?? 1,
-								100
-							);
-							redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-							redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-							if (redisL2) {
-								if (
-									dlobProvider.getSlot() - parseInt(redisL2['slot']) <
-									SLOT_STALENESS_TOLERANCE
-								) {
-									l2Formatted = redisL2;
-								} else {
-									if (redisClients.length > 1) {
-										if (canRotate(normedMarketType, normedMarketIndex)) {
-											rotateClient(normedMarketType, normedMarketIndex);
-										}
-									}
-								}
+						}
+					} else if (
+						isSpot &&
+						normedParam['includePhoenix']?.toLowerCase() === 'true' &&
+						normedParam['includeOpenbook']?.toLowerCase() === 'true'
+					) {
+						const redisL2 = await fetchFromRedis(
+							`last_update_orderbook_spot_${normedMarketIndex}`,
+							selectMostRecentBySlot
+						);
+						const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+						redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+						redisL2['asks'] = redisL2['asks']?.slice(0, depth);
+						if (redisL2) {
+							if (
+								dlobProvider.getSlot() - redisL2['slot'] <
+								SLOT_STALENESS_TOLERANCE
+							) {
+								l2Formatted = redisL2;
 							}
 						}
 
@@ -1033,31 +921,27 @@ const main = async (): Promise<void> => {
 			}
 
 			const marketTypeStr = getVariant(normedMarketType);
-			if (useRedis) {
-				const redisClient = (
-					marketTypeStr === 'spot' ? spotMarketRedisMap : perpMarketRedisMap
-				).get(normedMarketIndex).client;
-				const redisL3 = await redisClient.getRaw(
-					`last_update_orderbook_l3_${marketTypeStr}_${normedMarketIndex}`
-				);
-				if (
-					redisL3 &&
-					dlobProvider.getSlot() - parseInt(JSON.parse(redisL3).slot) <
-						SLOT_STALENESS_TOLERANCE
-				) {
-					cacheHitCounter.add(1, {
-						miss: false,
-						path: req.baseUrl + req.path,
-					});
-					res.writeHead(200);
-					res.end(redisL3);
-					return;
-				} else {
-					cacheHitCounter.add(1, {
-						miss: true,
-						path: req.baseUrl + req.path,
-					});
-				}
+
+			const redisL3 = await fetchFromRedis(
+				`last_update_orderbook_l3_${marketTypeStr}_${normedMarketIndex}`,
+				selectMostRecentBySlot
+			);
+			if (
+				redisL3 &&
+				dlobProvider.getSlot() - redisL3['slot'] < SLOT_STALENESS_TOLERANCE
+			) {
+				cacheHitCounter.add(1, {
+					miss: false,
+					path: req.baseUrl + req.path,
+				});
+				res.writeHead(200);
+				res.end(JSON.stringify(redisL3));
+				return;
+			} else {
+				cacheHitCounter.add(1, {
+					miss: true,
+					path: req.baseUrl + req.path,
+				});
 			}
 
 			const l3 = dlobSubscriber.getL3({
