@@ -107,8 +107,14 @@ async function main() {
 	const subscribedChannelToSlot: Map<string, number> = new Map();
 
 	const redisClients: Array<RedisClient> = [];
+	const lastMessageClients: Array<RedisClient> = [];
 	for (let i = 0; i < REDIS_CLIENTS.length; i++) {
 		const redisClient = new RedisClient({ prefix: REDIS_CLIENTS[i] });
+		const lastMessageClient = new RedisClient({ prefix: REDIS_CLIENTS[i] });
+		await redisClient.connect();
+		await lastMessageClient.connect();
+
+		lastMessageClients.push(lastMessageClient);
 		redisClients.push(redisClient);
 
 		redisClient.forceGetClient().on('connect', () => {
@@ -260,7 +266,7 @@ async function main() {
 					// Fetch and send last message
 					if (redisChannel.includes('orderbook')) {
 						const lastMessages = await Promise.all(
-							redisClients.map((redisClient) =>
+							lastMessageClients.map((redisClient) =>
 								redisClient.getRaw(
 									`last_update_${redisChannel}`.replace(
 										redisClient.getPrefix(),
