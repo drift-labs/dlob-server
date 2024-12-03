@@ -412,6 +412,9 @@ const main = async () => {
 			if (!endpoint) {
 				throw new Error('ENDPOINT is required for grpc');
 			}
+			if (useWebsocket) {
+				logger.warn('USE_GRPC overriding USE_WEBSOCKET');
+			}
 			subscriptionConfig = {
 				type: 'grpc',
 				grpcConfigs: {
