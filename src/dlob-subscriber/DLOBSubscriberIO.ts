@@ -262,13 +262,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			asks: l2Formatted.asks.slice(0, 100),
 		});
 
-		console.log(
-			`bbo: ${l2Formatted['marketName']}`,
-			(+l2Formatted.bids[0].price / 1e6).toFixed(4),
-			'//',
-			(+l2Formatted.asks[0].price / 1e6).toFixed(4)
-		);
-
 		this.redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}`,
 			l2Formatted
