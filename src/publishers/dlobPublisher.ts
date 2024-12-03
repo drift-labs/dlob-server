@@ -46,6 +46,7 @@ import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
 import express, { Response, Request } from 'express';
 import { handleHealthCheck } from '../core/metrics';
 import { setGlobalDispatcher, Agent } from 'undici';
+import { register, Gauge } from 'prom-client';
 
 setGlobalDispatcher(
 	new Agent({
@@ -62,6 +63,19 @@ const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
 
 // Set up express for health checks
 const app = express();
+
+// metrics
+const dlobSlotGauge = new Gauge({
+	name: 'dlob_slot',
+	help: 'Last updated slot of DLOB',
+	labelNames: [
+		'marketIndex',
+		'marketType',
+		'marketName',
+		'redisPrefix',
+		'redisClient',
+	],
+});
 
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
@@ -446,6 +460,34 @@ const main = async () => {
 		recursiveFetch();
 	}
 
+	setInterval(() => {
+		const slot = slotSource.getSlot();
+		perpMarketInfos.forEach((market) => {
+			dlobSlotGauge.set(
+				{
+					marketIndex: market.marketIndex,
+					marketType: 'perp',
+					marketName: market.marketName,
+					redisClient: REDIS_CLIENT,
+					redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+				},
+				slot
+			);
+		});
+		spotMarketInfos.forEach((market) => {
+			dlobSlotGauge.set(
+				{
+					marketIndex: market.marketIndex,
+					marketType: 'spot',
+					marketName: market.marketName,
+					redisClient: REDIS_CLIENT,
+					redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+				},
+				slot
+			);
+		});
+	}, 10_000);
+
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
 			res.writeHead(200);
@@ -499,6 +541,11 @@ const main = async () => {
 		}
 	};
 	app.get('/debug', handleDebug);
+
+	app.get('/metrics', async (req, res) => {
+		res.set('Content-Type', register.contentType);
+		res.end(await register.metrics());
+	});
 
 	app.get(
 		'/health',
