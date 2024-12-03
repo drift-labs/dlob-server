@@ -305,7 +305,7 @@ const main = async (): Promise<void> => {
 	const fetchFromRedis = async (
 		key: string,
 		selectionCriteria: (responses: any) => any
-	): Promise<JSON> => {
+	): Promise<any> => {
 		const redisResponses = await Promise.all(
 			redisClients.map((client) => client.getRaw(key))
 		);
