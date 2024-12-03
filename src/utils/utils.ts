@@ -37,6 +37,21 @@ export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	return l2;
 };
 
+export const l3WithBNToStrings = (l3: L3OrderBook): any => {
+	for (const key of Object.keys(l3)) {
+		for (const idx in l3[key]) {
+			const level = l3[key][idx];
+			l3[key][idx] = {
+				price: level.price.toString(),
+				size: level.size.toString(),
+				maker: level.maker.toBase58(),
+				orderId: level.orderId.toString(),
+			};
+		}
+	}
+	return l3;
+};
+
 export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }

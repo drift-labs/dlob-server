@@ -247,7 +247,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot
 		) {
 			logger.warn(
-				`Updating market slot for ${marketArgs.marketName} with slot ${l2Formatted['marketSlot']}`
+				`Updating market slot for ${marketArgs.marketName} from ${lastMarketSlotAndTime.slot} -> ${l2Formatted['marketSlot']}`
 			);
 			this.lastMarketSlotMap
 				.get(marketArgs.marketType)
