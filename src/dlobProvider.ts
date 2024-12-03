@@ -1,6 +1,5 @@
 import { DLOB, OrderSubscriber, UserAccount, UserMap } from '@drift-labs/sdk';
 import { PublicKey } from '@solana/web3.js';
-import { GeyserOrderSubscriber } from './grpc/OrderSubscriberGRPC';
 
 export type DLOBProvider = {
 	subscribe(): Promise<void>;
@@ -52,48 +51,6 @@ export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
 
 export function getDLOBProviderFromOrderSubscriber(
 	orderSubscriber: OrderSubscriber
-): DLOBProvider {
-	return {
-		subscribe: async () => {
-			await orderSubscriber.subscribe();
-		},
-		getDLOB: async (slot: number) => {
-			return await orderSubscriber.getDLOB(slot);
-		},
-		getUniqueAuthorities: () => {
-			const authorities = new Set<string>();
-			for (const { userAccount } of orderSubscriber.usersAccounts.values()) {
-				authorities.add(userAccount.authority.toBase58());
-			}
-			const pubkeys = Array.from(authorities).map((a) => new PublicKey(a));
-			return pubkeys;
-		},
-		getUserAccounts: function* () {
-			for (const [
-				key,
-				{ userAccount },
-			] of orderSubscriber.usersAccounts.entries()) {
-				yield { userAccount: userAccount, publicKey: new PublicKey(key) };
-			}
-		},
-		getUserAccount: (publicKey) => {
-			return orderSubscriber.usersAccounts.get(publicKey.toString())
-				?.userAccount;
-		},
-		size(): number {
-			return orderSubscriber.usersAccounts.size;
-		},
-		fetch() {
-			return orderSubscriber.fetch();
-		},
-		getSlot: () => {
-			return orderSubscriber.getSlot();
-		},
-	};
-}
-
-export function getDLOBProviderFromGrpcOrderSubscriber(
-	orderSubscriber: GeyserOrderSubscriber
 ): DLOBProvider {
 	return {
 		subscribe: async () => {
