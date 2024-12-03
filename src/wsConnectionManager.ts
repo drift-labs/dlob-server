@@ -4,7 +4,7 @@ import * as http from 'http';
 import compression from 'compression';
 import { WebSocket, WebSocketServer } from 'ws';
 import { sleep } from './utils/utils';
-import { register, Gauge } from 'prom-client';
+import { register, Gauge, Counter } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -20,6 +20,16 @@ app.set('trust proxy', 1);
 const wsConnectionsGauge = new Gauge({
 	name: 'websocket_connections',
 	help: 'Number of active WebSocket connections',
+});
+const wsOrderbookSourceCounter = new Counter({
+	name: 'websocket_orderbook_source',
+	help: 'Number of orderbook messages sent from source',
+	labelNames: ['source'],
+});
+const wsOrderbookSourceLastSlotGauge = new Gauge({
+	name: 'websocket_orderbook_source_last_slot',
+	help: 'Last slot of orderbook messages from a source',
+	labelNames: ['source'],
 });
 
 const server = http.createServer(app);
@@ -50,6 +60,11 @@ console.log('Redis Clients:', REDIS_CLIENTS);
 const regexp = new RegExp(REDIS_CLIENTS.join('|'), 'g');
 const sanitiseChannelForClient = (channel: string | undefined): string => {
 	return channel?.replace(regexp, '');
+};
+const getChannelPrefix = (channel: string | undefined): string | undefined => {
+	if (!channel) return undefined;
+	const match = channel.match(regexp);
+	return match?.[0];
 };
 
 const getRedisChannelFromMessage = (message: any): string => {
@@ -108,10 +123,18 @@ async function main() {
 
 		redisClient.forceGetClient().on('message', (subscribedChannel, message) => {
 			const sanitizedChannel = sanitiseChannelForClient(subscribedChannel);
+			const channelPrefix = getChannelPrefix(sanitizedChannel);
 			const subscribers = channelSubscribers.get(sanitizedChannel);
 			if (subscribers) {
 				if (sanitizedChannel.includes('orderbook')) {
 					const messageSlot = JSON.parse(message)['slot'];
+					wsOrderbookSourceLastSlotGauge.set(
+						{
+							source: channelPrefix,
+						},
+						messageSlot
+					);
+
 					const lastMessageSlot = subscribedChannelToSlot.get(sanitizedChannel);
 					if (!lastMessageSlot || lastMessageSlot <= messageSlot) {
 						subscribedChannelToSlot.set(sanitizedChannel, messageSlot);
@@ -123,13 +146,17 @@ async function main() {
 					if (
 						ws.readyState === WebSocket.OPEN &&
 						ws.bufferedAmount < MAX_BUFFERED_AMOUNT
-					)
+					) {
+						wsOrderbookSourceCounter.inc({
+							source: channelPrefix,
+						});
 						ws.send(
 							JSON.stringify({
 								channel: sanitizedChannel,
 								data: message,
 							})
 						);
+					}
 				});
 			}
 		});
