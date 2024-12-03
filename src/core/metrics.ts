@@ -8,6 +8,7 @@ import {
 	View,
 } from '@opentelemetry/sdk-metrics-base';
 import { SlotSource } from '@drift-labs/sdk';
+require('dotenv').config();
 
 /**
  * Creates {count} buckets of size {increment} starting from {start}. Each bucket stores the count of values within its "size".

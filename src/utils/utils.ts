@@ -472,3 +472,23 @@ export type SubscriberLookup = {
 		openbook?: OpenbookV2Subscriber;
 	};
 };
+
+export const selectMostRecentBySlot = (
+	responses: any[]
+): {
+	slot: number;
+	[key: string]: any;
+} => {
+	const parsedResponses = responses
+		.map((response) => {
+			try {
+				return JSON.parse(response);
+			} catch {
+				return null;
+			}
+		})
+		.filter((parsed) => parsed && typeof parsed.slot === 'number');
+	return parsedResponses.reduce((mostRecent, current) => {
+		return !mostRecent || current.slot > mostRecent.slot ? current : mostRecent;
+	}, null);
+};
