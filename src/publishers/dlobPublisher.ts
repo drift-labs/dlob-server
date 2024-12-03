@@ -18,6 +18,8 @@ import {
 	PerpMarketConfig,
 	SpotMarketConfig,
 	PhoenixSubscriber,
+	MarketType,
+	OraclePriceData,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -25,6 +27,7 @@ import { logger, setLogLevel } from '../utils/logger';
 import {
 	SubscriberLookup,
 	getOpenbookSubscriber,
+	l2WithBNToStrings,
 	parsePositiveIntArray,
 	sleep,
 } from '../utils/utils';
@@ -40,7 +43,7 @@ import {
 } from '../dlobProvider';
 import FEATURE_FLAGS from '../utils/featureFlags';
 import { GeyserOrderSubscriber } from '../grpc/OrderSubscriberGRPC';
-import express from 'express';
+import express, { Response, Request } from 'express';
 import { handleHealthCheck } from '../core/metrics';
 import { setGlobalDispatcher, Agent } from 'undici';
 
@@ -452,6 +455,50 @@ const main = async () => {
 			res.end('Not ready');
 		}
 	};
+
+	const handleDebug = async (req: Request, res: Response) => {
+		const marketIndex = +req.query.marketIndex;
+		let marketType: MarketType = MarketType.PERP;
+		let oraclePriceData: OraclePriceData;
+		if (req.query.marketType === 'spot') {
+			marketType = MarketType.SPOT;
+			oraclePriceData = driftClient.getOracleDataForSpotMarket(marketIndex);
+		} else {
+			oraclePriceData = driftClient.getOracleDataForPerpMarket(marketIndex);
+		}
+		try {
+			const slot = slotSource.getSlot();
+			const dlob = await dlobProvider.getDLOB(slot);
+			const l2 = dlob.getL2({
+				marketIndex,
+				marketType,
+				depth: 5,
+				slot,
+				oraclePriceData,
+			});
+			const l3 = dlob.getL3({
+				marketIndex,
+				marketType,
+				slot,
+				oraclePriceData,
+			});
+			const state = {
+				dlobSize: dlobProvider.size(),
+				slot,
+				markets: {
+					perp: perpMarketInfos,
+					spot: spotMarketInfos,
+				},
+				l2: l2WithBNToStrings(l2),
+				l3,
+			};
+
+			res.json(state);
+		} catch (e) {
+			res.status(500).json({ error: e.message });
+		}
+	};
+	app.get('/debug', handleDebug);
 
 	app.get(
 		'/health',

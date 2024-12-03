@@ -142,4 +142,8 @@ src/**.js.map
 lib
 src/playground.ts
 
-*dump.rdb
+# redis files
+*.rdb
+*.log
+*.confg
+

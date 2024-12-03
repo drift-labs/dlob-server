@@ -460,11 +460,12 @@
     kuler "^2.0.0"
 
 "@drift-labs/sdk@file:./drift-common/protocol/sdk", "@drift-labs/sdk@file:drift-common/protocol/sdk":
-  version "2.96.0-beta.25"
+  version "2.103.0-beta.8"
   dependencies:
     "@coral-xyz/anchor" "0.28.0"
     "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
     "@ellipsis-labs/phoenix-sdk" "^1.4.2"
+    "@grpc/grpc-js" "^1.8.0"
     "@openbook-dex/openbook-v2" "0.2.10"
     "@project-serum/serum" "^0.13.38"
     "@pythnetwork/client" "2.5.3"
@@ -473,18 +474,20 @@
     "@solana/spl-token" "0.3.7"
     "@solana/web3.js" "1.92.3"
     "@switchboard-xyz/on-demand" "1.2.42"
+    "@triton-one/yellowstone-grpc" "0.6.0"
     anchor-bankrun "^0.3.0"
     node-cache "^5.1.2"
     rpc-websockets "7.5.1"
     solana-bankrun "^0.3.0"
     strict-event-emitter-types "^2.0.0"
+    tweetnacl "1.0.3"
     uuid "^8.3.2"
     zstddec "^0.1.0"
 
 "@drift/common@file:./drift-common/common-ts":
   version "1.0.0"
   dependencies:
-    "@drift-labs/sdk" "file:../../Library/Caches/Yarn/v6/npm-@drift-common-1.0.0-79940387-1595-4bdc-b73c-2bd48440a03a-1729802406625/node_modules/@drift/protocol/sdk"
+    "@drift-labs/sdk" "file:../../Library/Caches/Yarn/v6/npm-@drift-common-1.0.0-2478b7b0-73c2-48c2-8cdc-077c34db7294-1733168269147/node_modules/@drift/protocol/sdk"
     "@jest/globals" "^29.3.1"
     "@slack/web-api" "^6.4.0"
     "@solana/spl-token" "^0.3.8"
@@ -2139,6 +2142,13 @@
     bs58 "^5.0.0"
     js-yaml "^4.1.0"
     protobufjs "^7.2.6"
+
+"@triton-one/yellowstone-grpc@0.6.0":
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/@triton-one/yellowstone-grpc/-/yellowstone-grpc-0.6.0.tgz#9e6376cec8a42284c23dc195df2c3423c87c4f27"
+  integrity sha512-rgdZM2N3U9/d/QKOI5PP+9rSHUl2oSI5Uwzvuss8y/mtTaHFjbOMpXpQXviIeDkusOa+mef4wLYrbjEZCwTXiw==
+  dependencies:
+    "@grpc/grpc-js" "^1.8.0"
 
 "@triton-one/yellowstone-grpc@^0.3.0":
   version "0.3.0"
@@ -6307,7 +6317,7 @@ tsutils@^3.21.0:
   dependencies:
     tslib "^1.8.1"
 
-tweetnacl@^1.0.3:
+tweetnacl@1.0.3, tweetnacl@^1.0.3:
   version "1.0.3"
   resolved "https://registry.yarnpkg.com/tweetnacl/-/tweetnacl-1.0.3.tgz#ac0af71680458d8a6378d0d0d050ab1407d35596"
   integrity sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==

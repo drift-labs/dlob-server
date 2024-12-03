@@ -247,7 +247,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot
 		) {
 			logger.warn(
-				`Updating market slot for ${marketArgs.marketName} with slot ${l2Formatted['marketSlot']}`
+				`Updating market slot for ${marketArgs.marketName} from ${lastMarketSlotAndTime.slot} -> ${l2Formatted['marketSlot']}`
 			);
 			this.lastMarketSlotMap
 				.get(marketArgs.marketType)
@@ -261,6 +261,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			bids: l2Formatted.bids.slice(0, 100),
 			asks: l2Formatted.asks.slice(0, 100),
 		});
+
+		console.log(
+			`bbo: ${l2Formatted['marketName']}`,
+			(+l2Formatted.bids[0].price / 1e6).toFixed(4),
+			'//',
+			(+l2Formatted.asks[0].price / 1e6).toFixed(4)
+		);
 
 		this.redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}`,
