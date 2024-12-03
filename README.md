@@ -18,6 +18,12 @@ This is the backend server that provides a REST API for the drift [DLOB](https:/
 
 ## Setup
 
+The build dependencies
+```
+git submodule update --init
+bash build_all.sh
+```
+
 First set the necessary environment variables:
 ```
 cp .env.example .env
@@ -66,18 +72,28 @@ To run the websocket server, a Redis cache is required, and the following enviro
 * `REDIS_PASSWORDS`
 * `REDIS_PORTS`
 
-In one terminal, run:
+In the first terminal, start the redis cluster:
+```
+bash redisCluster.sh start
+bash redisCluster.sh create
+```
+
+In second terminal, run:
 ```
 yarn run dlob-publisher
 ```
 
-In a second terminal, run:
+In a third terminal, run:
 ```
 yarn run ws-manager
 ```
 
 Then connect to the ws server at ws://127.0.0.1:3000
 
+When you're done, stop the redis cluster:
+```
+bash redisCluster.sh stop
+```
 
 # Run the example client
 
