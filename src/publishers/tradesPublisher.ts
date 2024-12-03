@@ -192,7 +192,7 @@ const main = async () => {
 		.subscribe((fillEvent) => {
 			redisClient.publish(
 				`${redisClientPrefix}trades_${fillEvent.marketType}_${fillEvent.marketIndex}`,
-				{ ...fillEvent, slot: slotSubscriber.getSlot() }
+				fillEvent
 			);
 		});
 

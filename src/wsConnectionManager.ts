@@ -47,10 +47,7 @@ const REDIS_CLIENTS = envClients.length
 	: [RedisClientPrefix.DLOB, RedisClientPrefix.DLOB_HELIUS];
 console.log('Redis Clients:', REDIS_CLIENTS);
 
-const CHANNEL_PREFIXES = REDIS_CLIENTS.map(
-	(client) => RedisClientPrefix[client]
-);
-const regexp = new RegExp(CHANNEL_PREFIXES.join('|'), 'g');
+const regexp = new RegExp(REDIS_CLIENTS.join('|'), 'g');
 const sanitiseChannelForClient = (channel: string | undefined): string => {
 	return channel?.replace(regexp, '');
 };
@@ -110,14 +107,14 @@ async function main() {
 		});
 
 		redisClient.forceGetClient().on('message', (subscribedChannel, message) => {
-			const subscribers = channelSubscribers.get(subscribedChannel);
+			const sanitizedChannel = sanitiseChannelForClient(subscribedChannel);
+			const subscribers = channelSubscribers.get(sanitizedChannel);
 			if (subscribers) {
 				const messageSlot = JSON.parse(message)['slot'];
-				if (!subscribedChannel.includes('priorityFees')) {
-					const lastMessageSlot =
-						subscribedChannelToSlot.get(subscribedChannel);
+				if (sanitizedChannel.includes('orderbook')) {
+					const lastMessageSlot = subscribedChannelToSlot.get(sanitizedChannel);
 					if (!lastMessageSlot || lastMessageSlot <= messageSlot) {
-						subscribedChannelToSlot.set(subscribedChannel, messageSlot);
+						subscribedChannelToSlot.set(sanitizedChannel, messageSlot);
 					} else if (lastMessageSlot > messageSlot) {
 						return;
 					}
@@ -129,7 +126,7 @@ async function main() {
 					)
 						ws.send(
 							JSON.stringify({
-								channel: sanitiseChannelForClient(subscribedChannel),
+								channel: sanitizedChannel,
 								data: message,
 							})
 						);
@@ -188,28 +185,28 @@ async function main() {
 
 					if (!subscribedChannels.has(redisChannel)) {
 						console.log('Trying to subscribe to channel', redisChannel);
-						// Special case for priority fees since they only have one source
-						if (redisChannel.includes('priorityFees')) {
-							redisClients[0]
-								.subscribe(`dlob-helius:${redisChannel}`)
-								.then(() => {
-									subscribedChannels.add(redisChannel);
-								})
-								.catch(() => {
-									ws.send(
-										JSON.stringify({
-											error: `Error subscribing to channel: ${parsedMessage}`,
-										})
-									);
-									return;
-								});
-						} else {
-							redisClients.map((redisClient) =>
+						redisClients[0]
+							.subscribe(
+								redisChannel.includes('priorityFees')
+									? `dlob-helius:${redisChannel}`
+									: `${redisClients[0].getPrefix()}${redisChannel}`
+							)
+							.then(() => {
+								subscribedChannels.add(redisChannel);
+							})
+							.catch(() => {
+								ws.send(
+									JSON.stringify({
+										error: `Error subscribing to channel: ${parsedMessage}`,
+									})
+								);
+								return;
+							});
+
+						if (redisChannel.includes('orderbook') && redisClients.length > 1) {
+							redisClients.slice(1).map((redisClient) => {
 								redisClient
 									.subscribe(`${redisClient.getPrefix()}${redisChannel}`)
-									.then(() => {
-										subscribedChannels.add(redisChannel);
-									})
 									.catch(() => {
 										ws.send(
 											JSON.stringify({
@@ -217,8 +214,8 @@ async function main() {
 											})
 										);
 										return;
-									})
-							);
+									});
+							});
 						}
 					}
 
