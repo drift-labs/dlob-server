@@ -110,8 +110,8 @@ async function main() {
 			const sanitizedChannel = sanitiseChannelForClient(subscribedChannel);
 			const subscribers = channelSubscribers.get(sanitizedChannel);
 			if (subscribers) {
-				const messageSlot = JSON.parse(message)['slot'];
 				if (sanitizedChannel.includes('orderbook')) {
+					const messageSlot = JSON.parse(message)['slot'];
 					const lastMessageSlot = subscribedChannelToSlot.get(sanitizedChannel);
 					if (!lastMessageSlot || lastMessageSlot <= messageSlot) {
 						subscribedChannelToSlot.set(sanitizedChannel, messageSlot);
