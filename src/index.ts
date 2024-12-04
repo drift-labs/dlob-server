@@ -305,7 +305,7 @@ const main = async (): Promise<void> => {
 	const fetchFromRedis = async (
 		key: string,
 		selectionCriteria: (responses: any) => any
-	): Promise<JSON> => {
+	): Promise<any> => {
 		const redisResponses = await Promise.all(
 			redisClients.map((client) => client.getRaw(key))
 		);
@@ -650,7 +650,8 @@ const main = async (): Promise<void> => {
 				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
 				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
 				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-
+				console.log(redisL2['slot']);
+				console.log(SLOT_STALENESS_TOLERANCE);
 				if (
 					redisL2 &&
 					dlobProvider.getSlot() - redisL2['slot'] < SLOT_STALENESS_TOLERANCE
@@ -675,16 +676,16 @@ const main = async (): Promise<void> => {
 				) {
 					l2Formatted = JSON.stringify(redisL2);
 				}
+			}
 
-				if (l2Formatted) {
-					cacheHitCounter.add(1, {
-						miss: false,
-						path: req.baseUrl + req.path,
-					});
-					res.writeHead(200);
-					res.end(l2Formatted);
-					return;
-				}
+			if (l2Formatted) {
+				cacheHitCounter.add(1, {
+					miss: false,
+					path: req.baseUrl + req.path,
+				});
+				res.writeHead(200);
+				res.end(l2Formatted);
+				return;
 			}
 
 			let validateIncludeVamm = false;
@@ -824,14 +825,14 @@ const main = async (): Promise<void> => {
 								l2Formatted = redisL2;
 							}
 						}
+					}
 
-						if (l2Formatted) {
-							cacheHitCounter.add(1, {
-								miss: false,
-								path: req.baseUrl + req.path,
-							});
-							return l2Formatted;
-						}
+					if (l2Formatted) {
+						cacheHitCounter.add(1, {
+							miss: false,
+							path: req.baseUrl + req.path,
+						});
+						return l2Formatted;
 					}
 
 					let validateIncludeVamm = false;

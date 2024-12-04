@@ -473,7 +473,12 @@ export type SubscriberLookup = {
 	};
 };
 
-export const selectMostRecentBySlot = (responses: any[]): any => {
+export const selectMostRecentBySlot = (
+	responses: any[]
+): {
+	slot: number;
+	[key: string]: any;
+} => {
 	const parsedResponses = responses
 		.map((response) => {
 			try {
