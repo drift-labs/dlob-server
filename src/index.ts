@@ -650,8 +650,6 @@ const main = async (): Promise<void> => {
 				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
 				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
 				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-				console.log(redisL2['slot']);
-				console.log(SLOT_STALENESS_TOLERANCE);
 				if (
 					redisL2 &&
 					dlobProvider.getSlot() - redisL2['slot'] < SLOT_STALENESS_TOLERANCE
