@@ -324,29 +324,34 @@ const main = async () => {
 	let accountSubscription: DriftClientSubscriptionConfig;
 	let slotSource: SlotSource;
 
+	// NOTE: disable GRPC for general driftClient subscriptions until we can reliably subscribe
+	// to multiple streams. Currently this causes the nodes to start killing connections.
+	//
 	// USE_GRPC=true will override websocket
-	if (useGrpc) {
-		accountSubscription = {
-			type: 'grpc',
-			resubTimeoutMs: 30_000,
-			grpcConfigs: {
-				endpoint,
-				token,
-				channelOptions: {
-					'grpc.keepalive_time_ms': 10_000,
-					'grpc.keepalive_timeout_ms': 1_000,
-					'grpc.keepalive_permit_without_calls': 1,
-				},
-			},
-		};
+	// if (useGrpc) {
+	// 	accountSubscription = {
+	// 		type: 'grpc',
+	// 		resubTimeoutMs: 30_000,
+	// 		grpcConfigs: {
+	// 			endpoint,
+	// 			token,
+	// 			channelOptions: {
+	// 				'grpc.keepalive_time_ms': 10_000,
+	// 				'grpc.keepalive_timeout_ms': 1_000,
+	// 				'grpc.keepalive_permit_without_calls': 1,
+	// 			},
+	// 		},
+	// 	};
 
-		slotSubscriber = new SlotSubscriber(connection);
-		await slotSubscriber.subscribe();
+	// 	slotSubscriber = new SlotSubscriber(connection);
+	// 	await slotSubscriber.subscribe();
 
-		slotSource = {
-			getSlot: () => slotSubscriber!.getSlot(),
-		};
-	} else if (!useWebsocket) {
+	// 	slotSource = {
+	// 		getSlot: () => slotSubscriber!.getSlot(),
+	// 	};
+	// }
+
+	if (!useWebsocket) {
 		bulkAccountLoader = new BulkAccountLoader(
 			connection,
 			stateCommitment,
