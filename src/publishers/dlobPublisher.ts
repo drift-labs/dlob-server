@@ -324,7 +324,24 @@ const main = async () => {
 	let accountSubscription: DriftClientSubscriptionConfig;
 	let slotSource: SlotSource;
 
-	if (!useWebsocket) {
+	// USE_GRPC=true will override websocket
+	if (useGrpc) {
+		accountSubscription = {
+			type: 'grpc',
+			resubTimeoutMs: 30_000,
+			grpcConfigs: {
+				endpoint,
+				token,
+			},
+		};
+
+		slotSubscriber = new SlotSubscriber(connection);
+		await slotSubscriber.subscribe();
+
+		slotSource = {
+			getSlot: () => slotSubscriber!.getSlot(),
+		};
+	} else if (!useWebsocket) {
 		bulkAccountLoader = new BulkAccountLoader(
 			connection,
 			stateCommitment,
