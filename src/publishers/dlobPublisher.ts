@@ -332,6 +332,11 @@ const main = async () => {
 			grpcConfigs: {
 				endpoint,
 				token,
+				channelOptions: {
+					'grpc.keepalive_time_ms': 10_000,
+					'grpc.keepalive_timeout_ms': 1_000,
+					'grpc.keepalive_permit_without_calls': 1,
+				},
 			},
 		};
 
@@ -437,6 +442,11 @@ const main = async () => {
 					endpoint: endpoint,
 					token: token,
 					commitmentLevel: stateCommitment,
+					channelOptions: {
+						'grpc.keepalive_time_ms': 10_000,
+						'grpc.keepalive_timeout_ms': 1_000,
+						'grpc.keepalive_permit_without_calls': 1,
+					},
 				},
 				commitment: stateCommitment,
 			};
