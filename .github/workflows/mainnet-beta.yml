@@ -1,9 +1,8 @@
-# non-prod
 name: DLOB Build Image And Deploy
 
 on:
   push:
-    branches: [master, staging]
+    branches: [mainnet-beta]
 
 jobs:
   build:
@@ -12,14 +11,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
-          submodules: recursive
+          submodules: 'recursive'
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@master
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_NON_PROD }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_NON_PROD }}
-          aws-region: ${{ secrets.EKS_NON_PROD_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_PROD }}
+          aws-region: ${{ secrets.EKS_PROD_REGION }}
 
       - name: Log in to Amazon ECR
         id: login-ecr
@@ -46,9 +45,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@master
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_NON_PROD }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_NON_PROD }}
-          aws-region: ${{ secrets.EKS_NON_PROD_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_PROD }}
+          aws-region: ${{ secrets.EKS_PROD_REGION }}
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
@@ -56,7 +55,7 @@ jobs:
           version: 'v1.30.0'
 
       - name: Configure AWS EKS Credentials
-        run: aws eks update-kubeconfig --name ${{ secrets.EKS_NON_PROD_CLUSTER_NAME }} --region ${{ secrets.EKS_NON_PROD_REGION }} --role-arn ${{ secrets.EKS_NON_PROD_DEPLOY_ROLE }}
+        run: aws eks update-kubeconfig --name ${{ secrets.EKS_PROD_CLUSTER_NAME }} --region ${{ secrets.EKS_PROD_REGION }} --role-arn ${{ secrets.EKS_PROD_DEPLOY_ROLE }}
 
       - name: Restart deployment
         env:
