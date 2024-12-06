@@ -280,7 +280,7 @@ async function main() {
 							ws.send(
 								JSON.stringify({
 									channel: redisChannel,
-									data: lastMessage,
+									data: JSON.stringify(lastMessage),
 								})
 							);
 						}
