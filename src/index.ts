@@ -17,8 +17,6 @@ import {
 	initialize,
 	isVariant,
 	OrderSubscriber,
-	PhoenixSubscriber,
-	BulkAccountLoader,
 	isOperationPaused,
 	PerpOperation,
 	DelistedMarketSetting,
@@ -156,38 +154,6 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 			phoenix: undefined,
 			openbook: undefined,
 		};
-
-		if (market.phoenixMarket) {
-			const phoenixConfigAccount =
-				await driftClient.getPhoenixV1FulfillmentConfig(market.phoenixMarket);
-			if (isVariant(phoenixConfigAccount.status, 'enabled')) {
-				const bulkAccountLoader = new BulkAccountLoader(
-					driftClient.connection,
-					stateCommitment,
-					5_000
-				);
-				const phoenixSubscriber = new PhoenixSubscriber({
-					connection: driftClient.connection,
-					programId: new PublicKey(sdkConfig.PHOENIX),
-					marketAddress: phoenixConfigAccount.phoenixMarket,
-					accountSubscription: {
-						type: 'polling',
-						accountLoader: bulkAccountLoader,
-					},
-				});
-				await phoenixSubscriber.subscribe();
-				// Test get L2 to know if we should add
-				try {
-					phoenixSubscriber.getL2Asks();
-					phoenixSubscriber.getL2Bids();
-					markets[market.marketIndex].phoenix = phoenixSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
 
 		if (market.openbookMarket) {
 			const openbookConfigAccount =
