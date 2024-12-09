@@ -639,7 +639,7 @@ const main = async (): Promise<void> => {
 					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
 					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 					if (redisL2) {
-						l2Formatted = JSON.stringify(redisL2);
+						l2Formatted = redisL2;
 					}
 
 					if (l2Formatted) {
