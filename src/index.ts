@@ -17,8 +17,6 @@ import {
 	initialize,
 	isVariant,
 	OrderSubscriber,
-	isOperationPaused,
-	PerpOperation,
 	DelistedMarketSetting,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
@@ -36,16 +34,12 @@ import {
 } from './core/metrics';
 import { handleResponseTime } from './core/middleware';
 import {
-	SubscriberLookup,
-	addOracletoResponse,
 	errorHandler,
-	l2WithBNToStrings,
 	normalizeBatchQueryParams,
 	sleep,
 	validateDlobQuery,
 	getAccountFromId,
 	getRawAccountFromId,
-	getOpenbookSubscriber,
 	selectMostRecentBySlot,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
@@ -81,8 +75,6 @@ const stateCommitment: Commitment = 'confirmed';
 const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
-const SLOT_STALENESS_TOLERANCE =
-	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 1000;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 
 const logFormat =
@@ -143,43 +135,6 @@ logger.info(`WS endpoint:        ${wsEndpoint}`);
 logger.info(`useWebsocket:       ${useWebsocket}`);
 logger.info(`DriftEnv:           ${driftEnv}`);
 logger.info(`Commit:             ${commitHash}`);
-
-let MARKET_SUBSCRIBERS: SubscriberLookup = {};
-
-const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
-	const markets: SubscriberLookup = {};
-
-	for (const market of sdkConfig.SPOT_MARKETS) {
-		markets[market.marketIndex] = {
-			phoenix: undefined,
-			openbook: undefined,
-		};
-
-		if (market.openbookMarket) {
-			const openbookConfigAccount =
-				await driftClient.getOpenbookV2FulfillmentConfig(market.openbookMarket);
-			if (isVariant(openbookConfigAccount.status, 'enabled')) {
-				const openbookSubscriber = getOpenbookSubscriber(
-					driftClient,
-					market,
-					sdkConfig
-				);
-				await openbookSubscriber.subscribe();
-				try {
-					openbookSubscriber.getL2Asks();
-					openbookSubscriber.getL2Bids();
-					markets[market.marketIndex].openbook = openbookSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding openbook for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
-	}
-
-	return markets;
-};
 
 const main = async (): Promise<void> => {
 	const wallet = new Wallet(new Keypair());
@@ -283,15 +238,6 @@ const main = async (): Promise<void> => {
 		port: process.env.ELASTICACHE_USERMAP_PORT ?? process.env.ELASTICACHE_PORT,
 		prefix: RedisClientPrefix.USER_MAP,
 	});
-
-	logger.info(`Initializing all market subscribers...`);
-	const initAllMarketSubscribersStart = Date.now();
-	MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
-	logger.info(
-		`All market subscribers initialized in ${
-			Date.now() - initAllMarketSubscribersStart
-		} ms`
-	);
 
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
@@ -447,15 +393,10 @@ const main = async (): Promise<void> => {
 				selectMostRecentBySlot
 			);
 			if (redisResponse) {
-				if (
-					dlobProvider.getSlot() - redisResponse['slot'] <
-					SLOT_STALENESS_TOLERANCE
-				) {
-					if (side === 'bid') {
-						topMakers = redisResponse['bids'];
-					} else {
-						topMakers = redisResponse['asks'];
-					}
+				if (side === 'bid') {
+					topMakers = redisResponse['bids'];
+				} else {
+					topMakers = redisResponse['asks'];
 				}
 			}
 
@@ -579,17 +520,7 @@ const main = async (): Promise<void> => {
 
 	app.get('/l2', async (req, res, next) => {
 		try {
-			const {
-				marketName,
-				marketIndex,
-				marketType,
-				depth,
-				numVammOrders,
-				includeVamm,
-				includePhoenix,
-				includeOpenbook,
-				includeOracle,
-			} = req.query;
+			const { marketName, marketIndex, marketType, depth } = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
 				driftClient,
@@ -608,38 +539,17 @@ const main = async (): Promise<void> => {
 			const adjustedDepth = depth ?? '100';
 
 			let l2Formatted: any;
-			if (!isSpot && `${includeVamm}`?.toLowerCase() === 'true') {
-				const redisL2 = await fetchFromRedis(
-					`last_update_orderbook_perp_${normedMarketIndex}`,
-					selectMostRecentBySlot
-				);
-				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-				if (
-					redisL2 &&
-					dlobProvider.getSlot() - redisL2['slot'] < SLOT_STALENESS_TOLERANCE
-				) {
-					l2Formatted = JSON.stringify(redisL2);
-				}
-			} else if (
-				isSpot &&
-				`${includePhoenix}`?.toLowerCase() === 'true' &&
-				`${includeOpenbook}`?.toLowerCase() === 'true'
-			) {
-				const redisL2 = await fetchFromRedis(
-					`last_update_orderbook_spot_${normedMarketIndex}`,
-					selectMostRecentBySlot
-				);
-				const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-				redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-				redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-				if (
-					redisL2 &&
-					dlobProvider.getSlot() - redisL2['slot'] < SLOT_STALENESS_TOLERANCE
-				) {
-					l2Formatted = JSON.stringify(redisL2);
-				}
+			const redisL2 = await fetchFromRedis(
+				`last_update_orderbook_${
+					isSpot ? 'spot' : 'perp'
+				}_${normedMarketIndex}`,
+				selectMostRecentBySlot
+			);
+			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+			redisL2['bids'] = redisL2['bids']?.slice(0, depthToUse);
+			redisL2['asks'] = redisL2['asks']?.slice(0, depthToUse);
+			if (redisL2) {
+				l2Formatted = JSON.stringify(redisL2);
 			}
 
 			if (l2Formatted) {
@@ -650,49 +560,15 @@ const main = async (): Promise<void> => {
 				res.writeHead(200);
 				res.end(l2Formatted);
 				return;
+			} else {
+				cacheHitCounter.add(1, {
+					miss: true,
+					path: req.baseUrl + req.path,
+				});
+				res.writeHead(500);
+				res.end('No dlob data found');
+				return;
 			}
-
-			let validateIncludeVamm = false;
-			if (!isSpot && `${includeVamm}`.toLowerCase() === 'true') {
-				const perpMarket = driftClient.getPerpMarketAccount(normedMarketIndex);
-				validateIncludeVamm = !isOperationPaused(
-					perpMarket.pausedOperations,
-					PerpOperation.AMM_FILL
-				);
-			}
-			const l2 = dlobSubscriber.getL2({
-				marketIndex: normedMarketIndex,
-				marketType: normedMarketType,
-				depth: parseInt(adjustedDepth as string),
-				includeVamm: validateIncludeVamm,
-				numVammOrders: parseInt((numVammOrders ?? '100') as string),
-				fallbackL2Generators: isSpot
-					? [
-							`${includePhoenix}`.toLowerCase() === 'true' &&
-								MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-							`${includeOpenbook}`.toLowerCase() === 'true' &&
-								MARKET_SUBSCRIBERS[normedMarketIndex].openbook,
-					  ].filter((a) => !!a)
-					: [],
-			});
-
-			// make the BNs into strings
-			l2Formatted = l2WithBNToStrings(l2);
-			if (`${includeOracle}`.toLowerCase() === 'true') {
-				addOracletoResponse(
-					l2Formatted,
-					driftClient,
-					normedMarketType,
-					normedMarketIndex
-				);
-			}
-
-			cacheHitCounter.add(1, {
-				miss: true,
-				path: req.baseUrl + req.path,
-			});
-			res.writeHead(200);
-			res.end(JSON.stringify(l2Formatted));
 		} catch (err) {
 			next(err);
 		}
@@ -753,42 +629,17 @@ const main = async (): Promise<void> => {
 
 					const adjustedDepth = normedParam['depth'] ?? '100';
 					let l2Formatted: any;
-					if (!isSpot && normedParam['includeVamm']?.toLowerCase() === 'true') {
-						const redisL2 = await fetchFromRedis(
-							`last_update_orderbook_perp_${normedMarketIndex}`,
-							selectMostRecentBySlot
-						);
-						const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-						redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-						redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-						if (redisL2) {
-							if (
-								dlobProvider.getSlot() - redisL2['slot'] <
-								SLOT_STALENESS_TOLERANCE
-							) {
-								l2Formatted = redisL2;
-							}
-						}
-					} else if (
-						isSpot &&
-						normedParam['includePhoenix']?.toLowerCase() === 'true' &&
-						normedParam['includeOpenbook']?.toLowerCase() === 'true'
-					) {
-						const redisL2 = await fetchFromRedis(
-							`last_update_orderbook_spot_${normedMarketIndex}`,
-							selectMostRecentBySlot
-						);
-						const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-						redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-						redisL2['asks'] = redisL2['asks']?.slice(0, depth);
-						if (redisL2) {
-							if (
-								dlobProvider.getSlot() - redisL2['slot'] <
-								SLOT_STALENESS_TOLERANCE
-							) {
-								l2Formatted = redisL2;
-							}
-						}
+					const redisL2 = await fetchFromRedis(
+						`last_update_orderbook_${
+							isSpot ? 'spot' : 'perp'
+						}_${normedMarketIndex}`,
+						selectMostRecentBySlot
+					);
+					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
+					if (redisL2) {
+						l2Formatted = redisL2;
 					}
 
 					if (l2Formatted) {
@@ -796,47 +647,12 @@ const main = async (): Promise<void> => {
 							miss: false,
 							path: req.baseUrl + req.path,
 						});
-						return l2Formatted;
+					} else {
+						cacheHitCounter.add(1, {
+							miss: true,
+							path: req.baseUrl + req.path,
+						});
 					}
-
-					let validateIncludeVamm = false;
-					if (!isSpot && `${includeVamm}`.toLowerCase() === 'true') {
-						const perpMarket =
-							driftClient.getPerpMarketAccount(normedMarketIndex);
-						validateIncludeVamm = !isOperationPaused(
-							perpMarket.pausedOperations,
-							PerpOperation.AMM_FILL
-						);
-					}
-					const l2 = dlobSubscriber.getL2({
-						marketIndex: normedMarketIndex,
-						marketType: normedMarketType,
-						depth: parseInt(adjustedDepth as string),
-						includeVamm: validateIncludeVamm,
-						fallbackL2Generators: isSpot
-							? [
-									`${normedParam['includePhoenix']}`.toLowerCase() === 'true' &&
-										MARKET_SUBSCRIBERS[normedMarketIndex].phoenix,
-									`${normedParam['includeOpenbook']}`.toLowerCase() ===
-										'true' && MARKET_SUBSCRIBERS[normedMarketIndex].openbook,
-							  ].filter((a) => !!a)
-							: [],
-					});
-
-					// make the BNs into strings
-					l2Formatted = l2WithBNToStrings(l2);
-					if (`${normedParam['includeOracle']}`.toLowerCase() === 'true') {
-						addOracletoResponse(
-							l2Formatted,
-							driftClient,
-							normedMarketType,
-							normedMarketIndex
-						);
-					}
-					cacheHitCounter.add(1, {
-						miss: true,
-						path: req.baseUrl + req.path,
-					});
 					return l2Formatted;
 				})
 			);
@@ -848,6 +664,7 @@ const main = async (): Promise<void> => {
 
 			res.writeHead(200);
 			res.end(JSON.stringify({ l2s }));
+			return;
 		} catch (err) {
 			next(err);
 		}
@@ -855,7 +672,7 @@ const main = async (): Promise<void> => {
 
 	app.get('/l3', async (req, res, next) => {
 		try {
-			const { marketName, marketIndex, marketType, includeOracle } = req.query;
+			const { marketName, marketIndex, marketType } = req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
 				driftClient,
@@ -875,10 +692,7 @@ const main = async (): Promise<void> => {
 				`last_update_orderbook_l3_${marketTypeStr}_${normedMarketIndex}`,
 				selectMostRecentBySlot
 			);
-			if (
-				redisL3 &&
-				dlobProvider.getSlot() - redisL3['slot'] < SLOT_STALENESS_TOLERANCE
-			) {
+			if (redisL3) {
 				cacheHitCounter.add(1, {
 					miss: false,
 					path: req.baseUrl + req.path,
@@ -891,35 +705,10 @@ const main = async (): Promise<void> => {
 					miss: true,
 					path: req.baseUrl + req.path,
 				});
+				res.writeHead(500);
+				res.end('No L3 found');
+				return;
 			}
-
-			const l3 = dlobSubscriber.getL3({
-				marketIndex: normedMarketIndex,
-				marketType: normedMarketType,
-			});
-
-			for (const key of Object.keys(l3)) {
-				for (const idx in l3[key]) {
-					const level = l3[key][idx];
-					l3[key][idx] = {
-						...level,
-						price: level.price.toString(),
-						size: level.size.toString(),
-					};
-				}
-			}
-
-			if (`${includeOracle}`.toLowerCase() === 'true') {
-				addOracletoResponse(
-					l3,
-					driftClient,
-					normedMarketType,
-					normedMarketIndex
-				);
-			}
-
-			res.writeHead(200);
-			res.end(JSON.stringify(l3));
 		} catch (err) {
 			next(err);
 		}
