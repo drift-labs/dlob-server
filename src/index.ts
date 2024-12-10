@@ -546,10 +546,34 @@ const main = async (): Promise<void> => {
 				selectMostRecentBySlot
 			);
 			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-			redisL2['bids'] = redisL2['bids']?.slice(0, depthToUse);
-			redisL2['asks'] = redisL2['asks']?.slice(0, depthToUse);
 			if (redisL2) {
+				redisL2['bids'] = redisL2['bids']?.slice(0, depthToUse);
+				redisL2['asks'] = redisL2['asks']?.slice(0, depthToUse);
 				l2Formatted = JSON.stringify(redisL2);
+			} else {
+				const oracleData = isSpot
+					? driftClient.getOracleDataForSpotMarket(normedMarketIndex)
+					: driftClient.getOracleDataForPerpMarket(normedMarketIndex);
+				const response = {
+					bids: [],
+					asks: [],
+					marketType: normedMarketType,
+					marketIndex: normedMarketIndex,
+					marketName: undefined,
+					slot: dlobProvider.getSlot(),
+					oracle: oracleData.price.toNumber(),
+					oracleData: {
+						price: oracleData.price.toNumber(),
+						slot: oracleData.slot.toNumber(),
+						confidence: oracleData.confidence.toNumber(),
+						hasSufficientNumberOfDataPoints: true,
+						twap: oracleData.twap.toNumber(),
+						twapConfidence: oracleData.twapConfidence.toNumber(),
+					},
+					ts: Date.now(),
+					marketSlot: dlobProvider.getSlot(),
+				};
+				l2Formatted = JSON.stringify(response);
 			}
 
 			if (l2Formatted) {
@@ -636,10 +660,34 @@ const main = async (): Promise<void> => {
 						selectMostRecentBySlot
 					);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 					if (redisL2) {
+						redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+						redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 						l2Formatted = redisL2;
+					} else {
+						const oracleData = isSpot
+							? driftClient.getOracleDataForSpotMarket(normedMarketIndex)
+							: driftClient.getOracleDataForPerpMarket(normedMarketIndex);
+						const response = {
+							bids: [],
+							asks: [],
+							marketType: normedMarketType,
+							marketIndex: normedMarketIndex,
+							marketName: undefined,
+							slot: dlobProvider.getSlot(),
+							oracle: oracleData.price.toNumber(),
+							oracleData: {
+								price: oracleData.price.toNumber(),
+								slot: oracleData.slot.toNumber(),
+								confidence: oracleData.confidence.toNumber(),
+								hasSufficientNumberOfDataPoints: true,
+								twap: oracleData.twap.toNumber(),
+								twapConfidence: oracleData.twapConfidence.toNumber(),
+							},
+							ts: Date.now(),
+							marketSlot: dlobProvider.getSlot(),
+						};
+						l2Formatted = JSON.stringify(response);
 					}
 
 					if (l2Formatted) {
