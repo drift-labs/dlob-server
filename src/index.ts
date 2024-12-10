@@ -546,15 +546,22 @@ const main = async (): Promise<void> => {
 				selectMostRecentBySlot
 			);
 			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+			let cacheMiss = true;
 			if (redisL2) {
+				cacheMiss = false;
 				redisL2['bids'] = redisL2['bids']?.slice(0, depthToUse);
 				redisL2['asks'] = redisL2['asks']?.slice(0, depthToUse);
-				l2Formatted = JSON.stringify(redisL2);
+				l2Formatted = redisL2;
 			} else {
+				console.log(
+					`No L2 found for ${getVariant(
+						normedMarketType
+					)} market ${normedMarketIndex}`
+				);
 				const oracleData = isSpot
 					? driftClient.getOracleDataForSpotMarket(normedMarketIndex)
 					: driftClient.getOracleDataForPerpMarket(normedMarketIndex);
-				const response = {
+				l2Formatted = {
 					bids: [],
 					asks: [],
 					marketType: normedMarketType,
@@ -573,26 +580,14 @@ const main = async (): Promise<void> => {
 					ts: Date.now(),
 					marketSlot: dlobProvider.getSlot(),
 				};
-				l2Formatted = JSON.stringify(response);
 			}
-
-			if (l2Formatted) {
-				cacheHitCounter.add(1, {
-					miss: false,
-					path: req.baseUrl + req.path,
-				});
-				res.writeHead(200);
-				res.end(l2Formatted);
-				return;
-			} else {
-				cacheHitCounter.add(1, {
-					miss: true,
-					path: req.baseUrl + req.path,
-				});
-				res.writeHead(500);
-				res.end('No dlob data found');
-				return;
-			}
+			cacheHitCounter.add(1, {
+				miss: cacheMiss,
+				path: req.baseUrl + req.path,
+			});
+			res.writeHead(200);
+			res.end(JSON.stringify(l2Formatted));
+			return;
 		} catch (err) {
 			next(err);
 		}
@@ -660,15 +655,22 @@ const main = async (): Promise<void> => {
 						selectMostRecentBySlot
 					);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
+					let cacheMiss = true;
 					if (redisL2) {
+						cacheMiss = false;
 						redisL2['bids'] = redisL2['bids']?.slice(0, depth);
 						redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 						l2Formatted = redisL2;
 					} else {
+						console.log(
+							`No L2 found for ${getVariant(
+								normedMarketType
+							)} market ${normedMarketIndex}`
+						);
 						const oracleData = isSpot
 							? driftClient.getOracleDataForSpotMarket(normedMarketIndex)
 							: driftClient.getOracleDataForPerpMarket(normedMarketIndex);
-						const response = {
+						l2Formatted = {
 							bids: [],
 							asks: [],
 							marketType: normedMarketType,
@@ -687,17 +689,16 @@ const main = async (): Promise<void> => {
 							ts: Date.now(),
 							marketSlot: dlobProvider.getSlot(),
 						};
-						l2Formatted = JSON.stringify(response);
 					}
 
 					if (l2Formatted) {
 						cacheHitCounter.add(1, {
-							miss: false,
+							miss: cacheMiss,
 							path: req.baseUrl + req.path,
 						});
 					} else {
 						cacheHitCounter.add(1, {
-							miss: true,
+							miss: cacheMiss,
 							path: req.baseUrl + req.path,
 						});
 					}
