@@ -546,29 +546,48 @@ const main = async (): Promise<void> => {
 				selectMostRecentBySlot
 			);
 			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-			redisL2['bids'] = redisL2['bids']?.slice(0, depthToUse);
-			redisL2['asks'] = redisL2['asks']?.slice(0, depthToUse);
+			let cacheMiss = true;
 			if (redisL2) {
-				l2Formatted = JSON.stringify(redisL2);
-			}
-
-			if (l2Formatted) {
-				cacheHitCounter.add(1, {
-					miss: false,
-					path: req.baseUrl + req.path,
-				});
-				res.writeHead(200);
-				res.end(l2Formatted);
-				return;
+				cacheMiss = false;
+				redisL2['bids'] = redisL2['bids']?.slice(0, depthToUse);
+				redisL2['asks'] = redisL2['asks']?.slice(0, depthToUse);
+				l2Formatted = redisL2;
 			} else {
-				cacheHitCounter.add(1, {
-					miss: true,
-					path: req.baseUrl + req.path,
-				});
-				res.writeHead(500);
-				res.end('No dlob data found');
-				return;
+				console.log(
+					`No L2 found for ${getVariant(
+						normedMarketType
+					)} market ${normedMarketIndex}`
+				);
+				const oracleData = isSpot
+					? driftClient.getOracleDataForSpotMarket(normedMarketIndex)
+					: driftClient.getOracleDataForPerpMarket(normedMarketIndex);
+				l2Formatted = {
+					bids: [],
+					asks: [],
+					marketType: normedMarketType,
+					marketIndex: normedMarketIndex,
+					marketName: undefined,
+					slot: dlobProvider.getSlot(),
+					oracle: oracleData.price.toNumber(),
+					oracleData: {
+						price: oracleData.price.toNumber(),
+						slot: oracleData.slot.toNumber(),
+						confidence: oracleData.confidence.toNumber(),
+						hasSufficientNumberOfDataPoints: true,
+						twap: oracleData.twap.toNumber(),
+						twapConfidence: oracleData.twapConfidence.toNumber(),
+					},
+					ts: Date.now(),
+					marketSlot: dlobProvider.getSlot(),
+				};
 			}
+			cacheHitCounter.add(1, {
+				miss: cacheMiss,
+				path: req.baseUrl + req.path,
+			});
+			res.writeHead(200);
+			res.end(JSON.stringify(l2Formatted));
+			return;
 		} catch (err) {
 			next(err);
 		}
@@ -636,20 +655,50 @@ const main = async (): Promise<void> => {
 						selectMostRecentBySlot
 					);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
-					redisL2['bids'] = redisL2['bids']?.slice(0, depth);
-					redisL2['asks'] = redisL2['asks']?.slice(0, depth);
+					let cacheMiss = true;
 					if (redisL2) {
+						cacheMiss = false;
+						redisL2['bids'] = redisL2['bids']?.slice(0, depth);
+						redisL2['asks'] = redisL2['asks']?.slice(0, depth);
 						l2Formatted = redisL2;
+					} else {
+						console.log(
+							`No L2 found for ${getVariant(
+								normedMarketType
+							)} market ${normedMarketIndex}`
+						);
+						const oracleData = isSpot
+							? driftClient.getOracleDataForSpotMarket(normedMarketIndex)
+							: driftClient.getOracleDataForPerpMarket(normedMarketIndex);
+						l2Formatted = {
+							bids: [],
+							asks: [],
+							marketType: normedMarketType,
+							marketIndex: normedMarketIndex,
+							marketName: undefined,
+							slot: dlobProvider.getSlot(),
+							oracle: oracleData.price.toNumber(),
+							oracleData: {
+								price: oracleData.price.toNumber(),
+								slot: oracleData.slot.toNumber(),
+								confidence: oracleData.confidence.toNumber(),
+								hasSufficientNumberOfDataPoints: true,
+								twap: oracleData.twap.toNumber(),
+								twapConfidence: oracleData.twapConfidence.toNumber(),
+							},
+							ts: Date.now(),
+							marketSlot: dlobProvider.getSlot(),
+						};
 					}
 
 					if (l2Formatted) {
 						cacheHitCounter.add(1, {
-							miss: false,
+							miss: cacheMiss,
 							path: req.baseUrl + req.path,
 						});
 					} else {
 						cacheHitCounter.add(1, {
-							miss: true,
+							miss: cacheMiss,
 							path: req.baseUrl + req.path,
 						});
 					}
