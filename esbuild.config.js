@@ -1,4 +1,5 @@
 const esbuild = require('esbuild');
+const glob = require('tiny-glob');
 
 const commonConfig = {
     bundle: true,
@@ -10,14 +11,14 @@ const commonConfig = {
     legalComments: 'none',
     mainFields: ['module', 'main'],
     metafile: true,
-    format: 'cjs',
-    external: [
-        '@triton-one/yellowstone-grpc'
-    ]
+    format: 'cjs'
 };
 
-esbuild.build({
-    ...commonConfig,
-    entryPoints: ['src/index.ts'],
-    outdir: 'lib',
-}).catch(() => process.exit(1));
+(async () => {
+    let entryPoints = await glob("./src/*.ts", { filesOnly: true});
+    await esbuild.build({
+        ...commonConfig,
+        entryPoints,
+        outdir: 'lib',
+    });
+})().catch(() => process.exit(1));
