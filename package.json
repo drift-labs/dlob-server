@@ -53,7 +53,7 @@
 	},
 	"scripts": {
 		"prepare": "husky install",
-		"build": "yarn clean && tsc",
+		"build": "yarn clean && node esbuild.config.js",
 		"clean": "rm -rf lib",
 		"start": "node lib/index.js",
 		"dev": "ts-node src/index.ts",
