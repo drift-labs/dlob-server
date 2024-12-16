@@ -9,18 +9,17 @@ COPY drift-common/common-ts/package.json ./drift-common/common-ts/
 
 RUN npm install -g bun typescript
 
-ENV NODE_ENV=production
-
 WORKDIR /app/drift-common/protocol/sdk
 COPY drift-common/protocol/sdk/ .
-RUN bun install && bun run build
+RUN bun install --production && bun run build
 
 WORKDIR /app/drift-common/common-ts
 COPY drift-common/common-ts/ .
-RUN bun install && bun run build
+RUN bun install --production && bun run build
 
 WORKDIR /app
 COPY . .
+# no '--production' or esbuild won't install
 RUN bun install
 RUN bun esbuild.config.js
 
