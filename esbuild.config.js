@@ -5,7 +5,7 @@ const commonConfig = {
     bundle: true,
     platform: 'node',
     target: 'node20',
-    sourcemap: true,
+    sourcemap: false,
     // minify: true, makes messy debug/error output
     treeShaking: true,
     legalComments: 'none',
@@ -15,7 +15,7 @@ const commonConfig = {
 };
 
 (async () => {
-    let entryPoints = await glob("./src/*.ts", { filesOnly: true});
+    let entryPoints = await glob("./src/*.ts", { filesOnly: true });
     await esbuild.build({
         ...commonConfig,
         entryPoints,
