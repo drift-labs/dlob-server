@@ -11,7 +11,11 @@ const commonConfig = {
     legalComments: 'none',
     mainFields: ['module', 'main'],
     metafile: true,
-    format: 'cjs'
+    format: 'cjs',
+    external: [
+        'bigint-buffer',
+        '@triton-one/yellowstone-grpc'
+    ]
 };
 
 (async () => {

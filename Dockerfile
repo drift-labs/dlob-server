@@ -27,10 +27,10 @@ RUN bun esbuild.config.js
 FROM node:20.18.1-alpine
 # 'bigint-buffer' native lib for performance
 RUN apk add python3 make g++ --virtual .build &&\
-    npm install -C /lib bigint-buffer &&\
+    npm install -C /lib bigint-buffer @triton-one/yellowstone-grpc &&\
     apk del .build
 COPY --from=builder /app/lib/ ./lib/
-COPY --from=builder /app/node_modules/@triton-one/yellowstone-grpc/dist/encoding/yellowstone_grpc_solana_encoding_wasm_bg.wasm ./lib/
+# COPY --from=builder /app/node_modules/@triton-one/yellowstone-grpc/dist/encoding/yellowstone_grpc_solana_encoding_wasm_bg.wasm ./lib/
 
 ENV NODE_ENV=production
 EXPOSE 9464
