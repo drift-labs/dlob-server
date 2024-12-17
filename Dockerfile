@@ -11,7 +11,7 @@ RUN npm install -g bun typescript husky
 
 WORKDIR /app/drift-common/protocol/sdk
 COPY drift-common/protocol/sdk/ .
-RUN bun install && bun run build
+RUN bun install --production && bun run build
 
 WORKDIR /app/drift-common/common-ts
 COPY drift-common/common-ts/ .
