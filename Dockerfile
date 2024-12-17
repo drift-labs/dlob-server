@@ -15,7 +15,7 @@ RUN bun install --production && bun run build
 
 WORKDIR /app/drift-common/common-ts
 COPY drift-common/common-ts/ .
-RUN bun install --production && bun run build
+RUN bun install && bun run build
 
 WORKDIR /app
 COPY . .
