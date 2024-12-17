@@ -19,7 +19,7 @@ const commonConfig = {
 };
 
 (async () => {
-    let entryPoints = await glob("./src/*.ts", { filesOnly: true });
+    let entryPoints = await glob("./src/**/*.ts");
     await esbuild.build({
         ...commonConfig,
         entryPoints,
