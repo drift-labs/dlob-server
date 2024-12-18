@@ -424,7 +424,7 @@
     kuler "^2.0.0"
 
 "@drift-labs/sdk@file:./drift-common/protocol/sdk", "@drift-labs/sdk@file:drift-common/protocol/sdk":
-  version "2.104.0-beta.16"
+  version "2.104.0-beta.30"
   dependencies:
     "@coral-xyz/anchor" "0.29.0"
     "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
@@ -440,6 +440,7 @@
     "@switchboard-xyz/on-demand" "1.2.42"
     "@triton-one/yellowstone-grpc" "1.3.0"
     anchor-bankrun "0.3.0"
+    nanoid "3.3.4"
     node-cache "5.1.2"
     rpc-websockets "7.5.1"
     solana-bankrun "0.3.1"
@@ -452,10 +453,10 @@
 "@drift/common@file:./drift-common/common-ts":
   version "1.0.0"
   dependencies:
-    "@drift-labs/sdk" "file:../../../Library/Caches/Yarn/v6/npm-@drift-common-1.0.0-6509137f-50da-4b6c-b3a9-85605a9c3539-1734478206281/node_modules/@drift/protocol/sdk"
+    "@drift-labs/sdk" "file:../../../Library/Caches/Yarn/v6/npm-@drift-common-1.0.0-01140c44-8536-4871-8ca5-b566580265f6-1734484956666/node_modules/@drift/protocol/sdk"
     "@jest/globals" "^29.3.1"
     "@slack/web-api" "^6.4.0"
-    "@solana/spl-token" "^0.3.8"
+    "@solana/spl-token" "0.3.8"
     "@solana/web3.js" "1.66.2"
     bcryptjs-react "^2.4.6"
     cerializr "^3.1.4"
@@ -1952,6 +1953,15 @@
     "@solana/buffer-layout-utils" "^0.2.0"
     buffer "^6.0.3"
 
+"@solana/spl-token@0.3.8":
+  version "0.3.8"
+  resolved "https://registry.yarnpkg.com/@solana/spl-token/-/spl-token-0.3.8.tgz#8e9515ea876e40a4cc1040af865f61fc51d27edf"
+  integrity sha512-ogwGDcunP9Lkj+9CODOWMiVJEdRtqHAtX2rWF62KxnnSWtMZtV9rDhTrZFshiyJmxDnRL/1nKE1yJHg4jjs3gg==
+  dependencies:
+    "@solana/buffer-layout" "^4.0.0"
+    "@solana/buffer-layout-utils" "^0.2.0"
+    buffer "^6.0.3"
+
 "@solana/spl-token@^0.1.6":
   version "0.1.8"
   resolved "https://registry.yarnpkg.com/@solana/spl-token/-/spl-token-0.1.8.tgz#f06e746341ef8d04165e21fc7f555492a2a0faa6"
@@ -1964,7 +1974,7 @@
     buffer-layout "^1.2.0"
     dotenv "10.0.0"
 
-"@solana/spl-token@^0.3.4", "@solana/spl-token@^0.3.8":
+"@solana/spl-token@^0.3.4":
   version "0.3.11"
   resolved "https://registry.yarnpkg.com/@solana/spl-token/-/spl-token-0.3.11.tgz#cdc10f9472b29b39c8983c92592cadd06627fb9a"
   integrity sha512-bvohO3rIMSVL24Pb+I4EYTJ6cL82eFpInEXD/I8K8upOGjpqHsKUoAempR/RnUlI1qSFNyFlWJfu6MNUgfbCQQ==
@@ -5170,6 +5180,11 @@ ms@2.1.3, ms@^2.0.0, ms@^2.1.1:
   version "2.1.3"
   resolved "https://registry.yarnpkg.com/ms/-/ms-2.1.3.tgz#574c8138ce1d2b5861f0b44579dbadd60c6615b2"
   integrity sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==
+
+nanoid@3.3.4:
+  version "3.3.4"
+  resolved "https://registry.yarnpkg.com/nanoid/-/nanoid-3.3.4.tgz#730b67e3cd09e2deacf03c027c81c9d9dbc5e8ab"
+  integrity sha512-MqBkQh/OHTS2egovRtLk45wEyNXwF+cokD+1YPf9u5VfJiRdAiRwB2froX5Co9Rh20xs4siNPm8naNotSD6RBw==
 
 natural-compare@^1.4.0:
   version "1.4.0"
