@@ -1,6 +1,6 @@
 FROM public.ecr.aws/docker/library/node:20 AS builder
 
-RUN npm install -g typescript bun
+RUN npm install -g typescript bun husky
 WORKDIR /app
 
 COPY . .

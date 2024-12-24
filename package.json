@@ -4,6 +4,7 @@
 	"author": "wphan",
 	"main": "lib/index.js",
 	"license": "Apache-2.0",
+	"private": true,
 	"dependencies": {
 		"@coral-xyz/anchor": "^0.29.0",
 		"@drift-labs/sdk": "file:./drift-common/protocol/sdk",
@@ -76,7 +77,7 @@
 		"playground": "ts-node src/playground.ts"
 	},
 	"workspaces": [
-    "drift-common/protocol/sdk",
-    "drift-common/common-ts"
+  	"drift-common/protocol/sdk",
+		"drift-common/common-ts"
   ]
 }
