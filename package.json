@@ -54,7 +54,7 @@
 	},
 	"scripts": {
 		"prepare": "husky install",
-		"build": "yarn clean && tsc",
+		"build": "node esbuild.config.js",
 		"clean": "rm -rf lib",
 		"start": "node lib/index.js",
 		"dev": "ts-node src/index.ts",
@@ -74,9 +74,5 @@
 		"lint": "eslint . --ext ts --quiet",
 		"lint:fix": "eslint . --ext ts --fix",
 		"playground": "ts-node src/playground.ts"
-	},
-	"workspaces": [
-    "drift-common/protocol/sdk",
-    "drift-common/common-ts"
-  ]
+	}
 }
