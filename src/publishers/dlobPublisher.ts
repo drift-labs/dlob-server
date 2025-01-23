@@ -372,7 +372,9 @@ const main = async () => {
 			commitment: stateCommitment,
 			resubTimeoutMs: 30_000,
 		};
-		slotSubscriber = new SlotSubscriber(connection);
+		slotSubscriber = new SlotSubscriber(connection, {
+			resubTimeoutMs: 10_000,
+		});
 		await slotSubscriber.subscribe();
 
 		slotSource = {
