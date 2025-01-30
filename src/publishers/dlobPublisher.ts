@@ -497,8 +497,25 @@ const main = async () => {
 		perpMarketInfos,
 		spotMarketInfos,
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
+		protectedMakerView: false,
 	});
 	await dlobSubscriber.subscribe();
+
+	const dlobSubscriberPmm = new DLOBSubscriberIO({
+		driftClient,
+		env: driftEnv,
+		dlobSource: dlobProvider,
+		slotSource,
+		updateFrequency: ORDERBOOK_UPDATE_INTERVAL,
+		redisClient,
+		spotMarketSubscribers: MARKET_SUBSCRIBERS,
+		perpMarketInfos,
+		spotMarketInfos,
+		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
+		protectedMakerView: true,
+	});
+	await dlobSubscriberPmm.subscribe();
+
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
 		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
 			setTimeout(() => {
