@@ -263,11 +263,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		});
 
 		this.redisClient.publish(
-			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}`,
+			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}${
+				this.protectedMakerView ? '_pmm' : ''
+			}`,
 			l2Formatted
 		);
 		this.redisClient.set(
-			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}`,
+			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}${
+				this.protectedMakerView ? '_pmm' : ''
+			}`,
 			l2Formatted_depth100
 		);
 		const oraclePriceData =
@@ -350,7 +354,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		);
 
 		this.redisClient.set(
-			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}`,
+			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}${
+				this.protectedMakerView ? '_pmm' : ''
+			}`,
 			l3
 		);
 	}
