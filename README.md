@@ -80,7 +80,7 @@ bash redisCluster.sh create
 
 In second terminal, run:
 ```
-yarn run dlob-publisher
+yarn run dlob-publish
 ```
 
 In a third terminal, run:
