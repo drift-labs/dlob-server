@@ -93,16 +93,18 @@ let driftClient: DriftClient;
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
 
+const useGrpc = process.env.USE_GRPC?.toLowerCase() === 'true';
+const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
+
 const token = process.env.TOKEN;
-const endpoint = token
-	? process.env.ENDPOINT + `/${token}`
-	: process.env.ENDPOINT;
+const endpoint = process.env.ENDPOINT;
+const grpcEndpoint = useGrpc
+	? process.env.GRPC_ENDPOINT ?? endpoint + `/${token}`
+	: '';
+
 const wsEndpoint = process.env.WS_ENDPOINT;
 const useOrderSubscriber =
 	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
-
-const useGrpc = process.env.USE_GRPC?.toLowerCase() === 'true';
-const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 
 const ORDERBOOK_UPDATE_INTERVAL =
 	parseInt(process.env.ORDERBOOK_UPDATE_INTERVAL) || 1000;
@@ -123,9 +125,10 @@ const SPOT_MARKETS_TO_LOAD =
 		? parsePositiveIntArray(process.env.SPOT_MARKETS_TO_LOAD)
 		: undefined;
 
-logger.info(`RPC endpoint: ${endpoint}`);
-logger.info(`WS endpoint:  ${wsEndpoint}`);
-logger.info(`Token:        ${token}`);
+logger.info(`RPC endpoint:  ${endpoint}`);
+logger.info(`WS endpoint:   ${wsEndpoint}`);
+logger.info(`GRPC endpoint: ${grpcEndpoint}`);
+logger.info(`GRPC Token:    ${token}`);
 logger.info(
 	`useOrderSubscriber: ${useOrderSubscriber}, useWebsocket: ${useWebsocket}, useGrpc: ${useGrpc}`
 );
@@ -437,8 +440,10 @@ const main = async () => {
 			if (!token) {
 				throw new Error('TOKEN is required for grpc');
 			}
-			if (!endpoint) {
-				throw new Error('ENDPOINT is required for grpc');
+			if (!grpcEndpoint) {
+				throw new Error(
+					'GRPC_ENDPOINT is required for grpc (or ENDPOINT and TOKEN)'
+				);
 			}
 			if (useWebsocket) {
 				logger.warn('USE_GRPC overriding USE_WEBSOCKET');
@@ -446,7 +451,7 @@ const main = async () => {
 			subscriptionConfig = {
 				type: 'grpc',
 				grpcConfigs: {
-					endpoint: endpoint,
+					endpoint: grpcEndpoint,
 					token: token,
 					commitmentLevel: stateCommitment,
 					channelOptions: {
