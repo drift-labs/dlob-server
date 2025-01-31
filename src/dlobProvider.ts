@@ -3,7 +3,7 @@ import { PublicKey } from '@solana/web3.js';
 
 export type DLOBProvider = {
 	subscribe(): Promise<void>;
-	getDLOB(slot: number): Promise<DLOB>;
+	getDLOB(slot: number, protectedMakerView: boolean): Promise<DLOB>;
 	getUniqueAuthorities(): PublicKey[];
 	getUserAccounts(): Generator<{
 		userAccount: UserAccount;
@@ -20,8 +20,8 @@ export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
 		subscribe: async () => {
 			await userMap.subscribe();
 		},
-		getDLOB: async (slot: number) => {
-			return await userMap.getDLOB(slot);
+		getDLOB: async (slot: number, protectedMakerView: boolean) => {
+			return await userMap.getDLOB(slot, protectedMakerView);
 		},
 		getUniqueAuthorities: () => {
 			return userMap.getUniqueAuthorities();
@@ -56,8 +56,8 @@ export function getDLOBProviderFromOrderSubscriber(
 		subscribe: async () => {
 			await orderSubscriber.subscribe();
 		},
-		getDLOB: async (slot: number) => {
-			return await orderSubscriber.getDLOB(slot);
+		getDLOB: async (slot: number, protectedMakerView: boolean) => {
+			return await orderSubscriber.getDLOB(slot, protectedMakerView);
 		},
 		getUniqueAuthorities: () => {
 			const authorities = new Set<string>();

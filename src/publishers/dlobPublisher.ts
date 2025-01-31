@@ -590,6 +590,7 @@ const main = async () => {
 
 	const handleDebug = async (req: Request, res: Response) => {
 		const marketIndex = +req.query.marketIndex;
+		const protectedMakerView = req.query.includePmm === 'true';
 		let marketType: MarketType = MarketType.PERP;
 		let oraclePriceData: OraclePriceData;
 		if (req.query.marketType === 'spot') {
@@ -600,7 +601,7 @@ const main = async () => {
 		}
 		try {
 			const slot = slotSource.getSlot();
-			const dlob = await dlobProvider.getDLOB(slot);
+			const dlob = await dlobProvider.getDLOB(slot, protectedMakerView);
 			const l2 = dlob.getL2({
 				marketIndex,
 				marketType,
@@ -623,6 +624,7 @@ const main = async () => {
 				},
 				l2: l2WithBNToStrings(l2),
 				l3,
+				includePmm: protectedMakerView,
 			};
 
 			res.json(state);
