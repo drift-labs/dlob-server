@@ -46,6 +46,8 @@ const SPOT_MARKETS_TO_SKIP_SLOT_CHECK =
 		? parsePositiveIntArray(process.env.SPOT_MARKETS_TO_SKIP_SLOT_CHECK)
 		: [];
 
+const UPDATE_ON_CHANGE = process.env.UPDATE_ON_CHANGE === 'true'
+
 export type wsMarketInfo = {
 	marketIndex: number;
 	marketName: string;
@@ -100,7 +102,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				depth: -1,
 				numVammOrders: 100,
 				includeVamm,
-				updateOnChange: false,
+				updateOnChange: UPDATE_ON_CHANGE,
 				fallbackL2Generators: [],
 			});
 		}
@@ -111,7 +113,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				marketName: market.marketName,
 				depth: -1,
 				includeVamm: false,
-				updateOnChange: false,
+				updateOnChange: UPDATE_ON_CHANGE,
 				fallbackL2Generators: [
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
 					config.spotMarketSubscribers[market.marketIndex].openbook,
@@ -178,14 +180,22 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		}
 
 		const l2Formatted = l2WithBNToStrings(l2);
+		const refreshSlot =
+			slot -
+				this.lastMarketSlotMap
+					.get(marketArgs.marketType)
+					.get(marketArgs.marketIndex).slot >
+			50;
 
 		if (marketArgs.updateOnChange) {
 			if (
 				this.lastSeenL2Formatted
 					.get(marketArgs.marketType)
-					?.get(marketArgs.marketIndex) === JSON.stringify(l2Formatted)
-			)
+					?.get(marketArgs.marketIndex) === JSON.stringify(l2Formatted) &&
+				!refreshSlot
+			) {
 				return;
+			}
 		}
 
 		this.lastSeenL2Formatted
