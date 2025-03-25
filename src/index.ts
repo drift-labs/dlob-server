@@ -167,9 +167,10 @@ const main = async (): Promise<void> => {
 	const orderSubscriber = new OrderSubscriber({
 		driftClient,
 		subscriptionConfig: {
-			type: 'polling',
-			frequency: 1000,
+			type: 'websocket',
 			commitment: stateCommitment,
+			resubTimeoutMs: 10_000,
+			resyncIntervalMs: WS_FALLBACK_FETCH_INTERVAL,
 		},
 	});
 	orderSubscriber.eventEmitter.on(
