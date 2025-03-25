@@ -167,10 +167,9 @@ const main = async (): Promise<void> => {
 	const orderSubscriber = new OrderSubscriber({
 		driftClient,
 		subscriptionConfig: {
-			type: 'websocket',
+			type: 'polling',
+			frequency: 1000,
 			commitment: stateCommitment,
-			resubTimeoutMs: 10_000,
-			resyncIntervalMs: WS_FALLBACK_FETCH_INTERVAL,
 		},
 	});
 	orderSubscriber.eventEmitter.on(
@@ -410,7 +409,8 @@ const main = async (): Promise<void> => {
 				if (accountFlag) {
 					const topAccounts = await getRawAccountFromId(
 						userMapClient,
-						topMakers
+						topMakers,
+						driftClient.connection
 					);
 					res.end(JSON.stringify(topAccounts));
 					return;
