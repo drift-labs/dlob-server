@@ -410,7 +410,8 @@ const main = async (): Promise<void> => {
 				if (accountFlag) {
 					const topAccounts = await getRawAccountFromId(
 						userMapClient,
-						topMakers
+						topMakers,
+						driftClient.connection
 					);
 					res.end(JSON.stringify(topAccounts));
 					return;
