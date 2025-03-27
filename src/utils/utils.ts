@@ -18,6 +18,7 @@ import { RedisClient } from '@drift/common/clients';
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
+import { Connection } from '@solana/web3.js';
 
 export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	for (const key of Object.keys(l2)) {
@@ -380,7 +381,8 @@ export const getAccountFromId = async (
 
 export const getRawAccountFromId = async (
 	userMapClient: RedisClient,
-	topMakers: string[]
+	topMakers: string[],
+	connection: Connection
 ): Promise<
 	{
 		userAccountPubKey: string;
@@ -395,7 +397,19 @@ export const getRawAccountFromId = async (
 					userAccountPubKey,
 					accountBase64: userAccountEncoded.split('::')[1],
 				};
+			} else {
+				// user is not in the userMap, try to fetch from the connection
+				const account = await connection.getAccountInfo(
+					new PublicKey(userAccountPubKey)
+				);
+				if (account) {
+					return {
+						userAccountPubKey,
+						accountBase64: account.data.toString('base64'),
+					};
+				}
 			}
+
 			return {
 				userAccountPubKey,
 				accountBase64: null,
