@@ -313,6 +313,9 @@ const main = async () => {
 	});
 	await redisClient.connect();
 
+	const indicativeRedisClient = new RedisClient({});
+	await indicativeRedisClient.connect();
+
 	const connection = new Connection(endpoint, {
 		wsEndpoint: wsEndpoint,
 		commitment: stateCommitment,
@@ -503,6 +506,7 @@ const main = async () => {
 		spotMarketInfos,
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
 		protectedMakerView: false,
+		indicativeQuotesRedisClient: indicativeRedisClient,
 	});
 	await dlobSubscriber.subscribe();
 
@@ -518,6 +522,7 @@ const main = async () => {
 		spotMarketInfos,
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
 		protectedMakerView: true,
+		indicativeQuotesRedisClient: indicativeRedisClient,
 	});
 	await dlobSubscriberPmm.subscribe();
 
@@ -595,7 +600,6 @@ const main = async () => {
 
 	const handleDebug = async (req: Request, res: Response) => {
 		const marketIndex = +req.query.marketIndex;
-		const protectedMakerView = req.query.includePmm === 'true';
 		let marketType: MarketType = MarketType.PERP;
 		let oraclePriceData: OraclePriceData;
 		if (req.query.marketType === 'spot') {
@@ -606,7 +610,7 @@ const main = async () => {
 		}
 		try {
 			const slot = slotSource.getSlot();
-			const dlob = await dlobProvider.getDLOB(slot, protectedMakerView);
+			const dlob = await dlobProvider.getDLOB(slot);
 			const l2 = dlob.getL2({
 				marketIndex,
 				marketType,
@@ -629,7 +633,6 @@ const main = async () => {
 				},
 				l2: l2WithBNToStrings(l2),
 				l3,
-				includePmm: protectedMakerView,
 			};
 
 			res.json(state);
