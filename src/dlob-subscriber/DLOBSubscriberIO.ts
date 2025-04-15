@@ -401,8 +401,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				{ bids, asks, slot }
 			);
 		}
-
-		// Insert indic
 	}
 
 	getL3AndSendMsg(marketArgs: wsMarketArgs): void {
