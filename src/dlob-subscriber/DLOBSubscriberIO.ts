@@ -141,10 +141,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 						? 'perp'
 						: 'spot';
 
-					const mms = await this.indicativeQuotesRedisClient
-						.forceGetClient()
-						.smembers(`market_mms_${marketType}_${marketArgs.marketIndex}`);
-					const nowMinus1000Ms = Date.now() - 1000;
+					const mms = await this.indicativeQuotesRedisClient.smembers(
+						`market_mms_${marketType}_${marketArgs.marketIndex}`
+					);
 					const mmQuotes = await Promise.all(
 						mms.map((mm) => {
 							return this.indicativeQuotesRedisClient.get(
@@ -153,6 +152,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 						})
 					);
 
+					const nowMinus1000Ms = Date.now() - 1000;
 					mmQuotes.forEach((quote) => {
 						if (Number(quote['ts']) > nowMinus1000Ms) {
 							const indicativeBaseOrder: Order = {
@@ -186,11 +186,18 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 							};
 
 							if (quote['bid_size'] && quote['bid_price']) {
+								// Sanity check bid price and size
+
 								const indicativeBid: Order = Object.assign(
 									{},
 									indicativeBaseOrder,
 									{
-										price: new BN(quote['bid_price']),
+										oraclePriceOffset: quote['is_oracle_offset']
+											? quote['bid_price']
+											: 0,
+										price: quote['is_oracle_offset']
+											? 0
+											: new BN(quote['bid_price']),
 										baseAssetAmount: new BN(quote['bid_size']),
 										direction: PositionDirection.LONG,
 									}
@@ -208,7 +215,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 									{},
 									indicativeBaseOrder,
 									{
-										price: new BN(quote['ask_price']),
+										oraclePriceOffset: quote['is_oracle_offset']
+											? quote['ask_price']
+											: 0,
+										price: quote['is_oracle_offset']
+											? 0
+											: new BN(quote['ask_price']),
 										baseAssetAmount: new BN(quote['ask_size']),
 										direction: PositionDirection.SHORT,
 									}
