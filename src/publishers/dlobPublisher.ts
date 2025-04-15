@@ -506,11 +506,10 @@ const main = async () => {
 		spotMarketInfos,
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
 		protectedMakerView: false,
-		indicativeQuotesRedisClient: indicativeRedisClient,
 	});
 	await dlobSubscriber.subscribe();
 
-	const dlobSubscriberPmm = new DLOBSubscriberIO({
+	const dlobSubscriberIndicative = new DLOBSubscriberIO({
 		driftClient,
 		env: driftEnv,
 		dlobSource: dlobProvider,
@@ -524,7 +523,7 @@ const main = async () => {
 		protectedMakerView: true,
 		indicativeQuotesRedisClient: indicativeRedisClient,
 	});
-	await dlobSubscriberPmm.subscribe();
+	await dlobSubscriberIndicative.subscribe();
 
 	if (useWebsocket && !FEATURE_FLAGS.DISABLE_GPA_REFRESH) {
 		const recursiveFetch = (delay = WS_FALLBACK_FETCH_INTERVAL) => {
