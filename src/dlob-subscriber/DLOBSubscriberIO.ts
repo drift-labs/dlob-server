@@ -144,7 +144,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					const mms = await this.indicativeQuotesRedisClient.smembers(
 						`market_mms_${marketType}_${marketArgs.marketIndex}`
 					);
-					console.log(mms);
 					const mmQuotes = await Promise.all(
 						mms.map((mm) => {
 							return this.indicativeQuotesRedisClient.get(
