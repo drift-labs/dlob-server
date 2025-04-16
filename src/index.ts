@@ -548,6 +548,11 @@ const main = async (): Promise<void> => {
 				}_${normedMarketIndex}${includeIndicativeStr ? '_indicative' : ''}`,
 				selectMostRecentBySlot
 			);
+			console.log(
+				`last_update_orderbook_${
+					isSpot ? 'spot' : 'perp'
+				}_${normedMarketIndex}${includeIndicativeStr ? '_indicative' : ''}`
+			);
 			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
 			let cacheMiss = true;
 			if (redisL2) {
