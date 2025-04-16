@@ -1,9 +1,18 @@
-import { DLOB, OrderSubscriber, UserAccount, UserMap } from '@drift-labs/sdk';
+import {
+	DLOB,
+	OrderSubscriber,
+	ProtectMakerParamsMap,
+	UserAccount,
+	UserMap,
+} from '@drift-labs/sdk';
 import { PublicKey } from '@solana/web3.js';
 
 export type DLOBProvider = {
 	subscribe(): Promise<void>;
-	getDLOB(slot: number, protectedMakerView: boolean): Promise<DLOB>;
+	getDLOB(
+		slot: number,
+		protectedMakerParamsMap?: ProtectMakerParamsMap
+	): Promise<DLOB>;
 	getUniqueAuthorities(): PublicKey[];
 	getUserAccounts(): Generator<{
 		userAccount: UserAccount;
@@ -20,8 +29,11 @@ export function getDLOBProviderFromUserMap(userMap: UserMap): DLOBProvider {
 		subscribe: async () => {
 			await userMap.subscribe();
 		},
-		getDLOB: async (slot: number, protectedMakerView: boolean) => {
-			return await userMap.getDLOB(slot, protectedMakerView);
+		getDLOB: async (
+			slot: number,
+			protectedMakerParamsMap?: ProtectMakerParamsMap
+		) => {
+			return await userMap.getDLOB(slot, protectedMakerParamsMap);
 		},
 		getUniqueAuthorities: () => {
 			return userMap.getUniqueAuthorities();
@@ -56,8 +68,11 @@ export function getDLOBProviderFromOrderSubscriber(
 		subscribe: async () => {
 			await orderSubscriber.subscribe();
 		},
-		getDLOB: async (slot: number, protectedMakerView: boolean) => {
-			return await orderSubscriber.getDLOB(slot, protectedMakerView);
+		getDLOB: async (
+			slot: number,
+			protectedMakerParamsMap?: ProtectMakerParamsMap
+		) => {
+			return await orderSubscriber.getDLOB(slot, protectedMakerParamsMap);
 		},
 		getUniqueAuthorities: () => {
 			const authorities = new Set<string>();
