@@ -521,7 +521,7 @@ const main = async (): Promise<void> => {
 
 	app.get('/l2', async (req, res, next) => {
 		try {
-			const { marketName, marketIndex, marketType, depth, includePmm } =
+			const { marketName, marketIndex, marketType, depth, includeIndicative } =
 				req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
@@ -537,14 +537,15 @@ const main = async (): Promise<void> => {
 			}
 
 			const isSpot = isVariant(normedMarketType, 'spot');
-			const includePmmStr = (includePmm as string)?.toLowerCase() === 'true';
+			const includeIndicativeStr =
+				(includeIndicative as string)?.toLowerCase() === 'true';
 			const adjustedDepth = depth ?? '100';
 
 			let l2Formatted: any;
 			const redisL2 = await fetchFromRedis(
 				`last_update_orderbook_${
 					isSpot ? 'spot' : 'perp'
-				}_${normedMarketIndex}${includePmmStr ? '_pmm' : ''}`,
+				}_${normedMarketIndex}${includeIndicativeStr ? '_indicative' : ''}`,
 				selectMostRecentBySlot
 			);
 			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
@@ -606,7 +607,7 @@ const main = async (): Promise<void> => {
 				includePhoenix,
 				includeOpenbook,
 				includeOracle,
-				includePmm,
+				includeIndicative,
 			} = req.query;
 
 			const normedParams = normalizeBatchQueryParams({
@@ -618,7 +619,7 @@ const main = async (): Promise<void> => {
 				includePhoenix: includePhoenix as string | undefined,
 				includeOpenbook: includeOpenbook as string | undefined,
 				includeOracle: includeOracle as string | undefined,
-				includePmm: includePmm as string | undefined,
+				includeIndicative: includeIndicative as string | undefined,
 			});
 
 			if (normedParams === undefined) {
@@ -649,14 +650,17 @@ const main = async (): Promise<void> => {
 					}
 
 					const isSpot = isVariant(normedMarketType, 'spot');
-					const normedIncludePmm = normedParam['includePmm'] == 'true';
+					const normedIncludeIndicative =
+						normedParam['includeIndicative'] == 'true';
 
 					const adjustedDepth = normedParam['depth'] ?? '100';
 					let l2Formatted: any;
 					const redisL2 = await fetchFromRedis(
 						`last_update_orderbook_${
 							isSpot ? 'spot' : 'perp'
-						}_${normedMarketIndex}${normedIncludePmm ? '_pmm' : ''}`,
+						}_${normedMarketIndex}${
+							normedIncludeIndicative ? '_indicative' : ''
+						}`,
 						selectMostRecentBySlot
 					);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
@@ -726,7 +730,8 @@ const main = async (): Promise<void> => {
 
 	app.get('/l3', async (req, res, next) => {
 		try {
-			const { marketName, marketIndex, marketType, includePmm } = req.query;
+			const { marketName, marketIndex, marketType, includeIndicative } =
+				req.query;
 
 			const { normedMarketType, normedMarketIndex, error } = validateDlobQuery(
 				driftClient,
@@ -741,11 +746,12 @@ const main = async (): Promise<void> => {
 			}
 
 			const marketTypeStr = getVariant(normedMarketType);
-			const normedIncludePmm = (includePmm as string)?.toLowerCase() === 'true';
+			const normedIncludeIndicative =
+				(includeIndicative as string)?.toLowerCase() === 'true';
 
 			const redisL3 = await fetchFromRedis(
 				`last_update_orderbook_l3_${marketTypeStr}_${normedMarketIndex}${
-					normedIncludePmm ? '_pmm' : ''
+					normedIncludeIndicative ? '_indicative' : ''
 				}`,
 				selectMostRecentBySlot
 			);

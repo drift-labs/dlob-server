@@ -95,6 +95,8 @@ const getRedisChannelFromMessage = (message: any): string => {
 			return `trades_${marketType}_${marketIndex}`;
 		case 'orderbook':
 			return `orderbook_${marketType}_${marketIndex}`;
+		case 'orderbook_indicative':
+			return `orderbook_${marketType}_${marketIndex}_indicative`;
 		case 'priorityfees':
 			return `priorityFees_${marketType}_${marketIndex}`;
 		case undefined:

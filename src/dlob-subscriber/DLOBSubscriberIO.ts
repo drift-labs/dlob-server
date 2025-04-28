@@ -1,11 +1,17 @@
 import {
+	BN,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
 	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
+	Order,
+	OrderStatus,
+	OrderTriggerCondition,
+	OrderType,
 	PerpOperation,
 	PositionDirection,
+	ZERO,
 	isOperationPaused,
 	isVariant,
 } from '@drift-labs/sdk';
@@ -37,6 +43,8 @@ const PERP_MAKRET_STALENESS_THRESHOLD = 30 * 60 * 1000;
 const SPOT_MAKRET_STALENESS_THRESHOLD = 60 * 60 * 1000;
 const STALE_ORACLE_REMOVE_VAMM_THRESHOLD = 160;
 
+const INDICATIVE_QUOTES_PUBKEY = 'inDNdu3ML4vG5LNExqcwuCQtLcCU8KfK5YM2qYV3JJz';
+
 const PERP_MARKETS_TO_SKIP_SLOT_CHECK =
 	process.env.PERP_MARKETS_TO_SKIP_SLOT_CHECK !== undefined
 		? parsePositiveIntArray(process.env.PERP_MARKETS_TO_SKIP_SLOT_CHECK)
@@ -55,6 +63,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	public marketArgs: wsMarketArgs[] = [];
 	public lastSeenL2Formatted: Map<MarketType, Map<number, any>>;
 	redisClient: RedisClient;
+	indicativeQuotesRedisClient?: RedisClient;
 	public killSwitchSlotDiffThreshold: number;
 	public lastMarketSlotMap: Map<
 		MarketType,
@@ -65,6 +74,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		config: DLOBSubscriptionConfig & {
 			env: DriftEnv;
 			redisClient: RedisClient;
+			indicativeQuotesRedisClient?: RedisClient;
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
@@ -73,6 +83,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	) {
 		super(config);
 		this.redisClient = config.redisClient;
+		this.indicativeQuotesRedisClient = config.indicativeQuotesRedisClient;
+
 		this.killSwitchSlotDiffThreshold =
 			config.killSwitchSlotDiffThreshold || 200;
 
@@ -124,6 +136,105 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		await super.updateDLOB();
 		for (const marketArgs of this.marketArgs) {
 			try {
+				if (this.indicativeQuotesRedisClient) {
+					const marketType = isVariant(marketArgs.marketType, 'perp')
+						? 'perp'
+						: 'spot';
+
+					const mms = await this.indicativeQuotesRedisClient.smembers(
+						`market_mms_${marketType}_${marketArgs.marketIndex}`
+					);
+					const mmQuotes = await Promise.all(
+						mms.map((mm) => {
+							return this.indicativeQuotesRedisClient.get(
+								`mm_quotes_${marketType}_${marketArgs.marketIndex}_${mm}`
+							);
+						})
+					);
+
+					const nowMinus1000Ms = Date.now() - 1000;
+					mmQuotes.forEach((quote) => {
+						if (Number(quote['ts']) > nowMinus1000Ms) {
+							const indicativeBaseOrder: Order = {
+								status: OrderStatus.OPEN,
+								orderType: OrderType.LIMIT,
+								orderId: 0,
+								slot: new BN(this.slotSource.getSlot()),
+								marketIndex: marketArgs.marketIndex,
+								marketType: marketArgs.marketType,
+								baseAssetAmount: ZERO,
+								immediateOrCancel: false,
+								direction: PositionDirection.LONG,
+								oraclePriceOffset: 0,
+								maxTs: new BN(quote['ts'] + 1000),
+								reduceOnly: false,
+								triggerCondition: OrderTriggerCondition.ABOVE,
+								price: ZERO,
+								userOrderId: 0,
+								postOnly: true,
+								auctionDuration: 0,
+								auctionStartPrice: ZERO,
+								auctionEndPrice: ZERO,
+								// Rest are not necessary and set for type conforming
+								existingPositionDirection: PositionDirection.LONG,
+								triggerPrice: ZERO,
+								baseAssetAmountFilled: ZERO,
+								quoteAssetAmountFilled: ZERO,
+								quoteAssetAmount: ZERO,
+								bitFlags: 0,
+								postedSlotTail: 0,
+							};
+
+							if (quote['bid_size'] && quote['bid_price']) {
+								// Sanity check bid price and size
+
+								const indicativeBid: Order = Object.assign(
+									{},
+									indicativeBaseOrder,
+									{
+										oraclePriceOffset: quote['is_oracle_offset']
+											? quote['bid_price']
+											: 0,
+										price: quote['is_oracle_offset']
+											? 0
+											: new BN(quote['bid_price']),
+										baseAssetAmount: new BN(quote['bid_size']),
+										direction: PositionDirection.LONG,
+									}
+								);
+								this.dlob.insertOrder(
+									indicativeBid,
+									INDICATIVE_QUOTES_PUBKEY,
+									this.slotSource.getSlot(),
+									false
+								);
+							}
+
+							if (quote['ask_size'] && quote['ask_price']) {
+								const indicativeAsk: Order = Object.assign(
+									{},
+									indicativeBaseOrder,
+									{
+										oraclePriceOffset: quote['is_oracle_offset']
+											? quote['ask_price']
+											: 0,
+										price: quote['is_oracle_offset']
+											? 0
+											: new BN(quote['ask_price']),
+										baseAssetAmount: new BN(quote['ask_size']),
+										direction: PositionDirection.SHORT,
+									}
+								);
+								this.dlob.insertOrder(
+									indicativeAsk,
+									INDICATIVE_QUOTES_PUBKEY,
+									this.slotSource.getSlot(),
+									false
+								);
+							}
+						}
+					});
+				}
 				this.getL2AndSendMsg(marketArgs);
 				this.getL3AndSendMsg(marketArgs);
 			} catch (error) {
@@ -162,6 +273,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			logger.info('Oracle is stale, removing vamm orders');
 			includeVamm = false;
 		}
+
 		const l2 = this.getL2({ ...l2FuncArgs, includeVamm });
 		const slot = l2.slot;
 		const lastMarketSlotAndTime = this.lastMarketSlotMap
@@ -264,44 +376,43 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		this.redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}${
-				this.protectedMakerView ? '_pmm' : ''
+				this.indicativeQuotesRedisClient ? '_indicative' : ''
 			}`,
 			l2Formatted
 		);
 		this.redisClient.set(
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}${
-				this.protectedMakerView ? '_pmm' : ''
+				this.indicativeQuotesRedisClient ? '_indicative' : ''
 			}`,
 			l2Formatted_depth100
 		);
-		const oraclePriceData =
-			marketType === 'spot'
-				? this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex)
-				: this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex);
-		const bids = this.dlob
-			.getBestMakers({
-				marketIndex: marketArgs.marketIndex,
-				marketType: marketArgs.marketType,
-				direction: PositionDirection.LONG,
-				slot: slot,
-				oraclePriceData,
-				numMakers: 4,
-			})
-			.map((x) => x.toString());
-		const asks = this.dlob
-			.getBestMakers({
-				marketIndex: marketArgs.marketIndex,
-				marketType: marketArgs.marketType,
-				direction: PositionDirection.SHORT,
-				slot,
-				oraclePriceData,
-				numMakers: 4,
-			})
-			.map((x) => x.toString());
-		this.redisClient.set(
-			`last_update_orderbook_best_makers_${marketType}_${marketArgs.marketIndex}`,
-			{ bids, asks, slot }
-		);
+
+		if (!this.indicativeQuotesRedisClient) {
+			const bids = this.dlob
+				.getBestMakers({
+					marketIndex: marketArgs.marketIndex,
+					marketType: marketArgs.marketType,
+					direction: PositionDirection.LONG,
+					slot: slot,
+					oraclePriceData: oracleData,
+					numMakers: 4,
+				})
+				.map((x) => x.toString());
+			const asks = this.dlob
+				.getBestMakers({
+					marketIndex: marketArgs.marketIndex,
+					marketType: marketArgs.marketType,
+					direction: PositionDirection.SHORT,
+					slot,
+					oraclePriceData: oracleData,
+					numMakers: 4,
+				})
+				.map((x) => x.toString());
+			this.redisClient.set(
+				`last_update_orderbook_best_makers_${marketType}_${marketArgs.marketIndex}`,
+				{ bids, asks, slot }
+			);
+		}
 	}
 
 	getL3AndSendMsg(marketArgs: wsMarketArgs): void {
@@ -355,7 +466,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		this.redisClient.set(
 			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}${
-				this.protectedMakerView ? '_pmm' : ''
+				this.indicativeQuotesRedisClient ? '_indicative' : ''
 			}`,
 			l3
 		);
