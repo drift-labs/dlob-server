@@ -75,5 +75,8 @@
 		"lint": "eslint . --ext ts --quiet",
 		"lint:fix": "eslint . --ext ts --fix",
 		"playground": "ts-node src/playground.ts"
-	}
+	},
+	"resolutions": {
+		"rpc-websockets": "^10.0.0"
+    }
 }
