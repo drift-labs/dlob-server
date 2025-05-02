@@ -564,6 +564,7 @@ const main = async (): Promise<void> => {
 				const oracleData = isSpot
 					? driftClient.getOracleDataForSpotMarket(normedMarketIndex)
 					: driftClient.getOracleDataForPerpMarket(normedMarketIndex);
+
 				l2Formatted = {
 					bids: [],
 					asks: [],
@@ -577,8 +578,8 @@ const main = async (): Promise<void> => {
 						slot: oracleData.slot.toNumber(),
 						confidence: oracleData.confidence.toNumber(),
 						hasSufficientNumberOfDataPoints: true,
-						twap: oracleData.twap.toNumber(),
-						twapConfidence: oracleData.twapConfidence.toNumber(),
+						twap: oracleData.twap?.toNumber(),
+						twapConfidence: oracleData.twapConfidence?.toNumber(),
 					},
 					ts: Date.now(),
 					marketSlot: dlobProvider.getSlot(),
@@ -692,8 +693,8 @@ const main = async (): Promise<void> => {
 								slot: oracleData.slot.toNumber(),
 								confidence: oracleData.confidence.toNumber(),
 								hasSufficientNumberOfDataPoints: true,
-								twap: oracleData.twap.toNumber(),
-								twapConfidence: oracleData.twapConfidence.toNumber(),
+								twap: oracleData.twap?.toNumber(),
+								twapConfidence: oracleData.twapConfidence?.toNumber(),
 							},
 							ts: Date.now(),
 							marketSlot: dlobProvider.getSlot(),
