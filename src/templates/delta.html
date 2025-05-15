@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Drift Orderbook</title>
+		<style>
+			body {
+				font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+				max-width: 1200px;
+				margin: 0 auto;
+				padding: 20px;
+				background-color: #f5f5f5;
+				color: #333;
+			}
+
+			#header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				margin-bottom: 20px;
+			}
+
+			#symbol-info {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+			}
+
+			.market-data {
+				padding: 8px 16px;
+				background-color: #e9ecef;
+				border-radius: 4px;
+				font-weight: bold;
+				margin-right: 10px;
+			}
+
+			#market-name {
+				background-color: #6c757d;
+				color: white;
+			}
+
+			#oracle-price {
+				background-color: #17a2b8;
+				color: white;
+			}
+
+			#bandwidth-counter {
+				background-color: #6f42c1;
+				color: white;
+			}
+
+			#status {
+				padding: 10px;
+				margin-bottom: 20px;
+				border-radius: 4px;
+				text-align: center;
+				font-weight: bold;
+			}
+
+			.connected {
+				background-color: #d4edda;
+				color: #155724;
+			}
+
+			.disconnected {
+				background-color: #f8d7da;
+				color: #721c24;
+			}
+
+			#spread-display {
+				text-align: center;
+				padding: 10px;
+				font-weight: bold;
+				background-color: #e9ecef;
+				border-radius: 4px;
+				margin-bottom: 20px;
+			}
+
+			#orderbook-container {
+				display: flex;
+				justify-content: space-between;
+				gap: 20px;
+				margin-bottom: 20px;
+			}
+
+			.orderbook-column {
+				flex: 1;
+				background-color: #fff;
+				border-radius: 8px;
+				box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+				padding: 15px;
+			}
+
+			.orderbook-title {
+				text-align: center;
+				font-weight: bold;
+				padding-bottom: 10px;
+				margin-bottom: 10px;
+				border-bottom: 1px solid #eee;
+			}
+
+			.column-header {
+				display: grid;
+				grid-template-columns: 1fr 1fr 1fr;
+				padding: 5px 0;
+				border-bottom: 1px solid #ddd;
+				font-weight: bold;
+				font-size: 0.9em;
+				margin-bottom: 5px;
+			}
+
+			.source-view .column-header {
+				grid-template-columns: 1fr 1fr 1fr 1fr;
+			}
+
+			.column-header span:first-child {
+				padding-left: 10px;
+			}
+
+			.column-header span:nth-child(2),
+			.column-header span:nth-child(3) {
+				text-align: right;
+				padding-right: 10px;
+			}
+
+			.column-header span:nth-child(4) {
+				text-align: right;
+				padding-right: 10px;
+			}
+
+			.orderbook-table {
+				width: 100%;
+			}
+
+			.orderbook-row {
+				display: grid;
+				grid-template-columns: 1fr 1fr 1fr;
+				padding: 4px 0;
+				border-bottom: 1px solid #f0f0f0;
+				font-family: monospace;
+				position: relative;
+				height: 24px;
+				transition: background-color 0.3s ease;
+			}
+
+			/* Update grid template for source visualization */
+			.source-view .orderbook-row {
+				grid-template-columns: 1fr 1fr 1fr 1fr;
+			}
+
+			.empty-row {
+				color: #aaa;
+			}
+
+			.price-cell {
+				font-weight: bold;
+				padding-left: 10px;
+				transition: color 0.3s ease;
+			}
+
+			.bid-price {
+				color: #28a745;
+			}
+
+			.ask-price {
+				color: #dc3545;
+			}
+
+			.size-cell,
+			.total-cell,
+			.sources-cell {
+				text-align: right;
+				padding-right: 10px;
+				transition: all 0.3s ease;
+				position: relative;
+			}
+
+			.total-cell {
+				font-weight: bold;
+			}
+
+			.sources-cell {
+				display: flex;
+				justify-content: flex-end;
+				align-items: center;
+				gap: 2px;
+				height: 100%;
+			}
+
+			.source-indicator {
+				display: inline-block;
+				height: 12px;
+				border-radius: 2px;
+				position: relative;
+				min-width: 3px;
+				transition: width 0.3s ease;
+			}
+
+			/* Source color definitions */
+			.source-dlob {
+				background-color: #4c6ef5;
+			}
+
+			.source-vamm {
+				background-color: #fd7e14;
+			}
+
+			.source-external {
+				background-color: #20c997;
+			}
+
+			.source-limit {
+				background-color: #e83e8c;
+			}
+
+			/* Source tooltip */
+			.source-tooltip {
+				position: absolute;
+				bottom: 20px;
+				right: 0;
+				background-color: rgba(0, 0, 0, 0.8);
+				color: white;
+				padding: 4px 8px;
+				border-radius: 4px;
+				font-size: 10px;
+				white-space: nowrap;
+				z-index: 10;
+				display: none;
+			}
+
+			.sources-cell:hover .source-tooltip {
+				display: block;
+			}
+
+			.depth-bar {
+				position: absolute;
+				height: 100%;
+				top: 0;
+				z-index: 0;
+				opacity: 0.4;
+				transition: width 0.5s ease-out, opacity 0.5s ease-out;
+			}
+
+			.bid-depth {
+				background-color: rgba(40, 167, 69, 0.5);
+				right: 0;
+			}
+
+			.ask-depth {
+				background-color: rgba(220, 53, 69, 0.5);
+				left: 0;
+			}
+
+			.depth-highlight {
+				animation: highlightDepth 0.8s ease-out;
+			}
+
+			@keyframes highlightDepth {
+				0% {
+					opacity: 0.7;
+				}
+				100% {
+					opacity: 0.4;
+				}
+			}
+
+			.orderbook-row span {
+				position: relative;
+				z-index: 1;
+			}
+
+			#controls {
+				display: flex;
+				gap: 10px;
+				align-items: center;
+			}
+
+			#toggle-sources {
+				cursor: pointer;
+				background-color: #6c757d;
+				color: white;
+				padding: 4px 8px;
+				border-radius: 4px;
+				font-size: 14px;
+				border: none;
+			}
+
+			.source-legend {
+				display: none;
+				margin-top: 10px;
+				padding: 10px;
+				background-color: #f8f9fa;
+				border-radius: 4px;
+				font-size: 12px;
+			}
+
+			.source-legend.visible {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 10px;
+			}
+
+			.legend-item {
+				display: flex;
+				align-items: center;
+				gap: 5px;
+			}
+
+			.legend-color {
+				width: 15px;
+				height: 15px;
+				border-radius: 3px;
+			}
+
+			#log-container {
+				background-color: #fff;
+				border-radius: 8px;
+				box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+				padding: 15px;
+				margin-top: 20px;
+			}
+
+			#log-title {
+				font-weight: bold;
+				padding-bottom: 10px;
+				margin-bottom: 10px;
+				border-bottom: 1px solid #eee;
+				display: flex;
+				justify-content: space-between;
+			}
+
+			#toggle-log {
+				cursor: pointer;
+				color: #007bff;
+				font-size: 14px;
+			}
+
+			#messageBox {
+				height: 200px;
+				overflow-y: auto;
+				font-family: monospace;
+				white-space: pre-wrap;
+				font-size: 12px;
+				background-color: #f8f9fa;
+				padding: 10px;
+				border-radius: 4px;
+				display: none;
+			}
+
+			.message-init {
+				color: #0066cc;
+			}
+
+			.message-create {
+				color: #006600;
+			}
+
+			.message-update {
+				color: #cc6600;
+			}
+
+			.message-system {
+				color: #666666;
+			}
+
+			.message-error {
+				color: #cc0000;
+			}
+
+			.message-stats {
+				color: #9900cc;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="header">
+			<h1>Drift Orderbook (delta)</h1>
+			<div id="symbol-info">
+				<div id="market-name" class="market-data">Loading...</div>
+				<div id="oracle-price" class="market-data">Oracle: -</div>
+				<div id="bandwidth-counter" class="market-data">Bandwidth: 0 KB</div>
+				<div id="controls">
+					<div id="precision-control">
+						<label for="price-precision">Precision:</label>
+						<select id="price-precision">
+							<option value="0.0001">$0.0001</option>
+							<option value="0.001" selected>$0.001</option>
+							<option value="0.01">$0.01</option>
+							<option value="0.05">$0.05</option>
+							<option value="0.1">$0.1</option>
+							<option value="1">$1</option>
+						</select>
+					</div>
+					<button id="toggle-sources">Show Sources</button>
+				</div>
+			</div>
+		</div>
+
+		<div id="status" class="disconnected">Disconnected</div>
+
+		<div id="spread-display">Spread: -- (--)</div>
+
+		<div class="source-legend">
+			<div class="legend-item">
+				<div class="legend-color source-dlob"></div>
+				<span>DLOB</span>
+			</div>
+			<div class="legend-item">
+				<div class="legend-color source-vamm"></div>
+				<span>VAMM</span>
+			</div>
+			<div class="legend-item">
+				<div class="legend-color source-external"></div>
+				<span>External</span>
+			</div>
+			<div class="legend-item">
+				<div class="legend-color source-limit"></div>
+				<span>Limit</span>
+			</div>
+		</div>
+
+		<div id="orderbook-container">
+			<div class="orderbook-column">
+				<div class="orderbook-title">Bids</div>
+				<div class="column-header">
+					<span>Price</span>
+					<span>Size</span>
+					<span>Total</span>
+					<span class="sources-header">Sources</span>
+				</div>
+				<div id="bids" class="orderbook-table"></div>
+			</div>
+			<div class="orderbook-column">
+				<div class="orderbook-title">Asks</div>
+				<div class="column-header">
+					<span>Price</span>
+					<span>Size</span>
+					<span>Total</span>
+					<span class="sources-header">Sources</span>
+				</div>
+				<div id="asks" class="orderbook-table"></div>
+			</div>
+		</div>
+
+		<div id="log-container">
+			<div id="log-title">
+				<span>Connection Log</span>
+				<span id="toggle-log">Show Log</span>
+			</div>
+			<div id="messageBox"></div>
+		</div>
+
+		<script>
+			const statusDiv = document.getElementById('status');
+			const messageBox = document.getElementById('messageBox');
+			const toggleLogBtn = document.getElementById('toggle-log');
+			const bidsTable = document.getElementById('bids');
+			const asksTable = document.getElementById('asks');
+			const spreadDisplay = document.getElementById('spread-display');
+			const marketNameDisplay = document.getElementById('market-name');
+			const oraclePriceDisplay = document.getElementById('oracle-price');
+			const bandwidthCounter = document.getElementById('bandwidth-counter');
+			const pricePrecisionSelect = document.getElementById('price-precision');
+			const toggleSourcesBtn = document.getElementById('toggle-sources');
+			const sourceLegend = document.querySelector('.source-legend');
+			const orderbookColumns = document.querySelectorAll('.orderbook-column');
+
+			const orderbook = {
+				bids: new Map(),
+				asks: new Map(),
+				slot: 0,
+			};
+
+			const previousState = {
+				bids: new Map(),
+				asks: new Map(),
+			};
+
+			let pricePrecision = 0.1;
+			let showSources = false;
+
+			const PRICE_SCALE = 1000000;
+			const SIZE_SCALE = 1000000000;
+			const MAX_ORDERBOOK_LEVELS = 20;
+
+			toggleSourcesBtn.addEventListener('click', () => {
+				showSources = !showSources;
+
+				if (showSources) {
+					toggleSourcesBtn.textContent = 'Hide Sources';
+					orderbookColumns.forEach((col) => col.classList.add('source-view'));
+					sourceLegend.classList.add('visible');
+				} else {
+					toggleSourcesBtn.textContent = 'Show Sources';
+					orderbookColumns.forEach((col) => col.classList.remove('source-view'));
+					sourceLegend.classList.remove('visible');
+				}
+
+				initializeOrderbookRows();
+				renderOrderbook();
+			});
+
+			function initializeOrderbookRows() {
+				bidsTable.innerHTML = '';
+				asksTable.innerHTML = '';
+
+				for (let i = 0; i < MAX_ORDERBOOK_LEVELS; i++) {
+					const row = document.createElement('div');
+					row.className = 'orderbook-row bid-row empty-row';
+					row.setAttribute('data-index', i);
+					row.setAttribute('data-price', '');
+
+					const depthBar = document.createElement('div');
+					depthBar.className = 'depth-bar bid-depth';
+					depthBar.style.width = '0%';
+					row.appendChild(depthBar);
+
+					const priceCell = document.createElement('span');
+					priceCell.className = 'price-cell bid-price';
+					priceCell.textContent = '-';
+
+					const sizeCell = document.createElement('span');
+					sizeCell.className = 'size-cell';
+					sizeCell.textContent = '-';
+
+					const totalCell = document.createElement('span');
+					totalCell.className = 'total-cell';
+					totalCell.textContent = '-';
+
+					row.appendChild(priceCell);
+					row.appendChild(sizeCell);
+					row.appendChild(totalCell);
+
+					if (showSources) {
+						const sourcesCell = document.createElement('span');
+						sourcesCell.className = 'sources-cell';
+						sourcesCell.textContent = '-';
+						row.appendChild(sourcesCell);
+					}
+
+					bidsTable.appendChild(row);
+				}
+
+				for (let i = 0; i < MAX_ORDERBOOK_LEVELS; i++) {
+					const row = document.createElement('div');
+					row.className = 'orderbook-row ask-row empty-row';
+					row.setAttribute('data-index', i);
+					row.setAttribute('data-price', '');
+
+					const depthBar = document.createElement('div');
+					depthBar.className = 'depth-bar ask-depth';
+					depthBar.style.width = '0%';
+					row.appendChild(depthBar);
+
+					const priceCell = document.createElement('span');
+					priceCell.className = 'price-cell ask-price';
+					priceCell.textContent = '-';
+
+					const sizeCell = document.createElement('span');
+					sizeCell.className = 'size-cell';
+					sizeCell.textContent = '-';
+
+					const totalCell = document.createElement('span');
+					totalCell.className = 'total-cell';
+					totalCell.textContent = '-';
+
+					row.appendChild(priceCell);
+					row.appendChild(sizeCell);
+					row.appendChild(totalCell);
+
+					if (showSources) {
+						const sourcesCell = document.createElement('span');
+						sourcesCell.className = 'sources-cell';
+						sourcesCell.textContent = '-';
+						row.appendChild(sourcesCell);
+					}
+
+					asksTable.appendChild(row);
+				}
+			}
+
+			toggleLogBtn.addEventListener('click', () => {
+				if (messageBox.style.display === 'none' || messageBox.style.display === '') {
+					messageBox.style.display = 'block';
+					toggleLogBtn.textContent = 'Hide Log';
+				} else {
+					messageBox.style.display = 'none';
+					toggleLogBtn.textContent = 'Show Log';
+				}
+			});
+
+			let totalBytesReceived = 0;
+			let bandwidthRecords = [];
+			let lastBandwidthUpdateTime = Date.now();
+
+			function updateBandwidthCounter(bytes) {
+				totalBytesReceived += bytes;
+
+				const now = Date.now();
+				bandwidthRecords.push({
+					time: now,
+					bytes: bytes,
+				});
+
+				const cutoffTime = now - 5000;
+				bandwidthRecords = bandwidthRecords.filter((record) => record.time >= cutoffTime);
+
+				const bytesInPeriod = bandwidthRecords.reduce(
+					(sum, record) => sum + record.bytes,
+					0
+				);
+				const oldestRecord = Math.min(...bandwidthRecords.map((r) => r.time));
+				const timeSpanSeconds = Math.max(1, (now - oldestRecord) / 1000);
+				const rateKBps = (bytesInPeriod / 1024 / timeSpanSeconds).toFixed(2);
+
+				if (now - lastBandwidthUpdateTime >= 1000) {
+					const totalKB = (totalBytesReceived / 1024).toFixed(2);
+					bandwidthCounter.textContent = `Total: ${totalKB} KB | Rate: ${rateKBps} KB/s`;
+					lastBandwidthUpdateTime = now;
+				}
+			}
+
+			const wsUrl = 'ws://localhost:3000/ws';
+			let socket;
+
+			function connectWebSocket() {
+				socket = new WebSocket(wsUrl);
+
+				socket.addEventListener('open', (event) => {
+					statusDiv.textContent = 'Connected';
+					statusDiv.className = 'connected';
+					appendMessage('System', 'Connected to WebSocket server');
+
+					socket.send(
+						JSON.stringify({
+							channel: 'orderbook_delta',
+							market: 'SOL-PERP',
+							marketType: 'perp',
+							type: 'subscribe',
+						})
+					);
+					appendMessage('System', 'Subscribed to SOL-PERP orderbook');
+				});
+
+				socket.addEventListener('message', (event) => {
+					try {
+						const messageSize = event.data.length;
+						updateBandwidthCounter(messageSize);
+
+						const message = JSON.parse(event.data).data;
+
+						if (message) {
+							if (message.m !== undefined) {
+								const logMsg = `Orderbook: m=${message.m}, s=${message.s}, ${
+									message.b?.length || 0
+								} bids, ${message.a?.length || 0} asks, ${
+									message.f ? 'snapshot' : 'delta'
+								}`;
+								appendMessage('Data', logMsg);
+
+								if (message.f !== true) {
+									previousState.bids = new Map(orderbook.bids);
+									previousState.asks = new Map(orderbook.asks);
+								}
+
+								processOrderbookData(message);
+							} else {
+								appendMessage(
+									'System',
+									`${message.type || 'Info'}: ${
+										message.message || JSON.stringify(message).substring(0, 100)
+									}`
+								);
+							}
+						}
+					} catch (error) {
+						appendMessage('Error', 'Failed to parse message: ' + error.message);
+						console.error('Error parsing message:', error);
+					}
+				});
+
+				socket.addEventListener('error', (error) => {
+					appendMessage('Error', 'WebSocket error');
+					console.error('WebSocket error:', error);
+				});
+
+				socket.addEventListener('close', (event) => {
+					statusDiv.textContent = 'Disconnected';
+					statusDiv.className = 'disconnected';
+					appendMessage('System', 'Disconnected from WebSocket server');
+
+					setTimeout(connectWebSocket, 5000);
+				});
+			}
+
+			function processOrderbookData(message) {
+				// const { data } = message
+
+				// if(!data) return;
+
+				// console.log(data)
+
+				const {
+					m: marketIndex,
+					s: slot,
+					t: timestamp,
+					b: bids,
+					a: asks,
+					f: isSnapshot,
+				} = message;
+
+				marketNameDisplay.textContent = `SOL-PERP (${marketIndex})`;
+
+				if (slot <= orderbook.slot && !isSnapshot) {
+					return;
+				}
+
+				orderbook.slot = slot;
+
+				if (isSnapshot) {
+					orderbook.bids.clear();
+					orderbook.asks.clear();
+					appendMessage('System', 'Received full orderbook snapshot');
+				}
+
+				if (bids && Array.isArray(bids)) {
+					bids.forEach(([price, size, sources]) => {
+						price = parseFloat(price);
+						size = parseFloat(size);
+
+						if (size === 0 || size === '0') {
+							orderbook.bids.delete(price);
+						} else {
+							orderbook.bids.set(price, {
+								size,
+								sources: sources || {},
+							});
+						}
+					});
+				}
+
+				if (asks && Array.isArray(asks)) {
+					asks.forEach(([price, size, sources]) => {
+						price = parseFloat(price);
+						size = parseFloat(size);
+
+						if (size === 0 || size === '0') {
+							orderbook.asks.delete(price);
+						} else {
+							orderbook.asks.set(price, {
+								size,
+								sources: sources || {},
+							});
+						}
+					});
+				}
+
+				renderOrderbook();
+			}
+
+			function aggregatePrices(entries, side) {
+				const isAsk = side === 'ask';
+				const result = new Map();
+
+				entries.forEach(([price, data]) => {
+					const rawPrice = price / PRICE_SCALE;
+
+					let bucketPrice, displayPrice;
+
+					if (isAsk) {
+						displayPrice = Math.ceil(rawPrice / pricePrecision) * pricePrecision;
+						bucketPrice = displayPrice;
+					} else {
+						displayPrice = Math.floor(rawPrice / pricePrecision) * pricePrecision;
+						bucketPrice = displayPrice;
+					}
+
+					const bucketKey = Math.round(bucketPrice * PRICE_SCALE);
+
+					if (!result.has(bucketKey)) {
+						result.set(bucketKey, {
+							size: 0,
+							displayPrice: displayPrice,
+							rawSizes: [],
+							sources: {},
+						});
+					}
+
+					const bucketData = result.get(bucketKey);
+					bucketData.size += data.size;
+					bucketData.rawSizes.push(data.size);
+
+					if (data.sources) {
+						Object.entries(data.sources).forEach(([sourceKey, sourceSize]) => {
+							if (!bucketData.sources[sourceKey]) {
+								bucketData.sources[sourceKey] = 0;
+							}
+							bucketData.sources[sourceKey] += parseFloat(sourceSize);
+						});
+					}
+				});
+
+				return Array.from(result.entries());
+			}
+
+			function createSourcesVisualization(sourcesData, totalSize) {
+				const sourcesContainer = document.createElement('span');
+				sourcesContainer.className = 'sources-cell';
+
+				if (!sourcesData || Object.keys(sourcesData).length === 0) {
+					const placeholder = document.createElement('span');
+					placeholder.textContent = '-';
+					sourcesContainer.appendChild(placeholder);
+					return sourcesContainer;
+				}
+
+				const tooltip = document.createElement('div');
+				tooltip.className = 'source-tooltip';
+
+				const sortedSources = Object.entries(sourcesData).sort(([, a], [, b]) => b - a);
+
+				sortedSources.forEach(([sourceKey, sourceSize]) => {
+					const sourceSizeNormalized = parseFloat(sourceSize) / SIZE_SCALE;
+					const percentage = ((sourceSizeNormalized / totalSize) * 100).toFixed(1);
+
+					tooltip.innerHTML += `${sourceKey}: ${sourceSizeNormalized.toFixed(
+						2
+					)} (${percentage}%)<br>`;
+
+					const indicator = document.createElement('div');
+					indicator.className = `source-indicator source-${sourceKey.toLowerCase()}`;
+
+					const widthPercent = Math.max(3, parseFloat(percentage));
+					indicator.style.width = `${widthPercent}px`;
+
+					sourcesContainer.appendChild(indicator);
+				});
+
+				sourcesContainer.appendChild(tooltip);
+				return sourcesContainer;
+			}
+
+			function renderOrderbook() {
+				const aggregatedBids = aggregatePrices([...orderbook.bids.entries()], 'bid');
+				const aggregatedAsks = aggregatePrices([...orderbook.asks.entries()], 'ask');
+
+				const sortedBids = aggregatedBids.sort((a, b) => b[0] - a[0]);
+				const sortedAsks = aggregatedAsks.sort((a, b) => a[0] - b[0]);
+
+				let totalBidVolume = 0;
+				let totalAskVolume = 0;
+
+				sortedBids.forEach(([_, data]) => {
+					totalBidVolume += data.size / SIZE_SCALE;
+				});
+
+				sortedAsks.forEach(([_, data]) => {
+					totalAskVolume += data.size / SIZE_SCALE;
+				});
+
+				if (sortedBids.length > 0 && sortedAsks.length > 0) {
+					const highestBid = sortedBids[0][0] / PRICE_SCALE;
+					const lowestAsk = sortedAsks[0][0] / PRICE_SCALE;
+					const spread = lowestAsk - highestBid;
+					const spreadPercent = ((spread / lowestAsk) * 100).toFixed(3);
+					spreadDisplay.textContent = `Spread: ${spread.toFixed(5)} (${spreadPercent}%)`;
+				} else {
+					spreadDisplay.textContent = 'Spread: -- (--)';
+				}
+
+				updateOrderbookRows(bidsTable, sortedBids, totalBidVolume, 'bid');
+
+				updateOrderbookRows(asksTable, sortedAsks, totalAskVolume, 'ask');
+			}
+
+			function getPreviousAggregatedSize(price, side) {
+				const previousMap = side === 'bid' ? previousState.bids : previousState.asks;
+				let totalSize = 0;
+
+				const bucketLower =
+					Math.floor(price / PRICE_SCALE / pricePrecision) * pricePrecision * PRICE_SCALE;
+				const bucketUpper = bucketLower + pricePrecision * PRICE_SCALE;
+
+				previousMap.forEach((data, prevPrice) => {
+					if (prevPrice >= bucketLower && prevPrice < bucketUpper) {
+						totalSize += data.size;
+					}
+				});
+
+				return totalSize / SIZE_SCALE;
+			}
+
+			function updateOrderbookRows(tableElement, sortedData, totalVolume, side) {
+				const isAsk = side === 'ask';
+				const rows = tableElement.querySelectorAll('.orderbook-row');
+
+				let cumulativeSize = 0;
+
+				const decimalPlaces = Math.max(1, -Math.log10(pricePrecision) + 1);
+
+				for (let i = 0; i < rows.length; i++) {
+					const row = rows[i];
+
+					const depthBar = row.querySelector('.depth-bar');
+					depthBar.classList.remove('depth-highlight');
+
+					if (i < sortedData.length) {
+						const [bucketKey, data] = sortedData[i];
+
+						const formattedPrice = data.displayPrice.toFixed(decimalPlaces);
+
+						const normalizedSize = data.size / SIZE_SCALE;
+						const formattedSize = normalizedSize.toFixed(2);
+
+						cumulativeSize += normalizedSize;
+						const formattedTotal = cumulativeSize.toFixed(2);
+
+						const previousRowPrice = row.getAttribute('data-price');
+						const previousSizeCell = row.querySelector('.size-cell').textContent;
+						const previousTotalCell = row.querySelector('.total-cell').textContent;
+
+						row.querySelector('.price-cell').textContent = formattedPrice;
+						row.querySelector('.size-cell').textContent = formattedSize;
+						row.querySelector('.total-cell').textContent = formattedTotal;
+
+						if (showSources) {
+							const sourcesCell = row.querySelector('.sources-cell');
+							if (sourcesCell) {
+								while (sourcesCell.firstChild) {
+									sourcesCell.removeChild(sourcesCell.firstChild);
+								}
+
+								const sourcesVisualization = createSourcesVisualization(
+									data.sources,
+									normalizedSize
+								);
+
+								while (sourcesVisualization.firstChild) {
+									sourcesCell.appendChild(sourcesVisualization.firstChild);
+								}
+							}
+						}
+
+						row.setAttribute('data-price', bucketKey);
+
+						const depthBar = row.querySelector('.depth-bar');
+						let depthPercentage;
+						if (isAsk) {
+							depthPercentage = ((cumulativeSize / totalVolume) * 100).toFixed(2);
+						} else {
+							depthPercentage = ((cumulativeSize / totalVolume) * 100).toFixed(2);
+						}
+						depthBar.style.width = `${Math.min(100, depthPercentage)}%`;
+
+						if (
+							(previousSizeCell !== '-' && previousSizeCell !== formattedSize) ||
+							(previousTotalCell !== '-' && previousTotalCell !== formattedTotal)
+						) {
+							depthBar.classList.add('depth-highlight');
+						}
+
+						row.classList.remove('empty-row');
+					} else {
+						row.querySelector('.price-cell').textContent = '-';
+						row.querySelector('.size-cell').textContent = '-';
+						row.querySelector('.total-cell').textContent = '-';
+						row.querySelector('.depth-bar').style.width = '0%';
+
+						if (showSources) {
+							const sourcesCell = row.querySelector('.sources-cell');
+							if (sourcesCell) {
+								sourcesCell.textContent = '-';
+							}
+						}
+
+						row.setAttribute('data-price', '');
+
+						if (!row.classList.contains('empty-row')) {
+							row.classList.add('empty-row');
+						}
+					}
+				}
+			}
+
+			function appendMessage(sender, message) {
+				const messageElement = document.createElement('div');
+
+				let senderClass = '';
+				if (sender === 'Data') senderClass = 'message-init';
+				else if (sender === 'Create') senderClass = 'message-create';
+				else if (sender === 'Update') senderClass = 'message-update';
+				else if (sender === 'System') senderClass = 'message-system';
+				else if (sender === 'Error') senderClass = 'message-error';
+				else if (sender === 'Stats') senderClass = 'message-stats';
+
+				messageElement.className = senderClass;
+
+				const timestamp = new Date().toLocaleTimeString();
+				messageElement.innerHTML = `<strong>[${timestamp}] ${sender}:</strong> ${message}`;
+				messageBox.appendChild(messageElement);
+
+				messageBox.scrollTop = messageBox.scrollHeight;
+
+				if (messageBox.children.length > 100) {
+					messageBox.removeChild(messageBox.children[0]);
+				}
+			}
+
+			function cleanupAnimations() {
+				document.querySelectorAll('.depth-highlight').forEach((el) => {
+					setTimeout(() => {
+						el.classList.remove('depth-highlight');
+					}, 1000);
+				});
+			}
+
+			initializeOrderbookRows();
+
+			pricePrecisionSelect.addEventListener('change', function () {
+				pricePrecision = parseFloat(this.value);
+				renderOrderbook();
+			});
+
+			pricePrecision = parseFloat(pricePrecisionSelect.value);
+
+			connectWebSocket();
+
+			setInterval(cleanupAnimations, 300);
+		</script>
+	</body>
+</html>

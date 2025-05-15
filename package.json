@@ -61,6 +61,7 @@
 		"dev": "ts-node src/index.ts",
 		"server-lite": "ts-node src/serverLite.ts",
 		"dlob-publish": "ts-node src/publishers/dlobPublisher.ts",
+		"dlob-delta": "ts-node src/publishers/dlobDeltaPublisher.ts",
 		"trades-publish": "ts-node src/publishers/tradesPublisher.ts",
 		"fees-publish": "ts-node src/publishers/priorityFeesPublisher.ts",
 		"pnl-publish": "ts-node src/scripts/publishUnsettledPnlUsers.ts",
