@@ -233,9 +233,7 @@ export const OrderbookDeltaTracker = (
 		}
 	};
 
-	const publishDelta = async (
-		delta: OrderbookDelta,
-	): Promise<void> => {
+	const publishDelta = async (delta: OrderbookDelta): Promise<void> => {
 		try {
 			const channel = `${redisClientPrefix}${redisChannelPrefix}${delta.m}_delta`;
 
