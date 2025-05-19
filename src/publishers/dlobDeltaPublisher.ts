@@ -95,7 +95,6 @@ async function main() {
 		await Promise.all(
 			perpMarkets.map(async (market) => {
 				const marketIndex = market.marketIndex;
-				console.time(`index-${marketIndex}`);
 				try {
 					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
 
@@ -125,7 +124,6 @@ async function main() {
 				} catch (error) {
 					logger.error(`Error processing market ${marketIndex}:`, error);
 				}
-				console.timeEnd(`index-${marketIndex}`);
 			})
 		);
 	};
