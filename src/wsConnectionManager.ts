@@ -97,6 +97,8 @@ const getRedisChannelFromMessage = (message: any): string => {
 			return `orderbook_${marketType}_${marketIndex}`;
 		case 'orderbook_indicative':
 			return `orderbook_${marketType}_${marketIndex}_indicative`;
+		case 'orderbook_delta':
+			return `orderbook_${marketType}_${marketIndex}_delta`;
 		case 'priorityfees':
 			return `priorityFees_${marketType}_${marketIndex}`;
 		case undefined:
@@ -134,7 +136,7 @@ async function main() {
 			const channelPrefix = getChannelPrefix(sanitizedChannel);
 			const subscribers = channelSubscribers.get(sanitizedChannel);
 			if (subscribers) {
-				if (sanitizedChannel.includes('orderbook')) {
+				 if (sanitizedChannel.includes('orderbook')) {
 					const messageSlot = JSON.parse(message)['slot'];
 					wsOrderbookSourceLastSlotGauge.set(
 						{
@@ -150,6 +152,7 @@ async function main() {
 						return;
 					}
 				}
+
 				subscribers.forEach((ws) => {
 					if (
 						ws.readyState === WebSocket.OPEN &&
@@ -158,12 +161,23 @@ async function main() {
 						wsOrderbookSourceCounter.inc({
 							source: channelPrefix,
 						});
-						ws.send(
-							JSON.stringify({
-								channel: sanitizedChannel,
-								data: message,
-							})
-						);
+
+						if(sanitizedChannel.includes('delta')) {
+							ws.send(
+								JSON.stringify({
+									channel: sanitizedChannel,
+									data: JSON.parse(message),
+								})
+							);
+						} else {
+
+							ws.send(
+								JSON.stringify({
+									channel: sanitizedChannel,
+									data: message,
+								})
+							);
+						}
 					}
 				});
 			}
@@ -265,8 +279,20 @@ async function main() {
 							message: `Subscribe received for channel: ${parsedMessage.channel}, market: ${parsedMessage.market}, marketType: ${parsedMessage.marketType}`,
 						})
 					);
-					// Fetch and send last message
-					if (redisChannel.includes('orderbook')) {
+
+					if (redisChannel.includes('delta')) {
+						const lastMessages = await Promise.all(
+							lastMessageClients.map((redisClient) =>
+								redisClient.getRaw(redisChannel.replace('delta', 'snapshot'))
+							)
+						);
+						const lastMessage = selectMostRecentBySlot(lastMessages);
+						if (lastMessage) {
+							ws.send(
+								JSON.stringify({channel: redisChannel, data: lastMessage})
+							);
+						}
+					} else if (redisChannel.includes('orderbook')) {
 						const lastMessages = await Promise.all(
 							lastMessageClients.map((redisClient) =>
 								redisClient.getRaw(
