@@ -21,10 +21,6 @@ const URL = process.env.URL ?? ENDPOINT.slice(0, ENDPOINT.lastIndexOf('/'));
 const TOKEN =
 	process.env.TOKEN ?? ENDPOINT.slice(ENDPOINT.lastIndexOf('/') + 1);
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
-const NUM_MARKETS_TO_PROCESS = parseInt(
-	process.env.NUM_MARKETS_TO_PROCESS || '1',
-	10
-);
 
 const connection = new Connection(ENDPOINT, 'confirmed');
 const wallet = new Wallet(new Keypair());
@@ -94,23 +90,15 @@ async function main() {
 	const lastProcessedSlot = new Map<number, number>();
 
 	const processMarkets = async () => {
-		const marketsToProcess = perpMarkets
-			.sort((a, b) => a.marketIndex - b.marketIndex)
-			.slice(0, NUM_MARKETS_TO_PROCESS);
-
 		await dlobSubscriber.updateDLOB();
 
 		await Promise.all(
-			marketsToProcess.map(async (market) => {
+			perpMarkets.map(async (market) => {
 				const marketIndex = market.marketIndex;
 				console.time(`index-${marketIndex}`);
-
 				try {
-					console.time(`update-indic-${marketIndex}`);
 					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
-					console.timeEnd(`update-indic-${marketIndex}`);
 
-					console.time(`get-book-${marketIndex}`);
 					const l2 = dlobSubscriber.getL2({
 						marketIndex: marketIndex,
 						marketType: { perp: {} },
@@ -118,20 +106,17 @@ async function main() {
 						includeVamm: true,
 						numVammOrders: 100,
 					});
-					console.timeEnd(`get-book-${marketIndex}`);
 
 					const l2Formatted = l2WithBNToStrings(l2);
 					const currentSlot = l2Formatted.slot;
 					const lastSlot = lastProcessedSlot.get(marketIndex) || 0;
 
 					if (currentSlot > lastSlot) {
-						console.time(`process-book-${marketIndex}`);
 						await processOrderbook({
 							...l2Formatted,
 							marketIndex: marketIndex,
 						});
 						lastProcessedSlot.set(marketIndex, currentSlot);
-						console.timeEnd(`process-book-${marketIndex}`);
 					} else {
 						logger.info(
 							`Skipping market ${marketIndex} - no new data since slot ${lastSlot}`
@@ -140,7 +125,6 @@ async function main() {
 				} catch (error) {
 					logger.error(`Error processing market ${marketIndex}:`, error);
 				}
-
 				console.timeEnd(`index-${marketIndex}`);
 			})
 		);

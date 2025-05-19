@@ -617,7 +617,7 @@
 				}
 			}
 
-			const wsUrl = 'ws://localhost:3001/ws';
+			const wsUrl = 'wss://staging.dlob.drift.trade/ws';
 			let socket;
 
 			function connectWebSocket() {
@@ -636,7 +636,7 @@
 							type: 'subscribe',
 						})
 					);
-					appendMessage('System', 'Subscribed to SOL-PERP orderbook');
+					appendMessage('System', 'Subscribed to BTC-PERP orderbook');
 				});
 
 				socket.addEventListener('message', (event) => {
