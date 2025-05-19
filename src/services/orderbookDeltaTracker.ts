@@ -1,5 +1,15 @@
 import { logger } from '@drift/common';
 import { RedisClient } from '@drift/common/clients';
+import {
+	BN,
+	DLOBSubscriber,
+	Order,
+	OrderStatus,
+	OrderTriggerCondition,
+	OrderType,
+	PositionDirection,
+	ZERO,
+} from '@drift-labs/sdk';
 
 export interface OrderbookLevel {
 	price: string;
@@ -23,9 +33,14 @@ export interface OrderbookDelta {
 	f?: boolean;
 }
 
-export const OrderbookDeltaTracker = (redisClient: RedisClient) => {
+const INDICATIVE_QUOTES_PUBKEY = 'inDNdu3ML4vG5LNExqcwuCQtLcCU8KfK5YM2qYV3JJz';
+
+export const OrderbookDeltaTracker = (
+	redisClient: RedisClient,
+	indicativeQuotesRedisClient: RedisClient
+) => {
 	const currentOrderbooks: Map<number, Orderbook> = new Map();
-    const redisClientPrefix = redisClient.getPrefix()
+	const redisClientPrefix = redisClient.getPrefix();
 	const redisChannelPrefix = `orderbook_perp_`;
 	const snapshotSent = new Set<number>();
 
@@ -73,10 +88,22 @@ export const OrderbookDeltaTracker = (redisClient: RedisClient) => {
 			a: [] as [string, string, Record<string, string>][],
 		};
 
-		const prevBidMap = new Map<string, { size: string; sources: Record<string, string> }>();
-		const prevAskMap = new Map<string, { size: string; sources: Record<string, string> }>();
-		const nextBidMap = new Map<string, { size: string; sources: Record<string, string> }>();
-		const nextAskMap = new Map<string, { size: string; sources: Record<string, string> }>();
+		const prevBidMap = new Map<
+			string,
+			{ size: string; sources: Record<string, string> }
+		>();
+		const prevAskMap = new Map<
+			string,
+			{ size: string; sources: Record<string, string> }
+		>();
+		const nextBidMap = new Map<
+			string,
+			{ size: string; sources: Record<string, string> }
+		>();
+		const nextAskMap = new Map<
+			string,
+			{ size: string; sources: Record<string, string> }
+		>();
 
 		prev.bids.forEach((level) =>
 			prevBidMap.set(level.price, { size: level.size, sources: level.sources })
@@ -166,7 +193,9 @@ export const OrderbookDeltaTracker = (redisClient: RedisClient) => {
 			};
 
 			const snapshotKey = `${redisChannelPrefix}${orderbook.marketIndex}_snapshot`;
-			await redisClient.forceGetClient().setex(snapshotKey, 3600, JSON.stringify(message));
+			await redisClient
+				.forceGetClient()
+				.setex(snapshotKey, 3600, JSON.stringify(message));
 
 			logger.info(
 				`Stored orderbook snapshot in Redis for market ${orderbook.marketIndex}, slot ${orderbook.slot}`
@@ -176,7 +205,9 @@ export const OrderbookDeltaTracker = (redisClient: RedisClient) => {
 		}
 	};
 
-	const publishInitialSnapshot = async (orderbook: Orderbook): Promise<void> => {
+	const publishInitialSnapshot = async (
+		orderbook: Orderbook
+	): Promise<void> => {
 		try {
 			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}_snapshot`;
 
@@ -195,11 +226,16 @@ export const OrderbookDeltaTracker = (redisClient: RedisClient) => {
 				`Published INITIAL orderbook snapshot for market ${orderbook.marketIndex}, slot ${orderbook.slot}`
 			);
 		} catch (error) {
-			logger.error(`Failed to publish initial orderbook snapshot: ${error.message}`);
+			logger.error(
+				`Failed to publish initial orderbook snapshot: ${error.message}`
+			);
 		}
 	};
 
-	const publishDelta = async (delta: OrderbookDelta, marketIndex: number): Promise<void> => {
+	const publishDelta = async (
+		delta: OrderbookDelta,
+		marketIndex: number
+	): Promise<void> => {
 		try {
 			const channel = `${redisClientPrefix}${redisChannelPrefix}${marketIndex}_delta`;
 
@@ -236,6 +272,94 @@ export const OrderbookDeltaTracker = (redisClient: RedisClient) => {
 		};
 	};
 
+	const addIndicativeLiquidity = async (
+		dlobSubscriber: DLOBSubscriber,
+		marketIndex: number
+	) => {
+		dlobSubscriber.updateDLOB();
+
+		const mms = await indicativeQuotesRedisClient.smembers(
+			`market_mms_perp_${marketIndex}`
+		);
+		const mmQuotes = await Promise.all(
+			mms.map((mm) => {
+				return indicativeQuotesRedisClient.get(
+					`mm_quotes_perp_${marketIndex}_${mm}`
+				);
+			})
+		);
+
+		const nowMinus1000Ms = Date.now() - 1000;
+		mmQuotes.forEach((quote) => {
+			if (Number(quote['ts']) > nowMinus1000Ms) {
+				const indicativeBaseOrder: Order = {
+					status: OrderStatus.OPEN,
+					orderType: OrderType.LIMIT,
+					orderId: 0,
+					slot: new BN(dlobSubscriber.slotSource.getSlot()),
+					marketIndex: marketIndex,
+					marketType: 'perp',
+					baseAssetAmount: ZERO,
+					immediateOrCancel: false,
+					direction: PositionDirection.LONG,
+					oraclePriceOffset: 0,
+					maxTs: new BN(quote['ts'] + 1000),
+					reduceOnly: false,
+					triggerCondition: OrderTriggerCondition.ABOVE,
+					price: ZERO,
+					userOrderId: 0,
+					postOnly: true,
+					auctionDuration: 0,
+					auctionStartPrice: ZERO,
+					auctionEndPrice: ZERO,
+
+					existingPositionDirection: PositionDirection.LONG,
+					triggerPrice: ZERO,
+					baseAssetAmountFilled: ZERO,
+					quoteAssetAmountFilled: ZERO,
+					quoteAssetAmount: ZERO,
+					bitFlags: 0,
+					postedSlotTail: 0,
+				};
+
+				if (quote['bid_size'] && quote['bid_price']) {
+					const indicativeBid: Order = Object.assign({}, indicativeBaseOrder, {
+						oraclePriceOffset: quote['is_oracle_offset']
+							? quote['bid_price']
+							: 0,
+						price: quote['is_oracle_offset'] ? 0 : new BN(quote['bid_price']),
+						baseAssetAmount: new BN(quote['bid_size']),
+						direction: PositionDirection.LONG,
+					});
+
+					dlobSubscriber.dlob.insertOrder(
+						indicativeBid,
+						INDICATIVE_QUOTES_PUBKEY,
+						dlobSubscriber.slotSource.getSlot(),
+						false
+					);
+				}
+
+				if (quote['ask_size'] && quote['ask_price']) {
+					const indicativeAsk: Order = Object.assign({}, indicativeBaseOrder, {
+						oraclePriceOffset: quote['is_oracle_offset']
+							? quote['ask_price']
+							: 0,
+						price: quote['is_oracle_offset'] ? 0 : new BN(quote['ask_price']),
+						baseAssetAmount: new BN(quote['ask_size']),
+						direction: PositionDirection.SHORT,
+					});
+					dlobSubscriber.dlob.insertOrder(
+						indicativeAsk,
+						INDICATIVE_QUOTES_PUBKEY,
+						dlobSubscriber.slotSource.getSlot(),
+						false
+					);
+				}
+			}
+		});
+	};
+
 	return {
 		processOrderbook,
 		computeDelta,
@@ -244,5 +368,6 @@ export const OrderbookDeltaTracker = (redisClient: RedisClient) => {
 		publishInitialSnapshot,
 		publishDelta,
 		deepCloneOrderbook,
+		addIndicativeLiquidity,
 	};
 };

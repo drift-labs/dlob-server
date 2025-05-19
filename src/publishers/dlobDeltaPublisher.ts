@@ -37,14 +37,21 @@ const redisClient = new RedisClient({
 	prefix: RedisClientPrefix[REDIS_CLIENT],
 });
 
+const indicativeRedisClient = new RedisClient({});
+
 const app = express();
 
 async function main() {
 	await redisClient.connect();
+	await indicativeRedisClient.connect();
 	await driftClient.subscribe();
+
 	const perpMarkets = await driftClient.getPerpMarketAccounts();
 
-	const { processOrderbook } = OrderbookDeltaTracker(redisClient);
+	const { processOrderbook, addIndicativeLiquidity } = OrderbookDeltaTracker(
+		redisClient,
+		indicativeRedisClient
+	);
 
 	const orderSubscriber = new OrderSubscriber({
 		driftClient,
@@ -77,7 +84,7 @@ async function main() {
 		dlobSource: dlobProvider,
 		slotSource,
 		updateFrequency: 1000,
-		protectedMakerView: false,
+		protectedMakerView: true,
 	});
 
 	await dlobSubscriber.subscribe();
@@ -85,30 +92,35 @@ async function main() {
 	const lastProcessedSlot = new Map<number, number>();
 
 	setInterval(() => {
-		perpMarkets
-			.filter((market) => market.marketIndex === 0)
-			.forEach((market) => {
-				const l2 = dlobSubscriber.getL2({
-					marketIndex: market.marketIndex,
-					marketType: { perp: {} },
-					depth: -1,
-					includeVamm: true,
-					numVammOrders: 100,
-				});
-
-				const l2Formatted = l2WithBNToStrings(l2);
-				const currentSlot = l2Formatted.slot;
-				const lastSlot = lastProcessedSlot.get(market.marketIndex) || 0;
-
-				if (currentSlot > lastSlot) {
-					processOrderbook({
-						...l2Formatted,
-						marketIndex: market.marketIndex,
-					});
-					lastProcessedSlot.set(market.marketIndex, currentSlot);
-				}
+		perpMarkets.map(async (market) => {
+			const l2 = dlobSubscriber.getL2({
+				marketIndex: market.marketIndex,
+				marketType: { perp: {} },
+				depth: -1,
+				includeVamm: true,
+				numVammOrders: 100,
 			});
+
+			const l2Formatted = l2WithBNToStrings(l2);
+			const currentSlot = l2Formatted.slot;
+			const lastSlot = lastProcessedSlot.get(market.marketIndex) || 0;
+
+			if (currentSlot > lastSlot) {
+				processOrderbook({
+					...l2Formatted,
+					marketIndex: market.marketIndex,
+				});
+				lastProcessedSlot.set(market.marketIndex, currentSlot);
+			}
+		});
 	}, 200);
+
+	// Run the liquidity addition only every 1000ms (1 second)
+	setInterval(() => {
+		perpMarkets.map(async (market) => {
+			await addIndicativeLiquidity(dlobSubscriber, market.marketIndex);
+		});
+	}, 1000);
 
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
@@ -122,7 +134,7 @@ async function main() {
 
 	app.get('/startup', handleStartup);
 	app.get('/health', handleHealthCheck(60_000, dlobProvider));
-
+	app.listen(8080);
 	logger.info('Orderbook delta tracker started successfully');
 }
 
@@ -143,8 +155,7 @@ async function recursiveTryCatch(f: () => void) {
 			await recursiveTryCatch(f);
 		});
 	} catch (e) {
-		console.log('in here');
-		console.error(e);
+		logger.error(e);
 		await sleep(15000);
 		await recursiveTryCatch(f);
 	}
