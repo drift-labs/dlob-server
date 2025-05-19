@@ -91,11 +91,12 @@ async function main() {
 
 	setInterval(() => {
 		perpMarkets
+			.filter((market) => market.marketIndex === 0)
 			.map(async (market) => {
 				// Manually rebuild dlob before applying indicative liq
 				await dlobSubscriber.updateDLOB();
 
-				await addIndicativeLiquidity(dlobSubscriber, market.marketIndex)
+				await addIndicativeLiquidity(dlobSubscriber, market.marketIndex);
 
 				const l2 = dlobSubscriber.getL2({
 					marketIndex: market.marketIndex,
