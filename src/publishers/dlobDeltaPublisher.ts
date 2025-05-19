@@ -21,6 +21,7 @@ const URL = process.env.URL ?? ENDPOINT.slice(0, ENDPOINT.lastIndexOf('/'));
 const TOKEN =
 	process.env.TOKEN ?? ENDPOINT.slice(ENDPOINT.lastIndexOf('/') + 1);
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
+const NUM_MARKETS_TO_PROCESS = parseInt(process.env.NUM_MARKETS_TO_PROCESS || "1", 10);
 
 const connection = new Connection(ENDPOINT, 'confirmed');
 const wallet = new Wallet(new Keypair());
@@ -91,9 +92,11 @@ async function main() {
 
 	setInterval(() => {
 		perpMarkets
-			.filter((market) => market.marketIndex === 0)
+		.sort((a, b) => a.marketIndex - b.marketIndex)
+        .slice(0, NUM_MARKETS_TO_PROCESS)
 			.map(async (market) => {
 				// Manually rebuild dlob before applying indicative liq
+				console.time(`index-${market.marketIndex}`)
 				await dlobSubscriber.updateDLOB();
 
 				await addIndicativeLiquidity(dlobSubscriber, market.marketIndex);
@@ -117,6 +120,7 @@ async function main() {
 					});
 					lastProcessedSlot.set(market.marketIndex, currentSlot);
 				}
+				console.timeEnd(`index-${market.marketIndex}`)
 			});
 	}, 200);
 
