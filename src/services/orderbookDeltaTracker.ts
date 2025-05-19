@@ -72,7 +72,7 @@ export const OrderbookDeltaTracker = (
 
 		if (hasDeltaChanges(delta)) {
 			await storeSnapshot(newOrderbook);
-			await publishDelta(delta, marketIndex);
+			await publishDelta(delta);
 		} else {
 			logger.info(`No changes detected for market ${marketIndex}`);
 		}
@@ -210,11 +210,11 @@ export const OrderbookDeltaTracker = (
 		orderbook: Orderbook
 	): Promise<void> => {
 		try {
-			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}_snapshot`;
+			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}_delta`;
 
-			const message = {
+			const message: OrderbookDelta = {
 				m: orderbook.marketIndex,
-				s: orderbook.slot,
+				slot: orderbook.slot,
 				t: Date.now(),
 				b: orderbook.bids.map((bid) => [bid.price, bid.size, bid.sources]),
 				a: orderbook.asks.map((ask) => [ask.price, ask.size, ask.sources]),
@@ -235,10 +235,9 @@ export const OrderbookDeltaTracker = (
 
 	const publishDelta = async (
 		delta: OrderbookDelta,
-		marketIndex: number
 	): Promise<void> => {
 		try {
-			const channel = `${redisClientPrefix}${redisChannelPrefix}${marketIndex}_delta`;
+			const channel = `${redisClientPrefix}${redisChannelPrefix}${delta.m}_delta`;
 
 			delta.f = false;
 
@@ -249,7 +248,7 @@ export const OrderbookDeltaTracker = (
 			const askChanges = delta.a.length;
 
 			logger.info(
-				`Published orderbook delta (${messageSize} bytes) for market ${marketIndex} with ${bidChanges} bid changes and ${askChanges} ask changes`
+				`Published orderbook delta (${messageSize} bytes) for market ${delta.m} with ${bidChanges} bid changes and ${askChanges} ask changes`
 			);
 		} catch (error) {
 			logger.error(`Failed to publish orderbook delta: ${error.message}`);

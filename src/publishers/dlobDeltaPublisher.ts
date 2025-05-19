@@ -21,7 +21,10 @@ const URL = process.env.URL ?? ENDPOINT.slice(0, ENDPOINT.lastIndexOf('/'));
 const TOKEN =
 	process.env.TOKEN ?? ENDPOINT.slice(ENDPOINT.lastIndexOf('/') + 1);
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
-const NUM_MARKETS_TO_PROCESS = parseInt(process.env.NUM_MARKETS_TO_PROCESS || "1", 10);
+const NUM_MARKETS_TO_PROCESS = parseInt(
+	process.env.NUM_MARKETS_TO_PROCESS || '1',
+	10
+);
 
 const connection = new Connection(ENDPOINT, 'confirmed');
 const wallet = new Wallet(new Keypair());
@@ -84,45 +87,71 @@ async function main() {
 		driftClient,
 		dlobSource: dlobProvider,
 		slotSource,
-		updateFrequency: 200, // Doesn't matter since we are not subscribing and will be handled before adding indicative liquidity
+		updateFrequency: 1000, // Doesn't matter since we are not subscribing and will be handled before adding indicative liquidity
 		protectedMakerView: true,
 	});
 
 	const lastProcessedSlot = new Map<number, number>();
 
-	setInterval(() => {
-		perpMarkets
-		.sort((a, b) => a.marketIndex - b.marketIndex)
-        .slice(0, NUM_MARKETS_TO_PROCESS)
-			.map(async (market) => {
-				// Manually rebuild dlob before applying indicative liq
-				console.time(`index-${market.marketIndex}`)
-				await dlobSubscriber.updateDLOB();
+	const processMarkets = async () => {
+		const marketsToProcess = perpMarkets
+			.sort((a, b) => a.marketIndex - b.marketIndex)
+			.slice(0, NUM_MARKETS_TO_PROCESS);
 
-				await addIndicativeLiquidity(dlobSubscriber, market.marketIndex);
+		await dlobSubscriber.updateDLOB();
 
-				const l2 = dlobSubscriber.getL2({
-					marketIndex: market.marketIndex,
-					marketType: { perp: {} },
-					depth: -1,
-					includeVamm: true,
-					numVammOrders: 100,
-				});
+		await Promise.all(
+			marketsToProcess.map(async (market) => {
+				const marketIndex = market.marketIndex;
+				console.time(`index-${marketIndex}`);
 
-				const l2Formatted = l2WithBNToStrings(l2);
-				const currentSlot = l2Formatted.slot;
-				const lastSlot = lastProcessedSlot.get(market.marketIndex) || 0;
+				try {
+					console.time(`update-indic-${marketIndex}`);
+					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
+					console.timeEnd(`update-indic-${marketIndex}`);
 
-				if (currentSlot > lastSlot) {
-					await processOrderbook({
-						...l2Formatted,
-						marketIndex: market.marketIndex,
+					console.time(`get-book-${marketIndex}`);
+					const l2 = dlobSubscriber.getL2({
+						marketIndex: marketIndex,
+						marketType: { perp: {} },
+						depth: -1,
+						includeVamm: true,
+						numVammOrders: 100,
 					});
-					lastProcessedSlot.set(market.marketIndex, currentSlot);
+					console.timeEnd(`get-book-${marketIndex}`);
+
+					const l2Formatted = l2WithBNToStrings(l2);
+					const currentSlot = l2Formatted.slot;
+					const lastSlot = lastProcessedSlot.get(marketIndex) || 0;
+
+					if (currentSlot > lastSlot) {
+						console.time(`process-book-${marketIndex}`);
+						await processOrderbook({
+							...l2Formatted,
+							marketIndex: marketIndex,
+						});
+						lastProcessedSlot.set(marketIndex, currentSlot);
+						console.timeEnd(`process-book-${marketIndex}`);
+					} else {
+						logger.info(
+							`Skipping market ${marketIndex} - no new data since slot ${lastSlot}`
+						);
+					}
+				} catch (error) {
+					logger.error(`Error processing market ${marketIndex}:`, error);
 				}
-				console.timeEnd(`index-${market.marketIndex}`)
-			});
-	}, 200);
+
+				console.timeEnd(`index-${marketIndex}`);
+			})
+		);
+	};
+
+	const scheduleNextRun = () => {
+		setTimeout(async () => {
+			await processMarkets();
+			scheduleNextRun();
+		}, 100);
+	};
 
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
@@ -137,6 +166,10 @@ async function main() {
 	app.get('/startup', handleStartup);
 	app.get('/health', handleHealthCheck(60_000, dlobProvider));
 	app.listen(8080);
+
+	// Start the processing loop
+	scheduleNextRun();
+
 	logger.info('Orderbook delta tracker started successfully');
 }
 
