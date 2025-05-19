@@ -3,6 +3,7 @@ import { RedisClient } from '@drift/common/clients';
 import {
 	BN,
 	DLOBSubscriber,
+	MarketType,
 	Order,
 	OrderStatus,
 	OrderTriggerCondition,
@@ -276,8 +277,6 @@ export const OrderbookDeltaTracker = (
 		dlobSubscriber: DLOBSubscriber,
 		marketIndex: number
 	) => {
-		dlobSubscriber.updateDLOB();
-
 		const mms = await indicativeQuotesRedisClient.smembers(
 			`market_mms_perp_${marketIndex}`
 		);
@@ -298,7 +297,7 @@ export const OrderbookDeltaTracker = (
 					orderId: 0,
 					slot: new BN(dlobSubscriber.slotSource.getSlot()),
 					marketIndex: marketIndex,
-					marketType: 'perp',
+					marketType: MarketType.PERP,
 					baseAssetAmount: ZERO,
 					immediateOrCancel: false,
 					direction: PositionDirection.LONG,

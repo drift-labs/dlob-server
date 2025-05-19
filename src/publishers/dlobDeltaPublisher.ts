@@ -83,44 +83,42 @@ async function main() {
 		driftClient,
 		dlobSource: dlobProvider,
 		slotSource,
-		updateFrequency: 1000,
+		updateFrequency: 200, // Doesn't matter since we are not subscribing and will be handled before adding indicative liquidity
 		protectedMakerView: true,
 	});
-
-	await dlobSubscriber.subscribe();
 
 	const lastProcessedSlot = new Map<number, number>();
 
 	setInterval(() => {
-		perpMarkets.map(async (market) => {
-			const l2 = dlobSubscriber.getL2({
-				marketIndex: market.marketIndex,
-				marketType: { perp: {} },
-				depth: -1,
-				includeVamm: true,
-				numVammOrders: 100,
-			});
+		perpMarkets
+			.filter((market) => market.marketIndex === 0)
+			.map(async (market) => {
+				// Manually rebuild dlob before applying indicative liq
+				await dlobSubscriber.updateDLOB();
 
-			const l2Formatted = l2WithBNToStrings(l2);
-			const currentSlot = l2Formatted.slot;
-			const lastSlot = lastProcessedSlot.get(market.marketIndex) || 0;
+				await addIndicativeLiquidity(dlobSubscriber, market.marketIndex)
 
-			if (currentSlot > lastSlot) {
-				processOrderbook({
-					...l2Formatted,
+				const l2 = dlobSubscriber.getL2({
 					marketIndex: market.marketIndex,
+					marketType: { perp: {} },
+					depth: -1,
+					includeVamm: true,
+					numVammOrders: 100,
 				});
-				lastProcessedSlot.set(market.marketIndex, currentSlot);
-			}
-		});
-	}, 200);
 
-	// Run the liquidity addition only every 1000ms (1 second)
-	setInterval(() => {
-		perpMarkets.map(async (market) => {
-			await addIndicativeLiquidity(dlobSubscriber, market.marketIndex);
-		});
-	}, 1000);
+				const l2Formatted = l2WithBNToStrings(l2);
+				const currentSlot = l2Formatted.slot;
+				const lastSlot = lastProcessedSlot.get(market.marketIndex) || 0;
+
+				if (currentSlot > lastSlot) {
+					await processOrderbook({
+						...l2Formatted,
+						marketIndex: market.marketIndex,
+					});
+					lastProcessedSlot.set(market.marketIndex, currentSlot);
+				}
+			});
+	}, 200);
 
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
@@ -141,19 +139,6 @@ async function main() {
 async function recursiveTryCatch(f: () => void) {
 	try {
 		await f();
-
-		process.on('uncaughtException', async (err) => {
-			logger.error(`Uncaught exception: ${err}`);
-			await sleep(15000);
-			await recursiveTryCatch(f);
-		});
-
-		process.on('unhandledRejection', async (reason) => {
-			console.log('rejection');
-			logger.error(`Unhandled rejection: ${reason}`);
-			await sleep(15000);
-			await recursiveTryCatch(f);
-		});
 	} catch (e) {
 		logger.error(e);
 		await sleep(15000);

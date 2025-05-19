@@ -206,7 +206,7 @@
 				background-color: #fd7e14;
 			}
 
-			.source-external {
+			.source-indicative {
 				background-color: #20c997;
 			}
 
@@ -411,12 +411,8 @@
 				<span>VAMM</span>
 			</div>
 			<div class="legend-item">
-				<div class="legend-color source-external"></div>
-				<span>External</span>
-			</div>
-			<div class="legend-item">
-				<div class="legend-color source-limit"></div>
-				<span>Limit</span>
+				<div class="legend-color source-indicative"></div>
+				<span>Indicative</span>
 			</div>
 		</div>
 
@@ -621,7 +617,7 @@
 				}
 			}
 
-			const wsUrl = 'ws://localhost:3000/ws';
+			const wsUrl = 'ws://localhost:3001/ws';
 			let socket;
 
 			function connectWebSocket() {
