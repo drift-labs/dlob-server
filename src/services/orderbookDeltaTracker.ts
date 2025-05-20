@@ -23,6 +23,15 @@ export interface Orderbook {
 	bids: OrderbookLevel[];
 	asks: OrderbookLevel[];
 	slot: number;
+	oracleData?: {
+		price: string;
+		slot: string;
+		confidence: string;
+		hasSufficientNumberOfDataPoints: boolean;
+		twap: string;
+		twapConfidence: string;
+		maxPrice?: string;
+	};
 }
 
 export interface OrderbookDelta {
@@ -32,6 +41,15 @@ export interface OrderbookDelta {
 	b: [string, string, Record<string, string>][];
 	a: [string, string, Record<string, string>][];
 	f?: boolean;
+	oracleData?: {
+		price: string;
+		slot: string;
+		confidence: string;
+		hasSufficientNumberOfDataPoints: boolean;
+		twap: string;
+		twapConfidence: string;
+		maxPrice?: string;
+	};
 }
 
 const INDICATIVE_QUOTES_PUBKEY = 'inDNdu3ML4vG5LNExqcwuCQtLcCU8KfK5YM2qYV3JJz';
@@ -87,6 +105,7 @@ export const OrderbookDeltaTracker = (
 			t: Date.now(),
 			b: [] as [string, string, Record<string, string>][],
 			a: [] as [string, string, Record<string, string>][],
+			oracleData: next.oracleData
 		};
 
 		const prevBidMap = new Map<
@@ -177,9 +196,34 @@ export const OrderbookDeltaTracker = (
 			(key) => sources2.hasOwnProperty(key) && sources1[key] === sources2[key]
 		);
 	};
+	
+	const isOracleEqual = (
+		oracle1?: { price: string; slot: string; confidence: string; twap: string; twapConfidence: string; hasSufficientNumberOfDataPoints: boolean; maxPrice?: string; },
+		oracle2?: { price: string; slot: string; confidence: string; twap: string; twapConfidence: string; hasSufficientNumberOfDataPoints: boolean; maxPrice?: string; }
+	): boolean => {
+		if (!oracle1 && !oracle2) return true;
+		if (!oracle1 || !oracle2) return false;
+     
+		return (
+			oracle1.price === oracle2.price &&
+			oracle1.slot === oracle2.slot &&
+			oracle1.confidence === oracle2.confidence &&
+			oracle1.twap === oracle2.twap &&
+			oracle1.twapConfidence === oracle2.twapConfidence &&
+			oracle1.hasSufficientNumberOfDataPoints === oracle2.hasSufficientNumberOfDataPoints &&
+			((!oracle1.maxPrice && !oracle2.maxPrice) || oracle1.maxPrice === oracle2.maxPrice)
+		);
+	};
 
 	const hasDeltaChanges = (delta: OrderbookDelta): boolean => {
-		return delta.b.length > 0 || delta.a.length > 0;
+		const hasOrderbookChanges = delta.b.length > 0 || delta.a.length > 0;
+     
+		const hasOracleChanges = 
+			delta.oracleData && 
+			(!currentOrderbooks.get(delta.m)?.oracleData || 
+			!isOracleEqual(currentOrderbooks.get(delta.m)?.oracleData, delta.oracleData));
+     
+		return hasOrderbookChanges || hasOracleChanges;
 	};
 
 	const storeSnapshot = async (orderbook: Orderbook): Promise<void> => {
@@ -191,6 +235,7 @@ export const OrderbookDeltaTracker = (
 				b: orderbook.bids.map((bid) => [bid.price, bid.size, bid.sources]),
 				a: orderbook.asks.map((ask) => [ask.price, ask.size, ask.sources]),
 				f: true,
+				oracleData: orderbook.oracleData
 			};
 
 			const snapshotKey = `${redisChannelPrefix}${orderbook.marketIndex}_snapshot`;
@@ -219,6 +264,7 @@ export const OrderbookDeltaTracker = (
 				b: orderbook.bids.map((bid) => [bid.price, bid.size, bid.sources]),
 				a: orderbook.asks.map((ask) => [ask.price, ask.size, ask.sources]),
 				f: true,
+				oracleData: orderbook.oracleData
 			};
 
 			await redisClient.publish(channel, message);
@@ -267,6 +313,7 @@ export const OrderbookDeltaTracker = (
 				sources: { ...level.sources },
 			})),
 			slot: orderbook.slot,
+			oracleData: orderbook.oracleData ? { ...orderbook.oracleData } : undefined
 		};
 	};
 
