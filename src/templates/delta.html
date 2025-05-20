@@ -45,6 +45,11 @@
 				color: white;
 			}
 
+			#slot-info {
+				background-color: #28a745;
+				color: white;
+			}
+
 			#bandwidth-counter {
 				background-color: #6f42c1;
 				color: white;
@@ -379,6 +384,7 @@
 			<div id="symbol-info">
 				<div id="market-name" class="market-data">Loading...</div>
 				<div id="oracle-price" class="market-data">Oracle: -</div>
+				<div id="slot-info" class="market-data">Slot: - | Diff: -</div>
 				<div id="bandwidth-counter" class="market-data">Bandwidth: 0 KB</div>
 				<div id="controls">
 					<div id="precision-control">
@@ -456,6 +462,7 @@
 			const spreadDisplay = document.getElementById('spread-display');
 			const marketNameDisplay = document.getElementById('market-name');
 			const oraclePriceDisplay = document.getElementById('oracle-price');
+			const slotInfoDisplay = document.getElementById('slot-info');
 			const bandwidthCounter = document.getElementById('bandwidth-counter');
 			const pricePrecisionSelect = document.getElementById('price-precision');
 			const toggleSourcesBtn = document.getElementById('toggle-sources');
@@ -466,6 +473,7 @@
 				bids: new Map(),
 				asks: new Map(),
 				slot: 0,
+				oracleSlot: 0
 			};
 
 			const previousState = {
@@ -475,6 +483,11 @@
 
 			let pricePrecision = 0.1;
 			let showSources = false;
+
+			// Add these variables for slot tracking
+			let lastSlotUpdateTime = Date.now();
+			let previousSlot = 0;
+			let slotUpdateTimes = [];
 
 			const PRICE_SCALE = 1000000;
 			const SIZE_SCALE = 1000000000;
@@ -616,8 +629,65 @@
 					lastBandwidthUpdateTime = now;
 				}
 			}
+            
+            function updateOracleDisplay(oracleData) {
+                if (!oracleData) return;
 
-			const wsUrl = 'wss://staging.dlob.drift.trade/ws';
+                const price = parseFloat(oracleData.price) / PRICE_SCALE;
+                const confidence = parseFloat(oracleData.confidence) / PRICE_SCALE;
+                const formattedPrice = price.toFixed(3);
+                const formattedConfidence = confidence.toFixed(6);
+                const oracleSlot = parseInt(oracleData.slot);
+                
+                oraclePriceDisplay.textContent = `Oracle: ${formattedPrice} ±${formattedConfidence}`;
+                oraclePriceDisplay.title = `Oracle price: ${price}\nConfidence: ${confidence}\nSlot: ${oracleData.slot}`;
+                
+                // Calculate slot difference between orderbook and oracle
+                if (previousSlot > 0 && oracleSlot > 0) {
+                    const slotDiff = previousSlot - oracleSlot;
+                    const diffText = slotDiff >= 0 ? `+${slotDiff}` : `${slotDiff}`;
+                    slotInfoDisplay.textContent = `Slot: ${previousSlot} | Oracle Diff: ${diffText}`;
+                }
+            }
+
+            function updateSlotInfo(slot) {
+                const now = Date.now();
+                
+                // Update slot rate calculation
+                slotUpdateTimes.push({
+                    time: now, 
+                    slot: slot
+                });
+                
+                // Keep only last 10 updates for rolling average
+                if (slotUpdateTimes.length > 10) {
+                    slotUpdateTimes.shift();
+                }
+                
+                // Calculate average slot arrival rate
+                let slotRateText = "";
+                if (slotUpdateTimes.length > 1) {
+                    const oldestUpdate = slotUpdateTimes[0];
+                    const timeSpan = (now - oldestUpdate.time) / 1000; // in seconds
+                    const slotSpan = slot - oldestUpdate.slot;
+                    
+                    if (timeSpan > 0) {
+                        const rate = slotSpan / timeSpan;
+                        slotRateText = ` | ${rate.toFixed(1)} slots/sec`;
+                    }
+                }
+                
+                // Oracle slot difference will be updated in updateOracleDisplay
+                // Just update basic slot info here if no oracle data is present
+                if (!slotInfoDisplay.textContent.includes("Oracle Diff")) {
+                    slotInfoDisplay.textContent = `Slot: ${slot}${slotRateText}`;
+                }
+                
+                previousSlot = slot;
+            }
+
+			// const wsUrl = 'wss://staging.dlob.drift.trade/ws';
+			const wsUrl = 'ws://localhost:3000/ws'
 			let socket;
 
 			function connectWebSocket() {
@@ -648,11 +718,15 @@
 
 						if (message) {
 							if (message.m !== undefined) {
-								const logMsg = `Orderbook: m=${message.m}, s=${message.s}, ${
+								const oracleSlotInfo = message.oracleData ? 
+									`, oracle=${(parseFloat(message.oracleData.price)/PRICE_SCALE).toFixed(3)} (slot ${message.oracleData.slot})` : '';
+								
+								const logMsg = `Orderbook: m=${message.m}, slot=${message.slot}, ${
 									message.b?.length || 0
 								} bids, ${message.a?.length || 0} asks, ${
 									message.f ? 'snapshot' : 'delta'
-								}`;
+								}${oracleSlotInfo}`;
+								
 								appendMessage('Data', logMsg);
 
 								if (message.f !== true) {
@@ -690,64 +764,73 @@
 				});
 			}
 
-			function processOrderbookData(message) {
-				const {
-					m: marketIndex,
-					s: slot,
-					t: timestamp,
-					b: bids,
-					a: asks,
-					f: isSnapshot,
-				} = message;
+				function processOrderbookData(message) {
+					const {
+						m: marketIndex,
+						slot,
+						t: timestamp,
+						b: bids,
+						a: asks,
+						f: isSnapshot,
+						oracleData
+					} = message;
 
-				marketNameDisplay.textContent = `SOL-PERP (${marketIndex})`;
+					marketNameDisplay.textContent = `SOL-PERP (${marketIndex})`;
 
-				if (slot <= orderbook.slot && !isSnapshot) {
-					return;
+					// Update slot information
+					updateSlotInfo(slot);
+
+					// Update oracle data display if available
+					if (oracleData) {
+						updateOracleDisplay(oracleData);
+					}
+
+					if (slot <= orderbook.slot && !isSnapshot) {
+						return;
+					}
+
+					orderbook.slot = slot;
+
+					if (isSnapshot) {
+						orderbook.bids.clear();
+						orderbook.asks.clear();
+						appendMessage('System', 'Received full orderbook snapshot');
+					}
+
+					if (bids && Array.isArray(bids)) {
+						bids.forEach(([price, size, sources]) => {
+							price = parseFloat(price);
+							size = parseFloat(size);
+
+							if (size === 0 || size === '0') {
+								orderbook.bids.delete(price);
+							} else {
+								orderbook.bids.set(price, {
+									size,
+									sources: sources || {},
+								});
+							}
+						});
+					}
+
+					if (asks && Array.isArray(asks)) {
+						asks.forEach(([price, size, sources]) => {
+							price = parseFloat(price);
+							size = parseFloat(size);
+
+							if (size === 0 || size === '0') {
+								orderbook.asks.delete(price);
+							} else {
+								orderbook.asks.set(price, {
+									size,
+									sources: sources || {},
+								});
+							}
+						});
+					}
+
+					renderOrderbook();
 				}
-
-				orderbook.slot = slot;
-
-				if (isSnapshot) {
-					orderbook.bids.clear();
-					orderbook.asks.clear();
-					appendMessage('System', 'Received full orderbook snapshot');
-				}
-
-				if (bids && Array.isArray(bids)) {
-					bids.forEach(([price, size, sources]) => {
-						price = parseFloat(price);
-						size = parseFloat(size);
-
-						if (size === 0 || size === '0') {
-							orderbook.bids.delete(price);
-						} else {
-							orderbook.bids.set(price, {
-								size,
-								sources: sources || {},
-							});
-						}
-					});
-				}
-
-				if (asks && Array.isArray(asks)) {
-					asks.forEach(([price, size, sources]) => {
-						price = parseFloat(price);
-						size = parseFloat(size);
-
-						if (size === 0 || size === '0') {
-							orderbook.asks.delete(price);
-						} else {
-							orderbook.asks.set(price, {
-								size,
-								sources: sources || {},
-							});
-						}
-					});
-				}
-
-				renderOrderbook();
-			}
 
 			function aggregatePrices(entries, side) {
 				const isAsk = side === 'ask';

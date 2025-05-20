@@ -3,6 +3,7 @@ import {
 	DLOBSubscriber,
 	DriftClient,
 	DriftEnv,
+	MarketType,
 	OrderSubscriber,
 	Wallet,
 } from '@drift-labs/sdk';
@@ -13,7 +14,7 @@ import express from 'express';
 
 import { OrderbookDeltaTracker } from '../services/orderbookDeltaTracker';
 import { getDLOBProviderFromOrderSubscriber } from '../dlobProvider';
-import { l2WithBNToStrings, sleep } from '../utils/utils';
+import { addOracletoResponse, l2WithBNToStrings, sleep } from '../utils/utils';
 import { handleHealthCheck } from '../core/metrics';
 
 const ENDPOINT = process.env.ENDPOINT;
@@ -93,38 +94,47 @@ async function main() {
 		await dlobSubscriber.updateDLOB();
 
 		await Promise.all(
-			perpMarkets.map(async (market) => {
-				const marketIndex = market.marketIndex;
-				try {
-					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
+			perpMarkets
+				.filter((market) => market.marketIndex === 0)
+				.map(async (market) => {
+					const marketIndex = market.marketIndex;
+					try {
+						await addIndicativeLiquidity(dlobSubscriber, marketIndex);
 
-					const l2 = dlobSubscriber.getL2({
-						marketIndex: marketIndex,
-						marketType: { perp: {} },
-						depth: -1,
-						includeVamm: true,
-						numVammOrders: 100,
-					});
-
-					const l2Formatted = l2WithBNToStrings(l2);
-					const currentSlot = l2Formatted.slot;
-					const lastSlot = lastProcessedSlot.get(marketIndex) || 0;
-
-					if (currentSlot > lastSlot) {
-						await processOrderbook({
-							...l2Formatted,
+						const l2 = dlobSubscriber.getL2({
 							marketIndex: marketIndex,
+							marketType: MarketType.PERP,
+							depth: -1,
+							includeVamm: true,
+							numVammOrders: 100,
 						});
-						lastProcessedSlot.set(marketIndex, currentSlot);
-					} else {
-						logger.info(
-							`Skipping market ${marketIndex} - no new data since slot ${lastSlot}`
+
+						const l2Formatted = l2WithBNToStrings(l2);
+						const currentSlot = l2Formatted.slot;
+						const lastSlot = lastProcessedSlot.get(marketIndex) || 0;
+
+						addOracletoResponse(
+							l2Formatted,
+							driftClient,
+							MarketType.PERP,
+							market.marketIndex
 						);
+
+						if (currentSlot > lastSlot) {
+							await processOrderbook({
+								...l2Formatted,
+								marketIndex: marketIndex,
+							});
+							lastProcessedSlot.set(marketIndex, currentSlot);
+						} else {
+							logger.info(
+								`Skipping market ${marketIndex} - no new data since slot ${lastSlot}`
+							);
+						}
+					} catch (error) {
+						logger.error(`Error processing market ${marketIndex}:`, error);
 					}
-				} catch (error) {
-					logger.error(`Error processing market ${marketIndex}:`, error);
-				}
-			})
+				})
 		);
 	};
 
