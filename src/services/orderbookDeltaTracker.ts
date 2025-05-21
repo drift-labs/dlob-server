@@ -56,11 +56,13 @@ const INDICATIVE_QUOTES_PUBKEY = 'inDNdu3ML4vG5LNExqcwuCQtLcCU8KfK5YM2qYV3JJz';
 
 export const OrderbookDeltaTracker = (
 	redisClient: RedisClient,
-	indicativeQuotesRedisClient: RedisClient
+	indicativeQuotesRedisClient: RedisClient,
+	marketType: MarketType = MarketType.PERP
 ) => {
 	const currentOrderbooks: Map<number, Orderbook> = new Map();
 	const redisClientPrefix = redisClient.getPrefix();
-	const redisChannelPrefix = `orderbook_perp_`;
+	const serialisedMarketType = marketType === MarketType.PERP ? 'perp': 'spot'
+	const redisChannelPrefix = `orderbook_${serialisedMarketType}_`;
 	const snapshotSent = new Set<number>();
 
 	const processOrderbook = async (newOrderbook: Orderbook): Promise<void> => {
@@ -91,8 +93,6 @@ export const OrderbookDeltaTracker = (
 		if (hasDeltaChanges(delta)) {
 			await storeSnapshot(newOrderbook);
 			await publishDelta(delta);
-		} else {
-			logger.info(`No changes detected for market ${marketIndex}`);
 		}
 
 		currentOrderbooks.set(marketIndex, deepCloneOrderbook(newOrderbook));
@@ -322,12 +322,12 @@ export const OrderbookDeltaTracker = (
 		marketIndex: number
 	) => {
 		const mms = await indicativeQuotesRedisClient.smembers(
-			`market_mms_perp_${marketIndex}`
+			`market_mms_${serialisedMarketType}_${marketIndex}`
 		);
 		const mmQuotes = await Promise.all(
 			mms.map((mm) => {
 				return indicativeQuotesRedisClient.get(
-					`mm_quotes_perp_${marketIndex}_${mm}`
+					`mm_quotes_${serialisedMarketType}_${marketIndex}_${mm}`
 				);
 			})
 		);
@@ -341,7 +341,7 @@ export const OrderbookDeltaTracker = (
 					orderId: 0,
 					slot: new BN(dlobSubscriber.slotSource.getSlot()),
 					marketIndex: marketIndex,
-					marketType: MarketType.PERP,
+					marketType,
 					baseAssetAmount: ZERO,
 					immediateOrCancel: false,
 					direction: PositionDirection.LONG,

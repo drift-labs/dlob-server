@@ -14,7 +14,11 @@ import express from 'express';
 
 import { OrderbookDeltaTracker } from '../services/orderbookDeltaTracker';
 import { getDLOBProviderFromOrderSubscriber } from '../dlobProvider';
-import { addOracletoResponse, l2WithBNToStrings, sleep } from '../utils/utils';
+import {
+	addOracletoResponse,
+	initializeAllMarketSubscribers,
+	l2WithBNToStrings,
+} from '../utils/utils';
 import { handleHealthCheck } from '../core/metrics';
 
 const ENDPOINT = process.env.ENDPOINT;
@@ -22,6 +26,7 @@ const URL = process.env.URL ?? ENDPOINT.slice(0, ENDPOINT.lastIndexOf('/'));
 const TOKEN =
 	process.env.TOKEN ?? ENDPOINT.slice(ENDPOINT.lastIndexOf('/') + 1);
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
+const MARKET_TYPE = process.env.MARKET_TYPE ?? 'perp';
 
 const connection = new Connection(ENDPOINT, 'confirmed');
 const wallet = new Wallet(new Keypair());
@@ -47,11 +52,22 @@ async function main() {
 	await indicativeRedisClient.connect();
 	await driftClient.subscribe();
 
-	const perpMarkets = await driftClient.getPerpMarketAccounts();
+	const marketType = MARKET_TYPE === 'perp' ? MarketType.PERP : MarketType.SPOT;
+
+	const markets =
+		marketType === MarketType.PERP
+			? await driftClient.getPerpMarketAccounts()
+			: await driftClient.getSpotMarketAccounts();
+
+	let MARKET_SUBSCRIBERS = {};
+	if (marketType === MarketType.SPOT) {
+		MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
+	}
 
 	const { processOrderbook, addIndicativeLiquidity } = OrderbookDeltaTracker(
 		redisClient,
-		indicativeRedisClient
+		indicativeRedisClient,
+		marketType
 	);
 
 	const orderSubscriber = new OrderSubscriber({
@@ -94,45 +110,43 @@ async function main() {
 		await dlobSubscriber.updateDLOB();
 
 		await Promise.all(
-			perpMarkets
-				.filter((market) => market.marketIndex === 0)
+			markets
 				.map(async (market) => {
 					const marketIndex = market.marketIndex;
-					try {
-						await addIndicativeLiquidity(dlobSubscriber, marketIndex);
+					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
 
-						const l2 = dlobSubscriber.getL2({
-							marketIndex: marketIndex,
-							marketType: MarketType.PERP,
-							depth: -1,
-							includeVamm: true,
-							numVammOrders: 100,
+					const l2 = dlobSubscriber.getL2({
+						marketIndex,
+						marketType,
+						depth: -1,
+						includeVamm: true,
+						numVammOrders: 100,
+						fallbackL2Generators:
+							marketType === MarketType.SPOT && MARKET_SUBSCRIBERS[marketIndex]
+								? [
+										MARKET_SUBSCRIBERS[marketIndex].phoenix,
+										MARKET_SUBSCRIBERS[marketIndex].openbook,
+								  ].filter((generator) => !!generator)
+								: undefined,
+					});
+
+					const l2Formatted = l2WithBNToStrings(l2);
+					const currentSlot = l2Formatted.slot;
+					const lastSlot = lastProcessedSlot.get(marketIndex) || 0;
+
+					addOracletoResponse(
+						l2Formatted,
+						driftClient,
+						marketType,
+						market.marketIndex
+					);
+
+					if (currentSlot > lastSlot) {
+						await processOrderbook({
+							...l2Formatted,
+							marketIndex,
 						});
-
-						const l2Formatted = l2WithBNToStrings(l2);
-						const currentSlot = l2Formatted.slot;
-						const lastSlot = lastProcessedSlot.get(marketIndex) || 0;
-
-						addOracletoResponse(
-							l2Formatted,
-							driftClient,
-							MarketType.PERP,
-							market.marketIndex
-						);
-
-						if (currentSlot > lastSlot) {
-							await processOrderbook({
-								...l2Formatted,
-								marketIndex: marketIndex,
-							});
-							lastProcessedSlot.set(marketIndex, currentSlot);
-						} else {
-							logger.info(
-								`Skipping market ${marketIndex} - no new data since slot ${lastSlot}`
-							);
-						}
-					} catch (error) {
-						logger.error(`Error processing market ${marketIndex}:`, error);
+						lastProcessedSlot.set(marketIndex, currentSlot);
 					}
 				})
 		);
@@ -162,17 +176,15 @@ async function main() {
 	// Start the processing loop
 	scheduleNextRun();
 
-	logger.info('Orderbook delta tracker started successfully');
+	logger.info(
+		`${
+			marketType === MarketType.PERP ? 'Perp' : 'Spot'
+		} market orderbook delta tracker started successfully`
+	);
 }
 
-async function recursiveTryCatch(f: () => void) {
-	try {
-		await f();
-	} catch (e) {
-		logger.error(e);
-		await sleep(15000);
-		await recursiveTryCatch(f);
-	}
-}
-
-recursiveTryCatch(() => main());
+main().catch(async (error) => {
+	const { message } = error;
+	await logger.error(`Unhandled error in main: ${message}`);
+	throw error;
+});

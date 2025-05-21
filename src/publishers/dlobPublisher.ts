@@ -13,11 +13,9 @@ import {
 	SlotSource,
 	DriftClientSubscriptionConfig,
 	SlotSubscriber,
-	isVariant,
 	OracleInfo,
 	PerpMarketConfig,
 	SpotMarketConfig,
-	PhoenixSubscriber,
 	MarketType,
 	OraclePriceData,
 } from '@drift-labs/sdk';
@@ -26,7 +24,7 @@ import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { logger, setLogLevel } from '../utils/logger';
 import {
 	SubscriberLookup,
-	getOpenbookSubscriber,
+	initializeAllMarketSubscribers,
 	l2WithBNToStrings,
 	parsePositiveIntArray,
 	sleep,
@@ -224,84 +222,6 @@ const getMarketsAndOraclesToLoad = (
 		spotMarketInfos,
 		oracleInfos,
 	};
-};
-
-const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
-	const markets: SubscriberLookup = {};
-
-	for (const market of driftClient.getSpotMarketAccounts()) {
-		markets[market.marketIndex] = {
-			phoenix: undefined,
-		};
-		const marketConfig = sdkConfig.SPOT_MARKETS[market.marketIndex];
-
-		if (marketConfig.phoenixMarket) {
-			const phoenixConfigAccount =
-				await driftClient.getPhoenixV1FulfillmentConfig(
-					marketConfig.phoenixMarket
-				);
-			if (isVariant(phoenixConfigAccount.status, 'enabled')) {
-				logger.info(
-					`Loading phoenix subscriber for spot market ${market.marketIndex}`
-				);
-				const bulkAccountLoader = new BulkAccountLoader(
-					driftClient.connection,
-					stateCommitment,
-					2_000
-				);
-				const phoenixSubscriber = new PhoenixSubscriber({
-					connection: driftClient.connection,
-					programId: new PublicKey(sdkConfig.PHOENIX),
-					marketAddress: phoenixConfigAccount.phoenixMarket,
-					accountSubscription: {
-						type: 'polling',
-						accountLoader: bulkAccountLoader,
-					},
-				});
-				await phoenixSubscriber.subscribe();
-				// Test get L2 to know if we should add
-				try {
-					phoenixSubscriber.getL2Asks();
-					phoenixSubscriber.getL2Bids();
-					markets[market.marketIndex].phoenix = phoenixSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
-
-		if (marketConfig.openbookMarket) {
-			const openbookMarketAccount =
-				await driftClient.getOpenbookV2FulfillmentConfig(
-					marketConfig.openbookMarket
-				);
-
-			if (isVariant(openbookMarketAccount.status, 'enabled')) {
-				logger.info(
-					`Loading openbook subscriber for spot market ${market.marketIndex}`
-				);
-				const openbookSubscriber = getOpenbookSubscriber(
-					driftClient,
-					marketConfig,
-					sdkConfig
-				);
-				await openbookSubscriber.subscribe();
-				try {
-					openbookSubscriber.getL2Asks();
-					openbookSubscriber.getL2Bids();
-					markets[market.marketIndex].openbook = openbookSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding openbook for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
-	}
-
-	return markets;
 };
 
 const main = async () => {

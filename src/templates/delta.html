@@ -215,8 +215,12 @@
 				background-color: #20c997;
 			}
 
-			.source-limit {
-				background-color: #e83e8c;
+			.source-phoenix {
+				background-color: #9c27b0;
+			}
+
+			.source-openbook {
+				background-color: #2196f3;
 			}
 
 			/* Source tooltip */
@@ -420,6 +424,14 @@
 				<div class="legend-color source-indicative"></div>
 				<span>Indicative</span>
 			</div>
+			<div class="legend-item">
+				<div class="legend-color source-phoenix"></div>
+				<span>Phoenix</span>
+			</div>
+			<div class="legend-item">
+				<div class="legend-color source-openbook"></div>
+				<span>Openbook</span>
+			</div>
 		</div>
 
 		<div id="orderbook-container">
@@ -473,7 +485,7 @@
 				bids: new Map(),
 				asks: new Map(),
 				slot: 0,
-				oracleSlot: 0
+				oracleSlot: 0,
 			};
 
 			const previousState = {
@@ -502,7 +514,9 @@
 					sourceLegend.classList.add('visible');
 				} else {
 					toggleSourcesBtn.textContent = 'Show Sources';
-					orderbookColumns.forEach((col) => col.classList.remove('source-view'));
+					orderbookColumns.forEach((col) =>
+						col.classList.remove('source-view')
+					);
 					sourceLegend.classList.remove('visible');
 				}
 
@@ -590,7 +604,10 @@
 			}
 
 			toggleLogBtn.addEventListener('click', () => {
-				if (messageBox.style.display === 'none' || messageBox.style.display === '') {
+				if (
+					messageBox.style.display === 'none' ||
+					messageBox.style.display === ''
+				) {
 					messageBox.style.display = 'block';
 					toggleLogBtn.textContent = 'Hide Log';
 				} else {
@@ -613,7 +630,9 @@
 				});
 
 				const cutoffTime = now - 5000;
-				bandwidthRecords = bandwidthRecords.filter((record) => record.time >= cutoffTime);
+				bandwidthRecords = bandwidthRecords.filter(
+					(record) => record.time >= cutoffTime
+				);
 
 				const bytesInPeriod = bandwidthRecords.reduce(
 					(sum, record) => sum + record.bytes,
@@ -629,65 +648,65 @@
 					lastBandwidthUpdateTime = now;
 				}
 			}
-            
-            function updateOracleDisplay(oracleData) {
-                if (!oracleData) return;
 
-                const price = parseFloat(oracleData.price) / PRICE_SCALE;
-                const confidence = parseFloat(oracleData.confidence) / PRICE_SCALE;
-                const formattedPrice = price.toFixed(3);
-                const formattedConfidence = confidence.toFixed(6);
-                const oracleSlot = parseInt(oracleData.slot);
-                
-                oraclePriceDisplay.textContent = `Oracle: ${formattedPrice} ±${formattedConfidence}`;
-                oraclePriceDisplay.title = `Oracle price: ${price}\nConfidence: ${confidence}\nSlot: ${oracleData.slot}`;
-                
-                // Calculate slot difference between orderbook and oracle
-                if (previousSlot > 0 && oracleSlot > 0) {
-                    const slotDiff = previousSlot - oracleSlot;
-                    const diffText = slotDiff >= 0 ? `+${slotDiff}` : `${slotDiff}`;
-                    slotInfoDisplay.textContent = `Slot: ${previousSlot} | Oracle Diff: ${diffText}`;
-                }
-            }
+			function updateOracleDisplay(oracleData) {
+				if (!oracleData) return;
 
-            function updateSlotInfo(slot) {
-                const now = Date.now();
-                
-                // Update slot rate calculation
-                slotUpdateTimes.push({
-                    time: now, 
-                    slot: slot
-                });
-                
-                // Keep only last 10 updates for rolling average
-                if (slotUpdateTimes.length > 10) {
-                    slotUpdateTimes.shift();
-                }
-                
-                // Calculate average slot arrival rate
-                let slotRateText = "";
-                if (slotUpdateTimes.length > 1) {
-                    const oldestUpdate = slotUpdateTimes[0];
-                    const timeSpan = (now - oldestUpdate.time) / 1000; // in seconds
-                    const slotSpan = slot - oldestUpdate.slot;
-                    
-                    if (timeSpan > 0) {
-                        const rate = slotSpan / timeSpan;
-                        slotRateText = ` | ${rate.toFixed(1)} slots/sec`;
-                    }
-                }
-                
-                // Oracle slot difference will be updated in updateOracleDisplay
-                // Just update basic slot info here if no oracle data is present
-                if (!slotInfoDisplay.textContent.includes("Oracle Diff")) {
-                    slotInfoDisplay.textContent = `Slot: ${slot}${slotRateText}`;
-                }
-                
-                previousSlot = slot;
-            }
+				const price = parseFloat(oracleData.price) / PRICE_SCALE;
+				const confidence = parseFloat(oracleData.confidence) / PRICE_SCALE;
+				const formattedPrice = price.toFixed(3);
+				const formattedConfidence = confidence.toFixed(6);
+				const oracleSlot = parseInt(oracleData.slot);
 
-			const wsUrl = 'wss://staging.dlob.drift.trade/ws';
-			// const wsUrl = 'ws://localhost:3000/ws'
+				oraclePriceDisplay.textContent = `Oracle: ${formattedPrice} ±${formattedConfidence}`;
+				oraclePriceDisplay.title = `Oracle price: ${price}\nConfidence: ${confidence}\nSlot: ${oracleData.slot}`;
+
+				// Calculate slot difference between orderbook and oracle
+				if (previousSlot > 0 && oracleSlot > 0) {
+					const slotDiff = previousSlot - oracleSlot;
+					const diffText = slotDiff >= 0 ? `+${slotDiff}` : `${slotDiff}`;
+					slotInfoDisplay.textContent = `Slot: ${previousSlot} | Oracle Diff: ${diffText}`;
+				}
+			}
+
+			function updateSlotInfo(slot) {
+				const now = Date.now();
+
+				// Update slot rate calculation
+				slotUpdateTimes.push({
+					time: now,
+					slot: slot,
+				});
+
+				// Keep only last 10 updates for rolling average
+				if (slotUpdateTimes.length > 10) {
+					slotUpdateTimes.shift();
+				}
+
+				// Calculate average slot arrival rate
+				let slotRateText = '';
+				if (slotUpdateTimes.length > 1) {
+					const oldestUpdate = slotUpdateTimes[0];
+					const timeSpan = (now - oldestUpdate.time) / 1000; // in seconds
+					const slotSpan = slot - oldestUpdate.slot;
+
+					if (timeSpan > 0) {
+						const rate = slotSpan / timeSpan;
+						slotRateText = ` | ${rate.toFixed(1)} slots/sec`;
+					}
+				}
+
+				// Oracle slot difference will be updated in updateOracleDisplay
+				// Just update basic slot info here if no oracle data is present
+				if (!slotInfoDisplay.textContent.includes('Oracle Diff')) {
+					slotInfoDisplay.textContent = `Slot: ${slot}${slotRateText}`;
+				}
+
+				previousSlot = slot;
+			}
+
+			// const wsUrl = 'wss://staging.dlob.drift.trade/ws';
+			const wsUrl = 'ws://localhost:3000/ws';
 			let socket;
 
 			function connectWebSocket() {
@@ -701,8 +720,8 @@
 					socket.send(
 						JSON.stringify({
 							channel: 'orderbook_delta',
-							market: 'SOL-PERP',
-							marketType: 'perp',
+							market: 'SOL',
+							marketType: 'spot',
 							type: 'subscribe',
 						})
 					);
@@ -718,15 +737,18 @@
 
 						if (message) {
 							if (message.m !== undefined) {
-								const oracleSlotInfo = message.oracleData ? 
-									`, oracle=${(parseFloat(message.oracleData.price)/PRICE_SCALE).toFixed(3)} (slot ${message.oracleData.slot})` : '';
-								
-								const logMsg = `Orderbook: m=${message.m}, slot=${message.slot}, ${
-									message.b?.length || 0
-								} bids, ${message.a?.length || 0} asks, ${
-									message.f ? 'snapshot' : 'delta'
-								}${oracleSlotInfo}`;
-								
+								const oracleSlotInfo = message.oracleData
+									? `, oracle=${(
+											parseFloat(message.oracleData.price) / PRICE_SCALE
+									  ).toFixed(3)} (slot ${message.oracleData.slot})`
+									: '';
+
+								const logMsg = `Orderbook: m=${message.m}, slot=${
+									message.slot
+								}, ${message.b?.length || 0} bids, ${
+									message.a?.length || 0
+								} asks, ${message.f ? 'snapshot' : 'delta'}${oracleSlotInfo}`;
+
 								appendMessage('Data', logMsg);
 
 								if (message.f !== true) {
@@ -764,73 +786,73 @@
 				});
 			}
 
-				function processOrderbookData(message) {
-					const {
-						m: marketIndex,
-						slot,
-						t: timestamp,
-						b: bids,
-						a: asks,
-						f: isSnapshot,
-						oracleData
-					} = message;
+			function processOrderbookData(message) {
+				const {
+					m: marketIndex,
+					slot,
+					t: timestamp,
+					b: bids,
+					a: asks,
+					f: isSnapshot,
+					oracleData,
+				} = message;
 
-					marketNameDisplay.textContent = `SOL-PERP (${marketIndex})`;
+				marketNameDisplay.textContent = `SOL-PERP (${marketIndex})`;
 
-					// Update slot information
-					updateSlotInfo(slot);
+				// Update slot information
+				updateSlotInfo(slot);
 
-					// Update oracle data display if available
-					if (oracleData) {
-						updateOracleDisplay(oracleData);
-					}
-
-					if (slot <= orderbook.slot && !isSnapshot) {
-						return;
-					}
-
-					orderbook.slot = slot;
-
-					if (isSnapshot) {
-						orderbook.bids.clear();
-						orderbook.asks.clear();
-						appendMessage('System', 'Received full orderbook snapshot');
-					}
-
-					if (bids && Array.isArray(bids)) {
-						bids.forEach(([price, size, sources]) => {
-							price = parseFloat(price);
-							size = parseFloat(size);
-
-							if (size === 0 || size === '0') {
-								orderbook.bids.delete(price);
-							} else {
-								orderbook.bids.set(price, {
-									size,
-									sources: sources || {},
-								});
-							}
-						});
-					}
-
-					if (asks && Array.isArray(asks)) {
-						asks.forEach(([price, size, sources]) => {
-							price = parseFloat(price);
-							size = parseFloat(size);
-
-							if (size === 0 || size === '0') {
-								orderbook.asks.delete(price);
-							} else {
-								orderbook.asks.set(price, {
-									size,
-									sources: sources || {},
-								});
-							}
-						});
-					}
-
-					renderOrderbook();
+				// Update oracle data display if available
+				if (oracleData) {
+					updateOracleDisplay(oracleData);
 				}
+
+				if (slot <= orderbook.slot && !isSnapshot) {
+					return;
+				}
+
+				orderbook.slot = slot;
+
+				if (isSnapshot) {
+					orderbook.bids.clear();
+					orderbook.asks.clear();
+					appendMessage('System', 'Received full orderbook snapshot');
+				}
+
+				if (bids && Array.isArray(bids)) {
+					bids.forEach(([price, size, sources]) => {
+						price = parseFloat(price);
+						size = parseFloat(size);
+
+						if (size === 0 || size === '0') {
+							orderbook.bids.delete(price);
+						} else {
+							orderbook.bids.set(price, {
+								size,
+								sources: sources || {},
+							});
+						}
+					});
+				}
+
+				if (asks && Array.isArray(asks)) {
+					asks.forEach(([price, size, sources]) => {
+						price = parseFloat(price);
+						size = parseFloat(size);
+
+						if (size === 0 || size === '0') {
+							orderbook.asks.delete(price);
+						} else {
+							orderbook.asks.set(price, {
+								size,
+								sources: sources || {},
+							});
+						}
+					});
+				}
+
+				renderOrderbook();
+			}
 
 			function aggregatePrices(entries, side) {
 				const isAsk = side === 'ask';
@@ -842,10 +864,12 @@
 					let bucketPrice, displayPrice;
 
 					if (isAsk) {
-						displayPrice = Math.ceil(rawPrice / pricePrecision) * pricePrecision;
+						displayPrice =
+							Math.ceil(rawPrice / pricePrecision) * pricePrecision;
 						bucketPrice = displayPrice;
 					} else {
-						displayPrice = Math.floor(rawPrice / pricePrecision) * pricePrecision;
+						displayPrice =
+							Math.floor(rawPrice / pricePrecision) * pricePrecision;
 						bucketPrice = displayPrice;
 					}
 
@@ -891,11 +915,15 @@
 				const tooltip = document.createElement('div');
 				tooltip.className = 'source-tooltip';
 
-				const sortedSources = Object.entries(sourcesData).sort(([, a], [, b]) => b - a);
+				const sortedSources = Object.entries(sourcesData).sort(
+					([, a], [, b]) => b - a
+				);
 
 				sortedSources.forEach(([sourceKey, sourceSize]) => {
 					const sourceSizeNormalized = parseFloat(sourceSize) / SIZE_SCALE;
-					const percentage = ((sourceSizeNormalized / totalSize) * 100).toFixed(1);
+					const percentage = ((sourceSizeNormalized / totalSize) * 100).toFixed(
+						1
+					);
 
 					tooltip.innerHTML += `${sourceKey}: ${sourceSizeNormalized.toFixed(
 						2
@@ -915,8 +943,14 @@
 			}
 
 			function renderOrderbook() {
-				const aggregatedBids = aggregatePrices([...orderbook.bids.entries()], 'bid');
-				const aggregatedAsks = aggregatePrices([...orderbook.asks.entries()], 'ask');
+				const aggregatedBids = aggregatePrices(
+					[...orderbook.bids.entries()],
+					'bid'
+				);
+				const aggregatedAsks = aggregatePrices(
+					[...orderbook.asks.entries()],
+					'ask'
+				);
 
 				const sortedBids = aggregatedBids.sort((a, b) => b[0] - a[0]);
 				const sortedAsks = aggregatedAsks.sort((a, b) => a[0] - b[0]);
@@ -937,7 +971,9 @@
 					const lowestAsk = sortedAsks[0][0] / PRICE_SCALE;
 					const spread = lowestAsk - highestBid;
 					const spreadPercent = ((spread / lowestAsk) * 100).toFixed(3);
-					spreadDisplay.textContent = `Spread: ${spread.toFixed(5)} (${spreadPercent}%)`;
+					spreadDisplay.textContent = `Spread: ${spread.toFixed(
+						5
+					)} (${spreadPercent}%)`;
 				} else {
 					spreadDisplay.textContent = 'Spread: -- (--)';
 				}
@@ -948,11 +984,14 @@
 			}
 
 			function getPreviousAggregatedSize(price, side) {
-				const previousMap = side === 'bid' ? previousState.bids : previousState.asks;
+				const previousMap =
+					side === 'bid' ? previousState.bids : previousState.asks;
 				let totalSize = 0;
 
 				const bucketLower =
-					Math.floor(price / PRICE_SCALE / pricePrecision) * pricePrecision * PRICE_SCALE;
+					Math.floor(price / PRICE_SCALE / pricePrecision) *
+					pricePrecision *
+					PRICE_SCALE;
 				const bucketUpper = bucketLower + pricePrecision * PRICE_SCALE;
 
 				previousMap.forEach((data, prevPrice) => {
@@ -964,7 +1003,12 @@
 				return totalSize / SIZE_SCALE;
 			}
 
-			function updateOrderbookRows(tableElement, sortedData, totalVolume, side) {
+			function updateOrderbookRows(
+				tableElement,
+				sortedData,
+				totalVolume,
+				side
+			) {
 				const isAsk = side === 'ask';
 				const rows = tableElement.querySelectorAll('.orderbook-row');
 
@@ -990,8 +1034,10 @@
 						const formattedTotal = cumulativeSize.toFixed(2);
 
 						const previousRowPrice = row.getAttribute('data-price');
-						const previousSizeCell = row.querySelector('.size-cell').textContent;
-						const previousTotalCell = row.querySelector('.total-cell').textContent;
+						const previousSizeCell =
+							row.querySelector('.size-cell').textContent;
+						const previousTotalCell =
+							row.querySelector('.total-cell').textContent;
 
 						row.querySelector('.price-cell').textContent = formattedPrice;
 						row.querySelector('.size-cell').textContent = formattedSize;
@@ -1020,15 +1066,21 @@
 						const depthBar = row.querySelector('.depth-bar');
 						let depthPercentage;
 						if (isAsk) {
-							depthPercentage = ((cumulativeSize / totalVolume) * 100).toFixed(2);
+							depthPercentage = ((cumulativeSize / totalVolume) * 100).toFixed(
+								2
+							);
 						} else {
-							depthPercentage = ((cumulativeSize / totalVolume) * 100).toFixed(2);
+							depthPercentage = ((cumulativeSize / totalVolume) * 100).toFixed(
+								2
+							);
 						}
 						depthBar.style.width = `${Math.min(100, depthPercentage)}%`;
 
 						if (
-							(previousSizeCell !== '-' && previousSizeCell !== formattedSize) ||
-							(previousTotalCell !== '-' && previousTotalCell !== formattedTotal)
+							(previousSizeCell !== '-' &&
+								previousSizeCell !== formattedSize) ||
+							(previousTotalCell !== '-' &&
+								previousTotalCell !== formattedTotal)
 						) {
 							depthBar.classList.add('depth-highlight');
 						}
