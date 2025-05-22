@@ -27,6 +27,7 @@ const TOKEN =
 	process.env.TOKEN ?? ENDPOINT.slice(ENDPOINT.lastIndexOf('/') + 1);
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
 const MARKET_TYPE = process.env.MARKET_TYPE ?? 'perp';
+const PUBLISH_DIFFS = process.env.PUBLISH_DIFFS === 'true' ?? false;
 
 const connection = new Connection(ENDPOINT, 'confirmed');
 const wallet = new Wallet(new Keypair());
@@ -64,11 +65,12 @@ async function main() {
 		MARKET_SUBSCRIBERS = await initializeAllMarketSubscribers(driftClient);
 	}
 
-	const { processOrderbook, addIndicativeLiquidity } = OrderbookDeltaTracker(
+	const { processOrderbook, addIndicativeLiquidity } = OrderbookDeltaTracker({
 		redisClient,
 		indicativeRedisClient,
-		marketType
-	);
+		marketType,
+		publishDiffs: PUBLISH_DIFFS,
+	});
 
 	const orderSubscriber = new OrderSubscriber({
 		driftClient,
@@ -111,10 +113,9 @@ async function main() {
 
 		await Promise.all(
 			markets
-			//@ts-ignore
-				.filter(market => market.marketIndex === 0)
+				//@ts-ignore
+				.filter((market) => market.marketIndex === 0)
 				.map(async (market) => {
-					console.time('start')
 					const marketIndex = market.marketIndex;
 					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
 
@@ -151,16 +152,18 @@ async function main() {
 						});
 						lastProcessedSlot.set(marketIndex, currentSlot);
 					}
-					console.timeEnd('start')
 				})
 		);
 	};
 
 	const scheduleNextRun = () => {
-		setTimeout(async () => {
-			await processMarkets();
-			scheduleNextRun();
-		}, 100);
+		setTimeout(
+			async () => {
+				await processMarkets();
+				scheduleNextRun();
+			},
+			PUBLISH_DIFFS ? 100 : 1000
+		);
 	};
 
 	const handleStartup = async (_req, res, _next) => {

@@ -12,13 +12,13 @@ import {
 	ZERO,
 } from '@drift-labs/sdk';
 
-export interface OrderbookLevel {
+interface OrderbookLevel {
 	price: string;
 	size: string;
 	sources: Record<string, string>;
 }
 
-export interface Orderbook {
+interface Orderbook {
 	marketIndex: number;
 	bids: OrderbookLevel[];
 	asks: OrderbookLevel[];
@@ -34,7 +34,7 @@ export interface Orderbook {
 	};
 }
 
-export interface OrderbookDelta {
+interface OrderbookDelta {
 	m: number;
 	slot: number;
 	t: number;
@@ -55,17 +55,23 @@ export interface OrderbookDelta {
 
 const INDICATIVE_QUOTES_PUBKEY = 'inDNdu3ML4vG5LNExqcwuCQtLcCU8KfK5YM2qYV3JJz';
 
-export const OrderbookDeltaTracker = (
-	redisClient: RedisClient,
-	indicativeQuotesRedisClient: RedisClient,
-	marketType: MarketType = MarketType.PERP
-) => {
+export const OrderbookDeltaTracker = ({
+	redisClient,
+	indicativeRedisClient,
+	marketType = MarketType.PERP,
+	publishDiffs = false,
+}: {
+	redisClient: RedisClient;
+	indicativeRedisClient: RedisClient;
+	marketType: MarketType;
+	publishDiffs: boolean;
+}) => {
 	const currentOrderbooks: Map<number, Orderbook> = new Map();
 	const redisClientPrefix = redisClient.getPrefix();
-	const serialisedMarketType = marketType === MarketType.PERP ? 'perp': 'spot'
+	const serialisedMarketType = marketType === MarketType.PERP ? 'perp' : 'spot';
 	const redisChannelPrefix = `orderbook_${serialisedMarketType}_`;
 	const snapshotSent = new Set<number>();
-	
+
 	const sequenceNumbers: Map<number, number> = new Map();
 
 	const processOrderbook = async (newOrderbook: Orderbook): Promise<void> => {
@@ -74,13 +80,15 @@ export const OrderbookDeltaTracker = (
 
 		if (!currentOrderbook) {
 			getNextSequence(marketIndex);
-
 			currentOrderbooks.set(marketIndex, deepCloneOrderbook(newOrderbook));
-
 			await storeSnapshot(newOrderbook);
 
 			if (!snapshotSent.has(marketIndex)) {
-				await publishInitialSnapshot(newOrderbook);
+				if (!publishDiffs) {
+					await publishBook(newOrderbook);
+				} else {
+					await publishInitialSnapshot(newOrderbook);
+				}
 				snapshotSent.add(marketIndex);
 			}
 			return;
@@ -98,7 +106,12 @@ export const OrderbookDeltaTracker = (
 		if (hasDeltaChanges(delta)) {
 			getNextSequence(marketIndex);
 			await storeSnapshot(newOrderbook);
-			await publishDelta(delta);
+
+			if (publishDiffs) {
+				await publishDelta(delta);
+			} else {
+				await publishBook(newOrderbook);
+			}
 		}
 
 		currentOrderbooks.set(marketIndex, deepCloneOrderbook(newOrderbook));
@@ -111,7 +124,7 @@ export const OrderbookDeltaTracker = (
 			t: Date.now(),
 			b: [] as [string, string, Record<string, string>][],
 			a: [] as [string, string, Record<string, string>][],
-			oracleData: next.oracleData
+			oracleData: next.oracleData,
 		};
 
 		const prevBidMap = new Map<
@@ -202,40 +215,61 @@ export const OrderbookDeltaTracker = (
 			(key) => sources2.hasOwnProperty(key) && sources1[key] === sources2[key]
 		);
 	};
-	
+
 	const isOracleEqual = (
-		oracle1?: { price: string; slot: string; confidence: string; twap: string; twapConfidence: string; hasSufficientNumberOfDataPoints: boolean; maxPrice?: string; },
-		oracle2?: { price: string; slot: string; confidence: string; twap: string; twapConfidence: string; hasSufficientNumberOfDataPoints: boolean; maxPrice?: string; }
+		oracle1?: {
+			price: string;
+			slot: string;
+			confidence: string;
+			twap: string;
+			twapConfidence: string;
+			hasSufficientNumberOfDataPoints: boolean;
+			maxPrice?: string;
+		},
+		oracle2?: {
+			price: string;
+			slot: string;
+			confidence: string;
+			twap: string;
+			twapConfidence: string;
+			hasSufficientNumberOfDataPoints: boolean;
+			maxPrice?: string;
+		}
 	): boolean => {
 		if (!oracle1 && !oracle2) return true;
 		if (!oracle1 || !oracle2) return false;
-     
+
 		return (
 			oracle1.price === oracle2.price &&
 			oracle1.slot === oracle2.slot &&
 			oracle1.confidence === oracle2.confidence &&
 			oracle1.twap === oracle2.twap &&
 			oracle1.twapConfidence === oracle2.twapConfidence &&
-			oracle1.hasSufficientNumberOfDataPoints === oracle2.hasSufficientNumberOfDataPoints &&
-			((!oracle1.maxPrice && !oracle2.maxPrice) || oracle1.maxPrice === oracle2.maxPrice)
+			oracle1.hasSufficientNumberOfDataPoints ===
+				oracle2.hasSufficientNumberOfDataPoints &&
+			((!oracle1.maxPrice && !oracle2.maxPrice) ||
+				oracle1.maxPrice === oracle2.maxPrice)
 		);
 	};
 
 	const hasDeltaChanges = (delta: OrderbookDelta): boolean => {
 		const hasOrderbookChanges = delta.b.length > 0 || delta.a.length > 0;
-     
-		const hasOracleChanges = 
-			delta.oracleData && 
-			(!currentOrderbooks.get(delta.m)?.oracleData || 
-			!isOracleEqual(currentOrderbooks.get(delta.m)?.oracleData, delta.oracleData));
-     
+
+		const hasOracleChanges =
+			delta.oracleData &&
+			(!currentOrderbooks.get(delta.m)?.oracleData ||
+				!isOracleEqual(
+					currentOrderbooks.get(delta.m)?.oracleData,
+					delta.oracleData
+				));
+
 		return hasOrderbookChanges || hasOracleChanges;
 	};
 
 	const storeSnapshot = async (orderbook: Orderbook): Promise<void> => {
 		try {
 			const seq = getCurrentSequence(orderbook.marketIndex);
-			
+
 			const message: OrderbookDelta = {
 				m: orderbook.marketIndex,
 				slot: orderbook.slot,
@@ -244,7 +278,7 @@ export const OrderbookDeltaTracker = (
 				a: orderbook.asks.map((ask) => [ask.price, ask.size, ask.sources]),
 				f: true,
 				seq,
-				oracleData: orderbook.oracleData
+				oracleData: orderbook.oracleData,
 			};
 
 			const snapshotKey = `${redisChannelPrefix}${orderbook.marketIndex}_snapshot`;
@@ -265,7 +299,7 @@ export const OrderbookDeltaTracker = (
 	): Promise<void> => {
 		try {
 			const seq = getCurrentSequence(orderbook.marketIndex);
-			
+
 			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}_delta`;
 
 			const message: OrderbookDelta = {
@@ -276,7 +310,7 @@ export const OrderbookDeltaTracker = (
 				a: orderbook.asks.map((ask) => [ask.price, ask.size, ask.sources]),
 				f: true,
 				seq,
-				oracleData: orderbook.oracleData
+				oracleData: orderbook.oracleData,
 			};
 
 			await redisClient.publish(channel, message);
@@ -294,11 +328,11 @@ export const OrderbookDeltaTracker = (
 	const publishDelta = async (delta: OrderbookDelta): Promise<void> => {
 		try {
 			const seq = getCurrentSequence(delta.m);
-			
+
 			const channel = `${redisClientPrefix}${redisChannelPrefix}${delta.m}_delta`;
 
 			delta.f = false;
-			delta.seq = seq; 
+			delta.seq = seq;
 
 			await redisClient.publish(channel, delta);
 
@@ -309,6 +343,15 @@ export const OrderbookDeltaTracker = (
 			logger.info(
 				`Published orderbook delta #${seq} (${messageSize} bytes) for market ${delta.m} with ${bidChanges} bid changes and ${askChanges} ask changes`
 			);
+		} catch (error) {
+			logger.error(`Failed to publish orderbook delta: ${error.message}`);
+		}
+	};
+
+	const publishBook = async (orderbook: Orderbook): Promise<void> => {
+		try {
+			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}`;
+			await redisClient.publish(channel, orderbook);
 		} catch (error) {
 			logger.error(`Failed to publish orderbook delta: ${error.message}`);
 		}
@@ -328,7 +371,9 @@ export const OrderbookDeltaTracker = (
 				sources: { ...level.sources },
 			})),
 			slot: orderbook.slot,
-			oracleData: orderbook.oracleData ? { ...orderbook.oracleData } : undefined
+			oracleData: orderbook.oracleData
+				? { ...orderbook.oracleData }
+				: undefined,
 		};
 	};
 
@@ -336,12 +381,12 @@ export const OrderbookDeltaTracker = (
 		dlobSubscriber: DLOBSubscriber,
 		marketIndex: number
 	) => {
-		const mms = await indicativeQuotesRedisClient.smembers(
+		const mms = await indicativeRedisClient.smembers(
 			`market_mms_${serialisedMarketType}_${marketIndex}`
 		);
 		const mmQuotes = await Promise.all(
 			mms.map((mm) => {
-				return indicativeQuotesRedisClient.get(
+				return indicativeRedisClient.get(
 					`mm_quotes_${serialisedMarketType}_${marketIndex}_${mm}`
 				);
 			})
@@ -417,7 +462,7 @@ export const OrderbookDeltaTracker = (
 			}
 		});
 	};
-	
+
 	const getCurrentSequence = (marketIndex: number): number => {
 		return sequenceNumbers.get(marketIndex) || 0;
 	};
@@ -428,7 +473,6 @@ export const OrderbookDeltaTracker = (
 		sequenceNumbers.set(marketIndex, nextSeq);
 		return nextSeq;
 	};
-
 
 	return {
 		processOrderbook,
