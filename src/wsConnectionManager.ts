@@ -136,7 +136,7 @@ async function main() {
 			const channelPrefix = getChannelPrefix(sanitizedChannel);
 			const subscribers = channelSubscribers.get(sanitizedChannel);
 			if (subscribers) {
-				 if (sanitizedChannel.includes('orderbook')) {
+				if (sanitizedChannel.includes('orderbook')) {
 					const messageSlot = JSON.parse(message)['slot'];
 					wsOrderbookSourceLastSlotGauge.set(
 						{
@@ -162,7 +162,7 @@ async function main() {
 							source: channelPrefix,
 						});
 
-						if(sanitizedChannel.includes('delta')) {
+						if (sanitizedChannel.includes('delta')) {
 							ws.send(
 								JSON.stringify({
 									channel: sanitizedChannel,
@@ -170,7 +170,6 @@ async function main() {
 								})
 							);
 						} else {
-
 							ws.send(
 								JSON.stringify({
 									channel: sanitizedChannel,
@@ -289,7 +288,7 @@ async function main() {
 						const lastMessage = selectMostRecentBySlot(lastMessages);
 						if (lastMessage) {
 							ws.send(
-								JSON.stringify({channel: redisChannel, data: lastMessage})
+								JSON.stringify({ channel: redisChannel, data: lastMessage })
 							);
 						}
 					} else if (redisChannel.includes('orderbook')) {
@@ -348,6 +347,53 @@ async function main() {
 					}
 					break;
 				}
+
+				case 'snapshot': {
+					let redisChannel: string;
+					try {
+						redisChannel = getRedisChannelFromMessage(parsedMessage);
+					} catch (error) {
+						const requestChannel = sanitiseChannelForClient(
+							parsedMessage?.channel
+						);
+						if (requestChannel) {
+							ws.send(
+								JSON.stringify({
+									channel: requestChannel,
+									error: 'Error retrieving snapshots',
+								})
+							);
+						} else {
+							ws.close(
+								1003,
+								JSON.stringify({
+									error: 'Error retrieving snapshots',
+								})
+							);
+						}
+						return;
+					}
+
+					const snapshots = await Promise.all(
+						lastMessageClients.map((redisClient) =>
+							redisClient.getRaw(redisChannel.replace('delta', 'snapshot'))
+						)
+					);
+
+					const snapshot = selectMostRecentBySlot(snapshots);
+
+					if (snapshot) {
+						ws.send(
+							JSON.stringify({
+								channel: redisChannel,
+								data: snapshot,
+							})
+						);
+					}
+
+					break;
+				}
+
 				case undefined:
 				default:
 					break;

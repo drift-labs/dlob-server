@@ -111,7 +111,10 @@ async function main() {
 
 		await Promise.all(
 			markets
+			//@ts-ignore
+				.filter(market => market.marketIndex === 0)
 				.map(async (market) => {
+					console.time('start')
 					const marketIndex = market.marketIndex;
 					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
 
@@ -148,6 +151,7 @@ async function main() {
 						});
 						lastProcessedSlot.set(marketIndex, currentSlot);
 					}
+					console.timeEnd('start')
 				})
 		);
 	};
