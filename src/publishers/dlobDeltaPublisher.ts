@@ -27,7 +27,7 @@ const TOKEN =
 	process.env.TOKEN ?? ENDPOINT.slice(ENDPOINT.lastIndexOf('/') + 1);
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
 const MARKET_TYPE = process.env.MARKET_TYPE ?? 'perp';
-const PUBLISH_DIFFS = process.env.PUBLISH_DIFFS === 'true' ?? false;
+const PUBLISH_DIFFS = process.env.PUBLISH_DIFFS === 'true';
 
 const connection = new Connection(ENDPOINT, 'confirmed');
 const wallet = new Wallet(new Keypair());

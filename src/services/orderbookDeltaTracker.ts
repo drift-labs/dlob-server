@@ -37,11 +37,11 @@ interface Orderbook {
 interface OrderbookDelta {
 	m: number;
 	slot: number;
+	startSlot: number;
 	t: number;
 	b: [string, string, Record<string, string>][];
 	a: [string, string, Record<string, string>][];
 	f?: boolean;
-	seq?: number;
 	oracleData?: {
 		price: string;
 		slot: string;
@@ -72,14 +72,17 @@ export const OrderbookDeltaTracker = ({
 	const redisChannelPrefix = `orderbook_${serialisedMarketType}_`;
 	const snapshotSent = new Set<number>();
 
-	const sequenceNumbers: Map<number, number> = new Map();
+	const lastPublishedSlots: Map<number, number> = new Map();
 
 	const processOrderbook = async (newOrderbook: Orderbook): Promise<void> => {
 		const { marketIndex } = newOrderbook;
 		const currentOrderbook = currentOrderbooks.get(marketIndex);
+		
+		if (!lastPublishedSlots.has(marketIndex)) {
+			lastPublishedSlots.set(marketIndex, 0);
+		}
 
 		if (!currentOrderbook) {
-			getNextSequence(marketIndex);
 			currentOrderbooks.set(marketIndex, deepCloneOrderbook(newOrderbook));
 			await storeSnapshot(newOrderbook);
 
@@ -89,7 +92,9 @@ export const OrderbookDeltaTracker = ({
 				} else {
 					await publishInitialSnapshot(newOrderbook);
 				}
+
 				snapshotSent.add(marketIndex);
+				lastPublishedSlots.set(marketIndex, newOrderbook.slot);
 			}
 			return;
 		}
@@ -104,14 +109,18 @@ export const OrderbookDeltaTracker = ({
 		const delta = computeDelta(currentOrderbook, newOrderbook);
 
 		if (hasDeltaChanges(delta)) {
-			getNextSequence(marketIndex);
 			await storeSnapshot(newOrderbook);
 
+			const lastPublishedSlot = lastPublishedSlots.get(marketIndex) || 0;
+			delta.startSlot = lastPublishedSlot;
+			
 			if (publishDiffs) {
 				await publishDelta(delta);
 			} else {
 				await publishBook(newOrderbook);
 			}
+			
+			lastPublishedSlots.set(marketIndex, newOrderbook.slot);
 		}
 
 		currentOrderbooks.set(marketIndex, deepCloneOrderbook(newOrderbook));
@@ -121,6 +130,7 @@ export const OrderbookDeltaTracker = ({
 		const delta: OrderbookDelta = {
 			m: next.marketIndex,
 			slot: next.slot,
+			startSlot: prev.slot,
 			t: Date.now(),
 			b: [] as [string, string, Record<string, string>][],
 			a: [] as [string, string, Record<string, string>][],
@@ -268,16 +278,16 @@ export const OrderbookDeltaTracker = ({
 
 	const storeSnapshot = async (orderbook: Orderbook): Promise<void> => {
 		try {
-			const seq = getCurrentSequence(orderbook.marketIndex);
+			const lastPublishedSlot = lastPublishedSlots.get(orderbook.marketIndex) || 0;
 
 			const message: OrderbookDelta = {
 				m: orderbook.marketIndex,
 				slot: orderbook.slot,
+				startSlot: lastPublishedSlot,
 				t: Date.now(),
 				b: orderbook.bids.map((bid) => [bid.price, bid.size, bid.sources]),
 				a: orderbook.asks.map((ask) => [ask.price, ask.size, ask.sources]),
 				f: true,
-				seq,
 				oracleData: orderbook.oracleData,
 			};
 
@@ -287,7 +297,7 @@ export const OrderbookDeltaTracker = ({
 				.setex(snapshotKey, 3600, JSON.stringify(message));
 
 			logger.info(
-				`Stored orderbook snapshot #${seq} in Redis for market ${orderbook.marketIndex}, slot ${orderbook.slot}`
+				`Stored orderbook snapshot in Redis for market ${orderbook.marketIndex}, slot ${orderbook.slot}, startSlot ${lastPublishedSlot}`
 			);
 		} catch (error) {
 			logger.error(`Failed to store orderbook snapshot: ${error.message}`);
@@ -298,25 +308,25 @@ export const OrderbookDeltaTracker = ({
 		orderbook: Orderbook
 	): Promise<void> => {
 		try {
-			const seq = getCurrentSequence(orderbook.marketIndex);
+			const lastPublishedSlot = lastPublishedSlots.get(orderbook.marketIndex) || 0;
 
 			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}_delta`;
 
 			const message: OrderbookDelta = {
 				m: orderbook.marketIndex,
 				slot: orderbook.slot,
+				startSlot: lastPublishedSlot,
 				t: Date.now(),
 				b: orderbook.bids.map((bid) => [bid.price, bid.size, bid.sources]),
 				a: orderbook.asks.map((ask) => [ask.price, ask.size, ask.sources]),
 				f: true,
-				seq,
 				oracleData: orderbook.oracleData,
 			};
 
 			await redisClient.publish(channel, message);
 
 			logger.info(
-				`Published INITIAL orderbook snapshot #${seq} for market ${orderbook.marketIndex}, slot ${orderbook.slot}`
+				`Published INITIAL orderbook snapshot for market ${orderbook.marketIndex}, slot ${orderbook.slot}, startSlot ${lastPublishedSlot}`
 			);
 		} catch (error) {
 			logger.error(
@@ -327,12 +337,9 @@ export const OrderbookDeltaTracker = ({
 
 	const publishDelta = async (delta: OrderbookDelta): Promise<void> => {
 		try {
-			const seq = getCurrentSequence(delta.m);
-
 			const channel = `${redisClientPrefix}${redisChannelPrefix}${delta.m}_delta`;
 
 			delta.f = false;
-			delta.seq = seq;
 
 			await redisClient.publish(channel, delta);
 
@@ -341,7 +348,7 @@ export const OrderbookDeltaTracker = ({
 			const askChanges = delta.a.length;
 
 			logger.info(
-				`Published orderbook delta #${seq} (${messageSize} bytes) for market ${delta.m} with ${bidChanges} bid changes and ${askChanges} ask changes`
+				`Published orderbook delta (${messageSize} bytes) for market ${delta.m} with ${bidChanges} bid changes and ${askChanges} ask changes, slot range: ${delta.startSlot} -> ${delta.slot}`
 			);
 		} catch (error) {
 			logger.error(`Failed to publish orderbook delta: ${error.message}`);
@@ -461,17 +468,6 @@ export const OrderbookDeltaTracker = ({
 				}
 			}
 		});
-	};
-
-	const getCurrentSequence = (marketIndex: number): number => {
-		return sequenceNumbers.get(marketIndex) || 0;
-	};
-
-	const getNextSequence = (marketIndex: number): number => {
-		const currentSeq = sequenceNumbers.get(marketIndex) || 0;
-		const nextSeq = currentSeq + 1;
-		sequenceNumbers.set(marketIndex, nextSeq);
-		return nextSeq;
 	};
 
 	return {

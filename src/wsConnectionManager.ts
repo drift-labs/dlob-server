@@ -374,21 +374,25 @@ async function main() {
 						return;
 					}
 
-					const snapshots = await Promise.all(
-						lastMessageClients.map((redisClient) =>
-							redisClient.getRaw(redisChannel.replace('delta', 'snapshot'))
-						)
-					);
-
-					const snapshot = selectMostRecentBySlot(snapshots);
-
-					if (snapshot) {
-						ws.send(
-							JSON.stringify({
-								channel: redisChannel,
-								data: snapshot,
-							})
+					try {
+						const snapshots = await Promise.all(
+							lastMessageClients.map((redisClient) =>
+								redisClient.getRaw(redisChannel.replace('delta', 'snapshot'))
+							)
 						);
+	
+						const snapshot = selectMostRecentBySlot(snapshots);
+	
+						if (snapshot) {
+							ws.send(
+								JSON.stringify({
+									channel: redisChannel,
+									data: snapshot,
+								})
+							);
+						}
+					} catch(error) {
+						console.error(error)
 					}
 
 					break;

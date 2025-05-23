@@ -50,7 +50,12 @@
 				color: white;
 			}
 
-			#sequence-info {
+			#slot-range-info {
+				background-color: #20c997;
+				color: white;
+			}
+
+			#slot-gap-info {
 				background-color: #fd7e14;
 				color: white;
 			}
@@ -404,7 +409,7 @@
 				color: #fd7e14;
 			}
 
-			.sequence-gap {
+			.slot-gap {
 				animation: pulse 1.5s infinite;
 			}
 
@@ -456,16 +461,17 @@
 			<div id="symbol-info">
 				<div id="market-name" class="market-data">Loading...</div>
 				<div id="oracle-price" class="market-data">Oracle: -</div>
-				<div id="slot-info" class="market-data">Slot: - | Diff: -</div>
-				<div id="sequence-info" class="market-data">Seq: - | Gaps: 0</div>
+				<div id="slot-info" class="market-data">Slot: -</div>
+				<div id="slot-range-info" class="market-data">Range: -</div>
+				<div id="slot-gap-info" class="market-data">Gaps: 0</div>
 				<div id="bandwidth-counter" class="market-data">Bandwidth: 0 KB</div>
 				<div id="controls">
 					<div id="precision-control">
 						<label for="price-precision">Precision:</label>
 						<select id="price-precision">
 							<option value="0.0001">$0.0001</option>
-							<option value="0.001" selected>$0.001</option>
-							<option value="0.01">$0.01</option>
+							<option value="0.001">$0.001</option>
+							<option value="0.01" selected>$0.01</option>
 							<option value="0.05">$0.05</option>
 							<option value="0.1">$0.1</option>
 							<option value="1">$1</option>
@@ -566,14 +572,14 @@
 			const marketNameDisplay = document.getElementById('market-name');
 			const oraclePriceDisplay = document.getElementById('oracle-price');
 			const slotInfoDisplay = document.getElementById('slot-info');
-			const sequenceInfoDisplay = document.getElementById('sequence-info');
+			const slotRangeDisplay = document.getElementById('slot-range-info');
+			const slotGapDisplay = document.getElementById('slot-gap-info');
 			const bandwidthCounter = document.getElementById('bandwidth-counter');
 			const pricePrecisionSelect = document.getElementById('price-precision');
 			const toggleSourcesBtn = document.getElementById('toggle-sources');
 			const requestSnapshotBtn = document.getElementById('request-snapshot');
 			const sourceLegend = document.querySelector('.source-legend');
 			const orderbookColumns = document.querySelectorAll('.orderbook-column');
-			const queueStatusElement = document.getElementById('queue-status');
 
 			const dropProbabilitySlider = document.getElementById('drop-probability');
 			const dropProbabilityValue = document.getElementById(
@@ -587,6 +593,7 @@
 				bids: new Map(),
 				asks: new Map(),
 				slot: 0,
+				startSlot: 0,
 				oracleSlot: 0,
 			};
 
@@ -598,19 +605,14 @@
 			let pricePrecision = 0.1;
 			let showSources = false;
 
-			// Add these variables for slot tracking
 			let lastSlotUpdateTime = Date.now();
 			let previousSlot = 0;
 			let slotUpdateTimes = [];
-
-			// Add sequence tracking variables
-			let expectedSequence = {}; 
-			let sequenceGaps = 0; 
-			let lastReceivedSequence = {}; 
+			let lastProcessedSlot = {};
+			let slotGaps = 0;
 			let processingSnapshot = false;
-			let recoveryModeStartTime = 0;
 			let lastSnapshotRequestTime = 0;
-			const SNAPSHOT_RETRY_INTERVAL = 1000; 
+			const SNAPSHOT_RETRY_INTERVAL = 1000;
 
 			// Message queue for ordered processing
 			const messageQueue = [];
@@ -619,8 +621,6 @@
 			// Debug variables
 			let randomDropsEnabled = false;
 			let dropProbability = 0;
-			let skippedMessageForTesting = null;
-			let outOfOrderMessageForTesting = null;
 
 			const PRICE_SCALE = 1000000;
 			const SIZE_SCALE = 1000000000;
@@ -651,21 +651,28 @@
 
 			function requestSnapshot() {
 				if (socket.readyState === WebSocket.OPEN) {
-					socket.send(
-						JSON.stringify({
+					try {
+						const snapshotRequest = JSON.stringify({
+							channel: 'orderbook_delta',
 							type: 'snapshot',
 							market: 'SOL-PERP',
 							marketType: 'perp',
-						})
-					);
-					appendMessage('System', `Requesting new orderbook snapshot`);
-					processingSnapshot = true;
-					lastSnapshotRequestTime = Date.now();
-					sequenceInfoDisplay.classList.add('sequence-gap');
+						});
+						
+						appendMessage('System', `Requesting new orderbook snapshot`);
+						socket.send(snapshotRequest);
+						
+						processingSnapshot = true;
+						lastSnapshotRequestTime = Date.now();
+						slotGapDisplay.classList.add('slot-gap');
+					} catch (error) {
+						appendMessage('Error', `Error sending snapshot request: ${error.message}`);
+						processingSnapshot = false;
+					}
 				} else {
 					appendMessage(
 						'Error',
-						'Cannot request snapshot: WebSocket not connected'
+						`Cannot request snapshot: WebSocket not connected (state: ${socket.readyState})`
 					);
 					processingSnapshot = false;
 				}
@@ -833,16 +840,16 @@
 				if (previousSlot > 0 && oracleSlot > 0) {
 					const slotDiff = previousSlot - oracleSlot;
 					const diffText = slotDiff >= 0 ? `+${slotDiff}` : `${slotDiff}`;
-					slotInfoDisplay.textContent = `Slot: ${previousSlot} | Oracle Diff: ${diffText}`;
+					slotInfoDisplay.title = `Current slot: ${previousSlot}\nOracle slot: ${oracleSlot}\nDifference: ${diffText}`;
 				}
 			}
 
-			function updateSlotInfo(slot) {
+			function updateSlotInfo(slot, startSlot) {
 				const now = Date.now();
 
 				slotUpdateTimes.push({
 					time: now,
-					slot: slot,
+					slot: slot
 				});
 
 				if (slotUpdateTimes.length > 10) {
@@ -858,22 +865,27 @@
 					if (timeSpan > 0) {
 						const rate = slotSpan / timeSpan;
 						slotRateText = ` | ${rate.toFixed(1)} slots/sec`;
+						slotInfoDisplay.title = `Current slot: ${slot}\nSlot rate: ${rate.toFixed(1)} slots/sec`;
 					}
 				}
 
-				if (!slotInfoDisplay.textContent.includes('Oracle Diff')) {
-					slotInfoDisplay.textContent = `Slot: ${slot}${slotRateText}`;
+				slotInfoDisplay.textContent = `Slot: ${slot}${slotRateText}`;
+
+				if (startSlot !== undefined && startSlot > 0) {
+					const slotRange = slot - startSlot;
+					slotRangeDisplay.textContent = `Range: ${startSlot}-${slot} (${slotRange})`;
+					slotRangeDisplay.title = `Start slot: ${startSlot}\nEnd slot: ${slot}\nRange: ${slotRange} slots`;
+				} else {
+					slotRangeDisplay.textContent = `Range: -`;
 				}
 
 				previousSlot = slot;
 			}
 
-			function updateSequenceDisplay(marketIndex, sequence) {
-				if (sequence === undefined) return;
-				lastReceivedSequence[marketIndex] = sequence;
-				sequenceInfoDisplay.textContent = `Seq: ${sequence} | Gaps: ${sequenceGaps}`;
-				if (!processingSnapshot) {
-					sequenceInfoDisplay.classList.remove('sequence-gap');
+			function updateSlotGapDisplay(gapCount) {
+				slotGapDisplay.textContent = `Gaps: ${gapCount}`;
+				if (!processingSnapshot && gapCount === 0) {
+					slotGapDisplay.classList.remove('slot-gap');
 				}
 			}
 
@@ -912,20 +924,22 @@
 
 						const marketIndex = message.m;
 						const isSnapshot = message.f === true;
-						const sequenceNumber = message.seq;
+						const slot = message.slot;
+						const startSlot = message.startSlot || 0;
 
 						if (isSnapshot) {
 							appendMessage(
 								'System',
-								`Processing snapshot with sequence #${sequenceNumber}`
+								`Processing snapshot at slot ${slot}`
 							);
 							messageQueue.shift();
 
-							expectedSequence[marketIndex] = sequenceNumber + 1;
+							lastProcessedSlot[marketIndex] = slot;
 							processingSnapshot = false;
+							slotGapDisplay.classList.remove('slot-gap');
 							appendMessage(
 								'System',
-								`Snapshot processed, recovery mode disabled`
+								`Snapshot processed, recovery mode disabled. Last processed slot: ${lastProcessedSlot[marketIndex]}`
 							);
 							processOrderbookMessage(message, channel);
 							continue;
@@ -934,64 +948,54 @@
 						if (processingSnapshot) {
 							appendMessage(
 								'System',
-								`Discarding message with seq=${sequenceNumber} while in recovery mode`
+								`Discarding message for slot ${slot} while in recovery mode`
 							);
 							messageQueue.shift();
 							continue;
 						}
 
-						if (sequenceNumber === undefined) {
-							messageQueue.shift();
-							processOrderbookMessage(message, channel);
-							continue;
-						}
-
-						if (expectedSequence[marketIndex] === undefined) {
-							expectedSequence[marketIndex] = sequenceNumber + 1;
+						if (lastProcessedSlot[marketIndex] === undefined) {
+							lastProcessedSlot[marketIndex] = slot;
 							appendMessage(
-								'Sequence',
-								`Initialized sequence tracking for market ${marketIndex} at ${sequenceNumber}`
+								'Slot',
+								`Initialized slot tracking for market ${marketIndex} at slot range ${startSlot}-${slot}`
 							);
 							messageQueue.shift();
 							processOrderbookMessage(message, channel);
 							continue;
 						}
 
-						if (sequenceNumber === expectedSequence[marketIndex]) {
-							expectedSequence[marketIndex]++;
-							messageQueue.shift();
-							processOrderbookMessage(message, channel);
-							continue;
-						}
-
-						if (sequenceNumber > expectedSequence[marketIndex]) {
-							const gap = sequenceNumber - expectedSequence[marketIndex];
-							sequenceGaps += gap;
-							appendMessage(
-								'Sequence',
-								`Gap detected! Expected ${expectedSequence[marketIndex]}, got ${sequenceNumber} (missing ${gap} messages)`
-							);
-
-							if (!processingSnapshot) {
+						if (startSlot !== lastProcessedSlot[marketIndex]) {
+							const gap = startSlot - lastProcessedSlot[marketIndex];
+							
+							if (gap > 0) {
+								slotGaps += gap;
 								appendMessage(
-									'System',
-									`Entering recovery mode, waiting for snapshot`
+									'Slot',
+									`Slot gap detected: Last processed slot ${lastProcessedSlot[marketIndex]}, but next message starts at ${startSlot} (gap of ${gap} slots)`
 								);
-								requestSnapshot();
+								updateSlotGapDisplay(slotGaps);
+								
+								if (!processingSnapshot) {
+									appendMessage(
+										'System',
+										`Entering recovery mode due to slot gap, waiting for snapshot`
+									);
+									requestSnapshot();
+								}
+							} else if (gap < 0) {
+								appendMessage(
+									'Slot',
+									`Out-of-order message detected: Last processed slot ${lastProcessedSlot[marketIndex]}, but received message starting at ${startSlot}`
+								);
+								messageQueue.shift();
+								continue;
 							}
-
-							messageQueue.shift();
-							continue;
 						}
-
-						if (sequenceNumber < expectedSequence[marketIndex]) {
-							appendMessage(
-								'Sequence',
-								`Discarding out-of-order message! Expected ${expectedSequence[marketIndex]}, got ${sequenceNumber}`
-							);
-							messageQueue.shift();
-							continue;
-						}
+						
+						lastProcessedSlot[marketIndex] = slot;
+						messageQueue.shift();
+						processOrderbookMessage(message, channel);
 					}
 				} catch (error) {
 					appendMessage(
@@ -1005,8 +1009,12 @@
 
 			function processOrderbookMessage(message, channel) {
 				const marketIndex = message.m;
-				const sequenceNumber = message.seq;
+				const slot = message.slot;
+				const startSlot = message.startSlot || 0;
 				const isSnapshot = message.f === true;
+				const slotRange = startSlot ? 
+					`slots ${startSlot} to ${slot} (range: ${slot - startSlot})` : 
+					`slot ${slot}`;
 
 				const oracleSlotInfo = message.oracleData
 					? `, oracle=${(
@@ -1014,19 +1022,13 @@
 					  ).toFixed(3)} (slot ${message.oracleData.slot})`
 					: '';
 
-				const seqInfo =
-					sequenceNumber !== undefined ? `, seq=${sequenceNumber}` : '';
-
-				const logMsg = `Orderbook: m=${message.m}, slot=${message.slot}, ${
+				const logMsg = `Orderbook: m=${message.m}, ${slotRange}, ${
 					message.b?.length || 0
 				} bids, ${message.a?.length || 0} asks, ${
 					isSnapshot ? 'snapshot' : 'delta'
-				}${seqInfo}${oracleSlotInfo}`;
+				}${oracleSlotInfo}`;
+				
 				appendMessage('Data', logMsg);
-
-				if (sequenceNumber !== undefined) {
-					updateSequenceDisplay(marketIndex, sequenceNumber);
-				}
 
 				if (!isSnapshot) {
 					previousState.bids = new Map(orderbook.bids);
@@ -1048,22 +1050,27 @@
 					statusDiv.className = 'connected';
 					appendMessage('System', 'Connected to WebSocket server');
 
-					expectedSequence = {};
-					lastReceivedSequence = {};
-					sequenceGaps = 0;
-					processingSnapshot = false;
-					messageQueue.length = 0;
-					updateSequenceDisplay(0, 0);
+					if (!processingSnapshot) {
+						lastProcessedSlot = {};
+						slotGaps = 0;
+						messageQueue.length = 0;
+					}
 
-					socket.send(
-						JSON.stringify({
-							channel: 'orderbook',
-							market: 'SOL-PERP',
-							marketType: 'perp',
-							type: 'subscribe',
-						})
-					);
-					appendMessage('System', 'Subscribed to SOL-PERP orderbook');
+					updateSlotGapDisplay(slotGaps);
+
+					try {
+						socket.send(
+							JSON.stringify({
+								channel: 'orderbook_delta',
+								market: 'SOL-PERP',
+								marketType: 'perp',
+								type: 'subscribe',
+							})
+						);
+						appendMessage('System', 'Subscribed to SOL-PERP orderbook');
+					} catch (error) {
+						appendMessage('Error', `Failed to send subscription: ${error.message}`);
+					}
 				});
 
 				socket.addEventListener('message', (event) => {
@@ -1093,7 +1100,7 @@
 								) {
 									appendMessage(
 										'System',
-										`Randomly dropped message with sequence ${message.seq}`
+										`Randomly dropped message for slot ${message.slot}`
 									);
 									return;
 								}
@@ -1109,13 +1116,13 @@
 							}
 						}
 					} catch (error) {
-						appendMessage('Error', 'Failed to parse message: ' + error.message);
+						appendMessage('Error', `Failed to parse message: ${error.message}`);
 						console.error('Error parsing message:', error);
 					}
 				});
 
 				socket.addEventListener('error', (error) => {
-					appendMessage('Error', 'WebSocket error');
+					appendMessage('Error', `WebSocket error: ${error.type}`);
 					console.error('WebSocket error:', error);
 				});
 
@@ -1132,33 +1139,38 @@
 				const {
 					m: marketIndex,
 					slot,
+					startSlot,
 					t: timestamp,
 					b: bids,
 					a: asks,
 					f: isSnapshot,
-					seq: sequence,
 					oracleData,
 				} = message;
 
 				marketNameDisplay.textContent = `SOL-PERP (${marketIndex})`;
 
-				// Update slot information
-				updateSlotInfo(slot);
+				// Update slot information with the new startSlot field
+				updateSlotInfo(slot, startSlot);
 
 				// Update oracle data display if available
 				if (oracleData) {
 					updateOracleDisplay(oracleData);
 				}
 
+				// For normal delta updates, check if the slot is newer
+				// For snapshots, we always apply them
 				if (slot <= orderbook.slot && !isSnapshot) {
+					appendMessage('System', `Skipping outdated orderbook for slot ${slot} <= ${orderbook.slot}`);
 					return;
 				}
 
 				orderbook.slot = slot;
+				orderbook.startSlot = startSlot || 0;
 
 				if (isSnapshot) {
 					orderbook.bids.clear();
 					orderbook.asks.clear();
+					appendMessage('System', `Cleared orderbook for snapshot at slot ${slot}`);
 				}
 
 				if (bids && Array.isArray(bids)) {
@@ -1325,26 +1337,6 @@
 				updateOrderbookRows(asksTable, sortedAsks, totalAskVolume, 'ask');
 			}
 
-			function getPreviousAggregatedSize(price, side) {
-				const previousMap =
-					side === 'bid' ? previousState.bids : previousState.asks;
-				let totalSize = 0;
-
-				const bucketLower =
-					Math.floor(price / PRICE_SCALE / pricePrecision) *
-					pricePrecision *
-					PRICE_SCALE;
-				const bucketUpper = bucketLower + pricePrecision * PRICE_SCALE;
-
-				previousMap.forEach((data, prevPrice) => {
-					if (prevPrice >= bucketLower && prevPrice < bucketUpper) {
-						totalSize += data.size;
-					}
-				});
-
-				return totalSize / SIZE_SCALE;
-			}
-
 			function updateOrderbookRows(
 				tableElement,
 				sortedData,
@@ -1460,7 +1452,7 @@
 				else if (sender === 'System') senderClass = 'message-system';
 				else if (sender === 'Error') senderClass = 'message-error';
 				else if (sender === 'Stats') senderClass = 'message-stats';
-				else if (sender === 'Sequence') senderClass = 'message-sequence';
+				else if (sender === 'Slot') senderClass = 'message-sequence';
 
 				messageElement.className = senderClass;
 

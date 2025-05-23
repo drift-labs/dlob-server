@@ -262,8 +262,8 @@
 						<select id="price-precision">
 							<option value="0.00001">$0.00001</option>
 							<option value="0.0001">$0.0001</option>
-							<option value="0.001" selected>$0.001</option>
-							<option value="0.01">$0.01</option>
+							<option value="0.001">$0.001</option>
+							<option value="0.01" selected>$0.01</option>
 							<option value="0.05">$0.05</option>
 							<option value="0.1">$0.1</option>
 							<option value="1">$1</option>
@@ -456,7 +456,8 @@
 			}
 
 			// Drift Trade WebSocket URL
-			const wsUrl = 'ws://localhost:3000/ws';
+			const wsUrl = 'wss://staging.dlob.drift.trade/ws'
+			// const wsUrl = 'ws://localhost:3000/ws';
 			let socket;
 
 			// Function to connect to WebSocket server
@@ -665,29 +666,41 @@
 				const result = new Map();
 
 				entries.forEach(([price, data]) => {
-					// Convert price to the display format
-					const displayPrice =
-						Math.floor(price / PRICE_SCALE / pricePrecision) * pricePrecision;
-					// Convert back to the internal price format
-					const aggregatePrice = Math.round(displayPrice * PRICE_SCALE);
+					const rawPrice = price / PRICE_SCALE;
 
-					// For asks, we use the lower bound of the bucket
-					// For bids, we use the upper bound to ensure proper ordering
-					const bucketPrice = isAsk
-						? aggregatePrice
-						: Math.round((displayPrice + pricePrecision) * PRICE_SCALE - 1);
+					let bucketPrice, displayPrice;
 
-					if (!result.has(bucketPrice)) {
-						result.set(bucketPrice, {
+					if (isAsk) {
+						displayPrice = Math.ceil(rawPrice / pricePrecision) * pricePrecision;
+						bucketPrice = displayPrice;
+					} else {
+						displayPrice = Math.floor(rawPrice / pricePrecision) * pricePrecision;
+						bucketPrice = displayPrice;
+					}
+
+					const bucketKey = Math.round(bucketPrice * PRICE_SCALE);
+
+					if (!result.has(bucketKey)) {
+						result.set(bucketKey, {
 							size: 0,
 							displayPrice: displayPrice,
-							rawSizes: [], // Store individual sizes for accurate cumulative calculation
+							rawSizes: [],
+							sources: {},
 						});
 					}
 
-					// Add this entry's size to the bucket
-					result.get(bucketPrice).size += data.size;
-					result.get(bucketPrice).rawSizes.push(data.size); // Store raw size for precision
+					const bucketData = result.get(bucketKey);
+					bucketData.size += data.size;
+					bucketData.rawSizes.push(data.size);
+
+					if (data.sources) {
+						Object.entries(data.sources).forEach(([sourceKey, sourceSize]) => {
+							if (!bucketData.sources[sourceKey]) {
+								bucketData.sources[sourceKey] = 0;
+							}
+							bucketData.sources[sourceKey] += parseFloat(sourceSize);
+						});
+					}
 				});
 
 				return Array.from(result.entries());
@@ -741,24 +754,19 @@
 				// Reset cumulative size
 				let cumulativeSize = 0;
 
+				// Get appropriate decimal places based on precision
+				const decimalPlaces = Math.max(1, -Math.log10(pricePrecision) + 1);
+
 				// Update each row with data, or clear if no data
 				for (let i = 0; i < rows.length; i++) {
 					const row = rows[i];
 
 					if (i < sortedData.length) {
 						// We have data for this row
-						const [price, data] = sortedData[i];
+						const [bucketKey, data] = sortedData[i];
 
-						// Get the display price (already formatted in aggregatePrices)
-						let formattedPrice;
-						const precision = Math.max(0, -Math.log10(pricePrecision));
-
-						if (pricePrecision >= 0.1) {
-							// For larger precisions, show only one decimal place
-							formattedPrice = data.displayPrice.toFixed(1);
-						} else {
-							formattedPrice = data.displayPrice.toFixed(precision);
-						}
+						// Format the price with appropriate decimal places
+						const formattedPrice = data.displayPrice.toFixed(decimalPlaces);
 
 						// Convert size from raw format to display format
 						const normalizedSize = data.size / SIZE_SCALE;
