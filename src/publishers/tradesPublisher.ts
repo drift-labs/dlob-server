@@ -186,6 +186,7 @@ const main = async () => {
 						new BN(fill.referrerReward ?? ZERO),
 						QUOTE_PRECISION
 					),
+					bitFlags: fill.bitFlags,
 				};
 			})
 		)
