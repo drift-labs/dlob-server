@@ -45,6 +45,7 @@ import {
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { setGlobalDispatcher, Agent } from 'undici';
+import { HermesClient } from '@pythnetwork/hermes-client';
 
 setGlobalDispatcher(
 	new Agent({
@@ -76,6 +77,8 @@ const serverPort = process.env.PORT || 6969;
 export const ORDERBOOK_UPDATE_INTERVAL = 1000;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
+const hermesUrl = process.env.HERMES_ENDPOINT;
+const pythLazerDriftToken = process.env.PYTH_LAZER_DRIFT_TOKEN;
 
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
@@ -772,6 +775,108 @@ const main = async (): Promise<void> => {
 				res.writeHead(500);
 				res.end('No L3 found');
 				return;
+			}
+		} catch (err) {
+			next(err);
+		}
+	});
+
+	app.get('/pythLazer', async (req, res, next) => {
+		try {
+			// Check origin validation
+			const origin = req.get('Origin') || req.get('Referer');
+			const allowedOrigins = ['https://app.drift.trade', 'https://beta.drift.trade'];
+			
+			if (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+				res.status(403).json({ error: 'Forbidden: Invalid origin' });
+				return;
+			}
+
+			const { feedIds } = req.query;
+
+			if (!feedIds) {
+				res.writeHead(400);
+				res.end('Bad Request: must include a feedIds');
+				return;
+			}
+
+			const feedIdsArray = (feedIds as string).split(',');
+
+			const latestLazerPricePayload = {
+				priceFeedIds: feedIdsArray?.map((f) => Number(f)),
+				properties: ['price', 'bestAskPrice', 'bestBidPrice', 'exponent'],
+				chains: ['solana'],
+				channel: 'real_time',
+				jsonBinaryEncoding: 'hex',
+			};
+	
+			const latestPriceRes = await fetch(
+				'https://pyth-lazer-0.dourolabs.app/v1/latest_price',
+				{
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${pythLazerDriftToken}`,
+					},
+					body: JSON.stringify(latestLazerPricePayload),
+				}
+			).then((res) => res.json());
+	
+			const data = latestPriceRes.solana.data;
+
+			if (data) {
+				res.status(200).json({
+					data
+				});
+
+				return;
+			} else {
+				res.writeHead(404);
+				res.end('Not found');
+			}
+		} catch (err) {
+			next(err);
+		}
+	});
+
+	app.get('/pythPull', async (req, res, next) => {
+		try {
+			// Check origin validation
+			const origin = req.get('Origin') || req.get('Referer');
+			const allowedOrigins = ['https://app.drift.trade', 'https://beta.drift.trade'];
+			
+			if (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+				res.status(403).json({ error: 'Forbidden: Invalid origin' });
+				return;
+			}
+
+			const { feedIds } = req.query;
+
+			if (!feedIds) {
+				res.writeHead(400);
+				res.end('Bad Request: must include a feedIds');
+				return;
+			}
+
+			const feedIdsArray = (feedIds as string).split(',');
+
+			const hermesClient = new HermesClient(hermesUrl);
+			const latestPriceUpdates = await hermesClient.getLatestPriceUpdates(
+				feedIdsArray,
+				{
+					encoding: 'base64',
+				}
+			);
+			const data = latestPriceUpdates.binary.data.join('');
+
+			if (data) {
+				res.status(200).json({
+					data
+				});
+
+				return;
+			} else {
+				res.writeHead(404);
+				res.end('Not found');
 			}
 		} catch (err) {
 			next(err);
