@@ -79,6 +79,7 @@ const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const hermesUrl = process.env.HERMES_ENDPOINT;
 const pythLazerDriftToken = process.env.PYTH_LAZER_DRIFT_TOKEN;
+const pythLazerEndpoint = process.env.PYTH_LAZER_ENDPOINT;
 
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
@@ -811,7 +812,7 @@ const main = async (): Promise<void> => {
 			};
 	
 			const latestPriceRes = await fetch(
-				'https://pyth-lazer-0.dourolabs.app/v1/latest_price',
+				pythLazerEndpoint,
 				{
 					method: 'POST',
 					headers: {
