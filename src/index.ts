@@ -788,7 +788,12 @@ const main = async (): Promise<void> => {
 			const origin = req.get('Origin') || req.get('Referer');
 			const allowedOrigins = ['https://app.drift.trade', 'https://beta.drift.trade'];
 			
-			if (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+			const hasAuth = (
+				(req.headers.Authorization || req.headers.authorization) ===
+				process.env.INTERNAL_SECRET
+			)
+
+			if (!hasAuth && (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed)))) {
 				res.status(403).json({ error: 'Forbidden: Invalid origin' });
 				return;
 			}
@@ -843,9 +848,14 @@ const main = async (): Promise<void> => {
 		try {
 			// Check origin validation
 			const origin = req.get('Origin') || req.get('Referer');
-			const allowedOrigins = ['https://app.drift.trade', 'https://beta.drift.trade'];
+			const allowedOrigins = ['https://app.drift.trade', 'https://beta.drift.trade'];	
 			
-			if (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+			const hasAuth = (
+				(req.headers.Authorization || req.headers.authorization) ===
+				process.env.INTERNAL_SECRET
+			)
+			
+			if (!hasAuth && (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed)))) {
 				res.status(403).json({ error: 'Forbidden: Invalid origin' });
 				return;
 			}
