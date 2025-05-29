@@ -153,7 +153,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					);
 
 					const nowMinus1000Ms = Date.now() - 1000;
-					mmQuotes.forEach((quote) => {
+					for (const quote of mmQuotes) {
 						if (Number(quote['ts']) > nowMinus1000Ms) {
 							const indicativeBaseOrder: Order = {
 								status: OrderStatus.OPEN,
@@ -233,7 +233,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 								);
 							}
 						}
-					});
+					}
 				}
 				this.getL2AndSendMsg(marketArgs);
 				this.getL3AndSendMsg(marketArgs);
