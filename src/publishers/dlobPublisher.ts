@@ -520,7 +520,7 @@ const main = async () => {
 		perpMarketInfos,
 		spotMarketInfos,
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
-		protectedMakerView: true,
+		protectedMakerView: false,
 		indicativeQuotesRedisClient: indicativeRedisClient,
 	});
 	await dlobSubscriberIndicative.subscribe();
