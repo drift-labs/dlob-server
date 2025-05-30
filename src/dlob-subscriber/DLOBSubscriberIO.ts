@@ -136,6 +136,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	override async updateDLOB(): Promise<void> {
 		await super.updateDLOB();
+		let indicativeOrderId = 0;
 		for (const marketArgs of this.marketArgs) {
 			try {
 				if (this.indicativeQuotesRedisClient) {
@@ -187,13 +188,14 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 								postedSlotTail: 0,
 							};
 
-							if (quote['bid_size'] && quote['bid_price']) {
+							if (quote['bid_size'] && quote['bid_price'] != null) {
 								// Sanity check bid price and size
 
 								const indicativeBid: Order = Object.assign(
 									{},
 									indicativeBaseOrder,
 									{
+										orderId: indicativeOrderId,
 										oraclePriceOffset: quote['is_oracle_offset']
 											? quote['bid_price']
 											: 0,
@@ -210,13 +212,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 									this.slotSource.getSlot(),
 									false
 								);
+								indicativeOrderId += 1;
 							}
 
-							if (quote['ask_size'] && quote['ask_price']) {
+							if (quote['ask_size'] && quote['ask_price'] != null) {
 								const indicativeAsk: Order = Object.assign(
 									{},
 									indicativeBaseOrder,
 									{
+										orderId: indicativeOrderId,
 										oraclePriceOffset: quote['is_oracle_offset']
 											? quote['ask_price']
 											: 0,
@@ -233,6 +237,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 									this.slotSource.getSlot(),
 									false
 								);
+								indicativeOrderId += 1;
 							}
 						}
 					}
