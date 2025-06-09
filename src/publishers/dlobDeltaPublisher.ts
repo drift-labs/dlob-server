@@ -113,8 +113,6 @@ async function main() {
 
 		await Promise.all(
 			markets
-				//@ts-ignore
-				.filter((market) => market.marketIndex === 0)
 				.map(async (market) => {
 					const marketIndex = market.marketIndex;
 					await addIndicativeLiquidity(dlobSubscriber, marketIndex);
