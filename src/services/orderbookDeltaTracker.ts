@@ -357,10 +357,10 @@ export const OrderbookDeltaTracker = ({
 
 	const publishBook = async (orderbook: Orderbook): Promise<void> => {
 		try {
-			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}`;
+			const channel = `${redisClientPrefix}${redisChannelPrefix}${orderbook.marketIndex}_indicative`;
 			await redisClient.publish(channel, orderbook);
 		} catch (error) {
-			logger.error(`Failed to publish orderbook delta: ${error.message}`);
+			logger.error(`Failed to publish full orderbook: ${error.message}`);
 		}
 	};
 
