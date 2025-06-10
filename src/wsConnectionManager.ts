@@ -7,6 +7,7 @@ import { sleep, selectMostRecentBySlot } from './utils/utils';
 import { register, Gauge, Counter } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
+import { GROUPING_OPTIONS } from './dlob-subscriber/DLOBSubscriberIO';
 
 // Set up env constants
 require('dotenv').config();
@@ -95,8 +96,12 @@ const getRedisChannelFromMessage = (message: any): string => {
 			return `trades_${marketType}_${marketIndex}`;
 		case 'orderbook':
 			return `orderbook_${marketType}_${marketIndex}`;
-		case 'orderbook_indicative':
+		case 'orderbook_indicative': {
+			if (message.grouping && GROUPING_OPTIONS.includes(parseInt(message.grouping))) {
+				return `orderbook_${marketType}_${marketIndex}_grouped_${message.grouping}_indicative`;
+			}
 			return `orderbook_${marketType}_${marketIndex}_indicative`;
+		}
 		case 'priorityfees':
 			return `priorityFees_${marketType}_${marketIndex}`;
 		case undefined:

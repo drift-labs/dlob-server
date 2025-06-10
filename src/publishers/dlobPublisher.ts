@@ -20,6 +20,7 @@ import {
 	PhoenixSubscriber,
 	MarketType,
 	OraclePriceData,
+	ONE,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -114,10 +115,7 @@ const KILLSWITCH_SLOT_DIFF_THRESHOLD =
 	parseInt(process.env.KILLSWITCH_SLOT_DIFF_THRESHOLD) || 200;
 
 // comma separated list of perp market indexes to load: i.e. 0,1,2,3
-const PERP_MARKETS_TO_LOAD =
-	process.env.PERP_MARKETS_TO_LOAD !== undefined
-		? parsePositiveIntArray(process.env.PERP_MARKETS_TO_LOAD)
-		: undefined;
+const PERP_MARKETS_TO_LOAD = [0]
 
 // comma separated list of spot market indexes to load: i.e. 0,1,2,3
 const SPOT_MARKETS_TO_LOAD =
@@ -299,6 +297,8 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 				}
 			}
 		}
+
+		markets[market.marketIndex].tickSize = market?.orderTickSize ?? ONE
 	}
 
 	return markets;

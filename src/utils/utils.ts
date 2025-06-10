@@ -1,6 +1,8 @@
 import {
+	BN,
 	DriftClient,
 	DriftEnv,
+	L2Level,
 	L2OrderBook,
 	L3OrderBook,
 	MarketType,
@@ -170,6 +172,53 @@ export const addMarketSlotToResponse = (
 	}
 	response['marketSlot'] = marketSlot;
 };
+
+export function aggregatePrices(entries, side, pricePrecision) {
+	const isAsk = side === 'ask';
+	const result = new Map();
+
+	entries.forEach((entry) => {
+		const price = parseFloat(entry.price);
+		const data = {
+			size: parseFloat(entry.size),
+			sources: entry.sources || {}
+		};
+
+		let bucketPrice, displayPrice;
+		if (isAsk) {
+			displayPrice = Math.ceil(price / pricePrecision) * pricePrecision;
+			bucketPrice = displayPrice;
+		} else {
+			displayPrice = Math.floor(price / pricePrecision) * pricePrecision;
+			bucketPrice = displayPrice;
+		}
+
+		const bucketKey = Math.round(bucketPrice);
+
+		if (!result.has(bucketKey)) {
+			result.set(bucketKey, {
+				size: 0,
+				price: displayPrice,
+				sources: {},
+			});
+		}
+
+		const bucketData = result.get(bucketKey);
+		bucketData.size += data.size;
+
+		if (data.sources) {
+			Object.entries(data.sources).forEach(([sourceKey, sourceSize]: [string, string]) => {
+				if (!bucketData.sources[sourceKey]) {
+					bucketData.sources[sourceKey] = 0;
+				}
+				bucketData.sources[sourceKey] += parseFloat(sourceSize);
+			});
+		}
+		
+	});
+
+	return Array.from(result.values());
+}
 
 /**
  * Takes in a req.query like: `{
@@ -484,6 +533,7 @@ export type SubscriberLookup = {
 		phoenix?: PhoenixSubscriber;
 		serum?: SerumSubscriber;
 		openbook?: OpenbookV2Subscriber;
+		tickSize?: BN;
 	};
 };
 
