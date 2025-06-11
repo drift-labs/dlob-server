@@ -3,11 +3,10 @@ import express from 'express';
 import * as http from 'http';
 import compression from 'compression';
 import { WebSocket, WebSocketServer } from 'ws';
-import { sleep, selectMostRecentBySlot } from './utils/utils';
+import { sleep, selectMostRecentBySlot, GROUPING_OPTIONS } from './utils/utils';
 import { register, Gauge, Counter } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
-import { GROUPING_OPTIONS } from './dlob-subscriber/DLOBSubscriberIO';
 
 // Set up env constants
 require('dotenv').config();

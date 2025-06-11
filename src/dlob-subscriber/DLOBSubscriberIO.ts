@@ -24,13 +24,13 @@ import {
 	SubscriberLookup,
 	addMarketSlotToResponse,
 	addOracletoResponse,
-	aggregatePrices,
 	l2WithBNToStrings,
 	parsePositiveIntArray,
+	publishGroupings,
 } from '../utils/utils';
 import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 
-type wsMarketArgs = {
+export type wsMarketArgs = {
 	marketIndex: number;
 	marketType: MarketType;
 	marketName: string;
@@ -39,12 +39,11 @@ type wsMarketArgs = {
 	numVammOrders?: number;
 	fallbackL2Generators?: L2OrderBookGenerator[];
 	updateOnChange?: boolean;
-	tickSize?: BN
+	tickSize?: BN;
 };
 
 require('dotenv').config();
 
-export const GROUPING_OPTIONS = [1, 10, 100, 500, 1000];
 const PERP_MAKRET_STALENESS_THRESHOLD = 30 * 60 * 1000;
 const SPOT_MAKRET_STALENESS_THRESHOLD = 60 * 60 * 1000;
 const STALE_ORACLE_REMOVE_VAMM_THRESHOLD = 160;
@@ -120,7 +119,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				includeVamm,
 				updateOnChange: false,
 				fallbackL2Generators: [],
-				tickSize: perpMarket?.amm?.orderTickSize ?? ONE
+				tickSize: perpMarket?.amm?.orderTickSize ?? ONE,
 			});
 		}
 		for (const market of config.spotMarketInfos) {
@@ -135,7 +134,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
 					config.spotMarketSubscribers[market.marketIndex].openbook,
 				].filter((a) => !!a),
-				tickSize: config.spotMarketSubscribers[market.marketIndex].tickSize ?? ONE
+				tickSize:
+					config.spotMarketSubscribers[market.marketIndex].tickSize ?? ONE,
 			});
 		}
 	}
@@ -399,30 +399,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			}`,
 			l2Formatted_depth100
 		);
- 
-		GROUPING_OPTIONS.forEach(group => {
-			const pricePrecision = BigNum.from(group).mul(marketArgs.tickSize).toNum()
-			const aggregatedBids = aggregatePrices(l2Formatted.bids, 'bid', pricePrecision)
-				.sort((a, b) => b[0] - a[0])
-				.slice(0, 20)
-			
-			const aggregatedAsks = aggregatePrices(l2Formatted.asks, 'ask', pricePrecision)
-				.sort((a, b) => a[0] - b[0])
-				.slice(0, 20)
-			
-			const l2Formatted_grouped20 = Object.assign({}, l2Formatted, {
-				bids: aggregatedBids,
-				asks: aggregatedAsks,
-			});
-			
-			this.redisClient.publish(
-				`${clientPrefix}orderbook_${marketType}_${marketArgs.marketIndex}_grouped_${group}${
-					this.indicativeQuotesRedisClient ? '_indicative' : ''
-				}`,
-				l2Formatted_grouped20
-			);
-		})
 
+		publishGroupings(
+			l2Formatted,
+			marketArgs,
+			this.redisClient,
+			clientPrefix,
+			marketType,
+			this.indicativeQuotesRedisClient
+		);
 
 		if (!this.indicativeQuotesRedisClient) {
 			const bids = this.dlob
