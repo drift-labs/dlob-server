@@ -26,12 +26,14 @@ import {
 	PERCENTAGE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
-
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
 import { Connection } from '@solana/web3.js';
 import { wsMarketArgs } from 'src/dlob-subscriber/DLOBSubscriberIO';
+import { DEFAULT_AUCTION_PARAMS } from './constants';
+import { AuctionParamArgs } from './types';
+import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
 
 export const GROUPING_OPTIONS = [1, 10, 100, 500, 1000];
 export const GROUPING_DEPENDENCIES = {
@@ -41,9 +43,6 @@ export const GROUPING_DEPENDENCIES = {
 	500: 100,
 	1000: 100,
 };
-import { DEFAULT_AUCTION_PARAMS } from './constants';
-import { AuctionParamArgs } from './types';
-import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
 
 export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	for (const key of Object.keys(l2)) {
@@ -255,8 +254,7 @@ export function publishGroupings(
 	const groupingResults = new Map();
 
 	GROUPING_OPTIONS.forEach((group) => {
-		// not sure what this is supposed to be -- todo confirm with jack
-		const pricePrecision = PRICE_PRECISION.toNumber(); // BigNum.from(group).mul(marketArgs.tickSize).toNum();
+		const pricePrecision = BigNum.from(group).mul(marketArgs.tickSize).toNum();
 		const dependency = GROUPING_DEPENDENCIES[group];
 
 		let fullAggregatedBids, fullAggregatedAsks;
