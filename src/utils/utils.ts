@@ -1,4 +1,6 @@
 import {
+	BN,
+	BigNum,
 	DriftClient,
 	DriftEnv,
 	L2OrderBook,
@@ -19,6 +21,16 @@ import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
 import { Connection } from '@solana/web3.js';
+import { wsMarketArgs } from 'src/dlob-subscriber/DLOBSubscriberIO';
+
+export const GROUPING_OPTIONS = [1, 10, 100, 500, 1000];
+export const GROUPING_DEPENDENCIES = {
+	1: null,
+	10: 1,
+	100: 10,
+	500: 100,
+	1000: 100,
+};
 
 export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	for (const key of Object.keys(l2)) {
@@ -170,6 +182,119 @@ export const addMarketSlotToResponse = (
 	}
 	response['marketSlot'] = marketSlot;
 };
+
+export function aggregatePrices(entries, side, pricePrecision) {
+	const isAsk = side === 'ask';
+	const result = new Map();
+
+	entries.forEach((entry) => {
+		const price = parseFloat(entry.price);
+		const data = {
+			size: parseFloat(entry.size),
+			sources: entry.sources || {},
+		};
+
+		let bucketPrice, displayPrice;
+		if (isAsk) {
+			displayPrice = Math.ceil(price / pricePrecision) * pricePrecision;
+			bucketPrice = displayPrice;
+		} else {
+			displayPrice = Math.floor(price / pricePrecision) * pricePrecision;
+			bucketPrice = displayPrice;
+		}
+
+		const bucketKey = Math.round(bucketPrice);
+
+		if (!result.has(bucketKey)) {
+			result.set(bucketKey, {
+				size: 0,
+				price: displayPrice,
+				sources: {},
+			});
+		}
+
+		const bucketData = result.get(bucketKey);
+		bucketData.size += data.size;
+
+		if (data.sources) {
+			Object.entries(data.sources).forEach(
+				([sourceKey, sourceSize]: [string, string]) => {
+					if (!bucketData.sources[sourceKey]) {
+						bucketData.sources[sourceKey] = 0;
+					}
+					bucketData.sources[sourceKey] += parseFloat(sourceSize);
+				}
+			);
+		}
+	});
+
+	return Array.from(result.values());
+}
+
+export function publishGroupings(
+	l2Formatted,
+	marketArgs: wsMarketArgs,
+	redisClient: RedisClient,
+	clientPrefix: string,
+	marketType: string,
+	indicativeQuotesRedisClient: RedisClient
+) {
+	const groupingResults = new Map();
+
+	GROUPING_OPTIONS.forEach((group) => {
+		const pricePrecision = BigNum.from(group).mul(marketArgs.tickSize).toNum();
+		const dependency = GROUPING_DEPENDENCIES[group];
+
+		let fullAggregatedBids, fullAggregatedAsks;
+
+		if (dependency && groupingResults.has(dependency)) {
+			const previousResults = groupingResults.get(dependency);
+
+			fullAggregatedBids = aggregatePrices(
+				previousResults.bids,
+				'bid',
+				pricePrecision
+			).sort((a, b) => b[0] - a[0]);
+
+			fullAggregatedAsks = aggregatePrices(
+				previousResults.asks,
+				'ask',
+				pricePrecision
+			).sort((a, b) => a[0] - b[0]);
+		} else {
+			fullAggregatedBids = aggregatePrices(
+				l2Formatted.bids,
+				'bid',
+				pricePrecision
+			).sort((a, b) => b[0] - a[0]);
+
+			fullAggregatedAsks = aggregatePrices(
+				l2Formatted.asks,
+				'ask',
+				pricePrecision
+			).sort((a, b) => a[0] - b[0]);
+		}
+
+		groupingResults.set(group, {
+			bids: fullAggregatedBids,
+			asks: fullAggregatedAsks,
+		});
+
+		const aggregatedBids = fullAggregatedBids.slice(0, 20);
+		const aggregatedAsks = fullAggregatedAsks.slice(0, 20);
+		const l2Formatted_grouped20 = Object.assign({}, l2Formatted, {
+			bids: aggregatedBids,
+			asks: aggregatedAsks,
+		});
+
+		redisClient.publish(
+			`${clientPrefix}orderbook_${marketType}_${
+				marketArgs.marketIndex
+			}_grouped_${group}${indicativeQuotesRedisClient ? '_indicative' : ''}`,
+			l2Formatted_grouped20
+		);
+	});
+}
 
 /**
  * Takes in a req.query like: `{
@@ -484,6 +609,7 @@ export type SubscriberLookup = {
 		phoenix?: PhoenixSubscriber;
 		serum?: SerumSubscriber;
 		openbook?: OpenbookV2Subscriber;
+		tickSize?: BN;
 	};
 };
 

@@ -1,14 +1,17 @@
 import {
 	BN,
+	BigNum,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
 	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
+	ONE,
 	Order,
 	OrderStatus,
 	OrderTriggerCondition,
 	OrderType,
+	PRICE_PRECISION,
 	PerpOperation,
 	PositionDirection,
 	ZERO,
@@ -23,10 +26,11 @@ import {
 	addOracletoResponse,
 	l2WithBNToStrings,
 	parsePositiveIntArray,
+	publishGroupings,
 } from '../utils/utils';
 import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 
-type wsMarketArgs = {
+export type wsMarketArgs = {
 	marketIndex: number;
 	marketType: MarketType;
 	marketName: string;
@@ -35,6 +39,7 @@ type wsMarketArgs = {
 	numVammOrders?: number;
 	fallbackL2Generators?: L2OrderBookGenerator[];
 	updateOnChange?: boolean;
+	tickSize?: BN;
 };
 
 require('dotenv').config();
@@ -114,6 +119,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				includeVamm,
 				updateOnChange: false,
 				fallbackL2Generators: [],
+				tickSize: perpMarket?.amm?.orderTickSize ?? ONE,
 			});
 		}
 		for (const market of config.spotMarketInfos) {
@@ -128,6 +134,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
 					config.spotMarketSubscribers[market.marketIndex].openbook,
 				].filter((a) => !!a),
+				tickSize:
+					config.spotMarketSubscribers[market.marketIndex].tickSize ?? ONE,
 			});
 		}
 	}
@@ -390,6 +398,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				this.indicativeQuotesRedisClient ? '_indicative' : ''
 			}`,
 			l2Formatted_depth100
+		);
+
+		publishGroupings(
+			l2Formatted,
+			marketArgs,
+			this.redisClient,
+			clientPrefix,
+			marketType,
+			this.indicativeQuotesRedisClient
 		);
 
 		if (!this.indicativeQuotesRedisClient) {
