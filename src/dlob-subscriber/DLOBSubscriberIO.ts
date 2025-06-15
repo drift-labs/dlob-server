@@ -154,7 +154,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					);
 
 					const nowMinus1000Ms = Date.now() - 1000;
-					for (const quote of mmQuotes) {
+					for (const quote of mmQuotes?.filter(Boolean)) {
 						if (Number(quote['ts']) > nowMinus1000Ms) {
 							const indicativeBaseOrder: Order = {
 								status: OrderStatus.OPEN,
