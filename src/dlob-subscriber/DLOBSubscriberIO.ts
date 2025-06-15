@@ -83,7 +83,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	) {
 		super(config);
 		this.redisClient = config.redisClient;
-		this.indicativeQuotesRedisClient = config.indicativeQuotesRedisClient;
+		//this.indicativeQuotesRedisClient = config.indicativeQuotesRedisClient;
 
 		this.killSwitchSlotDiffThreshold =
 			config.killSwitchSlotDiffThreshold || 200;
