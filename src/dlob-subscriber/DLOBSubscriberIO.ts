@@ -1,17 +1,14 @@
 import {
 	BN,
-	BigNum,
 	DLOBSubscriber,
 	DLOBSubscriptionConfig,
 	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
-	ONE,
 	Order,
 	OrderStatus,
 	OrderTriggerCondition,
 	OrderType,
-	PRICE_PRECISION,
 	PerpOperation,
 	PositionDirection,
 	ZERO,
@@ -26,11 +23,10 @@ import {
 	addOracletoResponse,
 	l2WithBNToStrings,
 	parsePositiveIntArray,
-	publishGroupings,
 } from '../utils/utils';
 import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 
-export type wsMarketArgs = {
+type wsMarketArgs = {
 	marketIndex: number;
 	marketType: MarketType;
 	marketName: string;
@@ -39,7 +35,6 @@ export type wsMarketArgs = {
 	numVammOrders?: number;
 	fallbackL2Generators?: L2OrderBookGenerator[];
 	updateOnChange?: boolean;
-	tickSize?: BN;
 };
 
 require('dotenv').config();
@@ -119,7 +114,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				includeVamm,
 				updateOnChange: false,
 				fallbackL2Generators: [],
-				tickSize: perpMarket?.amm?.orderTickSize ?? ONE,
 			});
 		}
 		for (const market of config.spotMarketInfos) {
@@ -134,8 +128,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
 					config.spotMarketSubscribers[market.marketIndex].openbook,
 				].filter((a) => !!a),
-				tickSize:
-					config.spotMarketSubscribers[market.marketIndex].tickSize ?? ONE,
 			});
 		}
 	}
@@ -153,98 +145,101 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					const mms = await this.indicativeQuotesRedisClient.smembers(
 						`market_mms_${marketType}_${marketArgs.marketIndex}`
 					);
-					const mmQuotes = await Promise.all(
+					let mmQuotes: any = await Promise.all(
 						mms.map((mm) => {
 							return this.indicativeQuotesRedisClient.get(
-								`mm_quotes_${marketType}_${marketArgs.marketIndex}_${mm}`
+								`mm_quotes_v2_${marketType}_${marketArgs.marketIndex}_${mm}`
 							);
 						})
 					);
+					mmQuotes = mmQuotes.filter((x) => !!x);
 
 					const nowMinus1000Ms = Date.now() - 1000;
-					for (const quote of mmQuotes) {
+					for (const quotes of mmQuotes) {
 						try {
-							if (Number(quote['ts']) > nowMinus1000Ms) {
-								const indicativeBaseOrder: Order = {
-									status: OrderStatus.OPEN,
-									orderType: OrderType.LIMIT,
-									orderId: 0,
-									slot: new BN(this.slotSource.getSlot()),
-									marketIndex: marketArgs.marketIndex,
-									marketType: marketArgs.marketType,
-									baseAssetAmount: ZERO,
-									immediateOrCancel: false,
-									direction: PositionDirection.LONG,
-									oraclePriceOffset: 0,
-									maxTs: new BN(quote['ts'] + 1000),
-									reduceOnly: false,
-									triggerCondition: OrderTriggerCondition.ABOVE,
-									price: ZERO,
-									userOrderId: 0,
-									postOnly: true,
-									auctionDuration: 0,
-									auctionStartPrice: ZERO,
-									auctionEndPrice: ZERO,
-									// Rest are not necessary and set for type conforming
-									existingPositionDirection: PositionDirection.LONG,
-									triggerPrice: ZERO,
-									baseAssetAmountFilled: ZERO,
-									quoteAssetAmountFilled: ZERO,
-									quoteAssetAmount: ZERO,
-									bitFlags: 0,
-									postedSlotTail: 0,
-								};
+							if (Number(quotes['ts']) > nowMinus1000Ms) {
+								for (const quote of quotes['quotes']) {
+									const indicativeBaseOrder: Order = {
+										status: OrderStatus.OPEN,
+										orderType: OrderType.LIMIT,
+										orderId: 0,
+										slot: new BN(this.slotSource.getSlot()),
+										marketIndex: marketArgs.marketIndex,
+										marketType: marketArgs.marketType,
+										baseAssetAmount: ZERO,
+										immediateOrCancel: false,
+										direction: PositionDirection.LONG,
+										oraclePriceOffset: 0,
+										maxTs: new BN(quote['ts'] + 1000),
+										reduceOnly: false,
+										triggerCondition: OrderTriggerCondition.ABOVE,
+										price: ZERO,
+										userOrderId: 0,
+										postOnly: true,
+										auctionDuration: 0,
+										auctionStartPrice: ZERO,
+										auctionEndPrice: ZERO,
+										// Rest are not necessary and set for type conforming
+										existingPositionDirection: PositionDirection.LONG,
+										triggerPrice: ZERO,
+										baseAssetAmountFilled: ZERO,
+										quoteAssetAmountFilled: ZERO,
+										quoteAssetAmount: ZERO,
+										bitFlags: 0,
+										postedSlotTail: 0,
+									};
 
-								if (quote['bid_size'] && quote['bid_price'] != null) {
-									// Sanity check bid price and size
+									if (quote['bid_size'] && quote['bid_price'] != null) {
+										// Sanity check bid price and size
 
-									const indicativeBid: Order = Object.assign(
-										{},
-										indicativeBaseOrder,
-										{
-											orderId: indicativeOrderId,
-											oraclePriceOffset: quote['is_oracle_offset']
-												? quote['bid_price']
-												: 0,
-											price: quote['is_oracle_offset']
-												? 0
-												: new BN(quote['bid_price']),
-											baseAssetAmount: new BN(quote['bid_size']),
-											direction: PositionDirection.LONG,
-										}
-									);
-									this.dlob.insertOrder(
-										indicativeBid,
-										INDICATIVE_QUOTES_PUBKEY,
-										this.slotSource.getSlot(),
-										false
-									);
-									indicativeOrderId += 1;
-								}
+										const indicativeBid: Order = Object.assign(
+											{},
+											indicativeBaseOrder,
+											{
+												orderId: indicativeOrderId,
+												oraclePriceOffset: quote['is_oracle_offset']
+													? quote['bid_price']
+													: 0,
+												price: quote['is_oracle_offset']
+													? 0
+													: new BN(quote['bid_price']),
+												baseAssetAmount: new BN(quote['bid_size']),
+												direction: PositionDirection.LONG,
+											}
+										);
+										this.dlob.insertOrder(
+											indicativeBid,
+											INDICATIVE_QUOTES_PUBKEY,
+											this.slotSource.getSlot(),
+											false
+										);
+										indicativeOrderId += 1;
+									}
 
-								if (quote['ask_size'] && quote['ask_price'] != null) {
-									const indicativeAsk: Order = Object.assign(
-										{},
-										indicativeBaseOrder,
-										{
-											orderId: indicativeOrderId,
-											oraclePriceOffset: quote['is_oracle_offset']
-												? quote['ask_price']
-												: 0,
-											price: quote['is_oracle_offset']
-												? 0
-												: new BN(quote['ask_price']),
-											baseAssetAmount: new BN(quote['ask_size']),
-											direction: PositionDirection.SHORT,
-										}
-									);
-									this.dlob.insertOrder(
-										indicativeAsk,
-										INDICATIVE_QUOTES_PUBKEY,
-										this.slotSource.getSlot(),
-										false
-									);
-									indicativeOrderId += 1;
+									if (quote['ask_size'] && quote['ask_price'] != null) {
+										const indicativeAsk: Order = Object.assign(
+											{},
+											indicativeBaseOrder,
+											{
+												orderId: indicativeOrderId,
+												oraclePriceOffset: quote['is_oracle_offset']
+													? quote['ask_price']
+													: 0,
+												price: quote['is_oracle_offset']
+													? 0
+													: new BN(quote['ask_price']),
+												baseAssetAmount: new BN(quote['ask_size']),
+												direction: PositionDirection.SHORT,
+											}
+										);
+										this.dlob.insertOrder(
+											indicativeAsk,
+											INDICATIVE_QUOTES_PUBKEY,
+											this.slotSource.getSlot(),
+											false
+										);
+										indicativeOrderId += 1;
+									}
 								}
 							}
 						} catch (error) {
@@ -402,15 +397,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				this.indicativeQuotesRedisClient ? '_indicative' : ''
 			}`,
 			l2Formatted_depth100
-		);
-
-		publishGroupings(
-			l2Formatted,
-			marketArgs,
-			this.redisClient,
-			clientPrefix,
-			marketType,
-			this.indicativeQuotesRedisClient
 		);
 
 		if (!this.indicativeQuotesRedisClient) {
