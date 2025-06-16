@@ -786,14 +786,20 @@ const main = async (): Promise<void> => {
 		try {
 			// Check origin validation
 			const origin = req.get('Origin') || req.get('Referer');
-			const allowedOrigins = ['https://app.drift.trade', 'https://beta.drift.trade'];
-			
-			const hasAuth = (
-				(req.headers.Authorization || req.headers.authorization) ===
-				process.env.INTERNAL_SECRET
-			)
+			const allowedOrigins = [
+				'https://app.drift.trade',
+				'https://beta.drift.trade',
+			];
 
-			if (!hasAuth && (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed)))) {
+			const hasAuth =
+				(req.headers.Authorization || req.headers.authorization) ===
+				process.env.INTERNAL_SECRET;
+
+			if (
+				!hasAuth &&
+				(!origin ||
+					!allowedOrigins.some((allowed) => origin.startsWith(allowed)))
+			) {
 				res.status(403).json({ error: 'Forbidden: Invalid origin' });
 				return;
 			}
@@ -815,23 +821,20 @@ const main = async (): Promise<void> => {
 				channel: 'real_time',
 				jsonBinaryEncoding: 'hex',
 			};
-	
-			const latestPriceRes = await fetch(
-				pythLazerEndpoint,
-				{
-					method: 'POST',
-					headers: {
-						Authorization: `Bearer ${pythLazerDriftToken}`,
-					},
-					body: JSON.stringify(latestLazerPricePayload),
-				}
-			).then((res) => res.json());
-	
+
+			const latestPriceRes = await fetch(pythLazerEndpoint, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${pythLazerDriftToken}`,
+				},
+				body: JSON.stringify(latestLazerPricePayload),
+			}).then((res) => res.json());
+
 			const data = latestPriceRes.solana.data;
 
 			if (data) {
 				res.status(200).json({
-					data
+					data,
 				});
 
 				return;
@@ -848,14 +851,20 @@ const main = async (): Promise<void> => {
 		try {
 			// Check origin validation
 			const origin = req.get('Origin') || req.get('Referer');
-			const allowedOrigins = ['https://app.drift.trade', 'https://beta.drift.trade'];	
-			
-			const hasAuth = (
+			const allowedOrigins = [
+				'https://app.drift.trade',
+				'https://beta.drift.trade',
+			];
+
+			const hasAuth =
 				(req.headers.Authorization || req.headers.authorization) ===
-				process.env.INTERNAL_SECRET
-			)
-			
-			if (!hasAuth && (!origin || !allowedOrigins.some(allowed => origin.startsWith(allowed)))) {
+				process.env.INTERNAL_SECRET;
+
+			if (
+				!hasAuth &&
+				(!origin ||
+					!allowedOrigins.some((allowed) => origin.startsWith(allowed)))
+			) {
 				res.status(403).json({ error: 'Forbidden: Invalid origin' });
 				return;
 			}
@@ -881,7 +890,7 @@ const main = async (): Promise<void> => {
 
 			if (data) {
 				res.status(200).json({
-					data
+					data,
 				});
 
 				return;
