@@ -452,7 +452,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	}
 
 	getL3AndSendMsg(marketArgs: wsMarketArgs): void {
-		const shouldSendMessage = Math.random() < 1 / 60;
 		const { marketName, ...l2FuncArgs } = marketArgs;
 		const l3 = this.getL3(l2FuncArgs);
 		const slot = l3.slot;
@@ -501,13 +500,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			marketArgs.marketIndex
 		);
 
-		if (shouldSendMessage && this.offloadQueue) {
+		if (this.offloadQueue) {
 			try {
 				this.offloadQueue.addMessage(
 					Object.assign({}, l3, {
 						ts: Math.floor(new Date().getTime() / 1000),
 					}),
-					'DLOBL3Snapshot'
+					{ eventType: 'DLOBL3Snapshot', throttle: true }
 				);
 			} catch (error) {
 				logger.error('Error adding message to offload queue:', error);
