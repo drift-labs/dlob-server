@@ -6,8 +6,11 @@ import {
 import { ConfiguredRetryStrategy } from '@aws-sdk/util-retry';
 import { logger } from '../utils/logger';
 
+type EventType = 'DLOBSnapshot' | 'DLOBL3Snapshot';
+
 interface QueueMessage {
 	data: any;
+	eventType: EventType;
 }
 
 const kinesis = new KinesisClient({
@@ -17,7 +20,7 @@ const kinesis = new KinesisClient({
 	),
 });
 
-const kinesisStream = process.env.KINESIS_STREAM_NAME
+const kinesisStream = process.env.KINESIS_STREAM_NAME;
 const batchInterval = process.env.KINESIS_BATCH_INTERVAL
 	? parseInt(process.env.KINESIS_BATCH_INTERVAL)
 	: 10000;
@@ -47,7 +50,6 @@ export const OffloadQueue = () => {
 					JSON.stringify({
 						...msg.data,
 						source: 'dlob',
-						eventType: 'DLOBSnapshot',
 					})
 				),
 				PartitionKey: Date.now().toString(),
@@ -87,9 +89,10 @@ export const OffloadQueue = () => {
 		}
 	};
 
-	const addMessage = (data: any): void => {
+	const addMessage = (data: any, eventType: EventType = 'DLOBSnapshot') => {
 		queue.push({
 			data,
+			eventType,
 		});
 	};
 

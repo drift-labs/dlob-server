@@ -78,7 +78,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			env: DriftEnv;
 			redisClient: RedisClient;
 			indicativeQuotesRedisClient?: RedisClient;
-			enableOffloadQueue?: boolean
+			enableOffloadQueue?: boolean;
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
@@ -404,11 +404,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		if (this.offloadQueue) {
 			try {
-				this.offloadQueue.addMessage(Object.assign({}, l2Formatted, {
-					bids: l2Formatted.bids.slice(0, 20),
-					asks: l2Formatted.asks.slice(0, 20),
-					ts: Math.floor(new Date().getTime() / 1000),
-				}));
+				this.offloadQueue.addMessage(
+					Object.assign({}, l2Formatted, {
+						bids: l2Formatted.bids.slice(0, 20),
+						asks: l2Formatted.asks.slice(0, 20),
+						ts: Math.floor(new Date().getTime() / 1000),
+					})
+				);
 			} catch (error) {
 				logger.error('Error adding message to offload queue:', error);
 			}
@@ -450,6 +452,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	}
 
 	getL3AndSendMsg(marketArgs: wsMarketArgs): void {
+		const shouldSendMessage = Math.random() < 1 / 60;
 		const { marketName, ...l2FuncArgs } = marketArgs;
 		const l3 = this.getL3(l2FuncArgs);
 		const slot = l3.slot;
@@ -497,6 +500,19 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			marketArgs.marketType,
 			marketArgs.marketIndex
 		);
+
+		if (shouldSendMessage && this.offloadQueue) {
+			try {
+				this.offloadQueue.addMessage(
+					Object.assign({}, l3, {
+						ts: Math.floor(new Date().getTime() / 1000),
+					}),
+					'DLOBL3Snapshot'
+				);
+			} catch (error) {
+				logger.error('Error adding message to offload queue:', error);
+			}
+		}
 
 		this.redisClient.set(
 			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}${
