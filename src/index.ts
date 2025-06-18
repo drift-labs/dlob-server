@@ -41,11 +41,16 @@ import {
 	getAccountFromId,
 	getRawAccountFromId,
 	selectMostRecentBySlot,
+	createMarketBasedAuctionParams,
+	parseBoolean,
+	parseNumber,
+	mapToMarketOrderParams,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { setGlobalDispatcher, Agent } from 'undici';
 import { HermesClient } from '@pythnetwork/hermes-client';
+import { COMMON_UI_UTILS } from '@drift/common';
 
 setGlobalDispatcher(
 	new Agent({
@@ -898,6 +903,94 @@ const main = async (): Promise<void> => {
 				res.writeHead(404);
 				res.end('Not found');
 			}
+		} catch (err) {
+			next(err);
+		}
+	});
+
+	app.get('/auctionParams', async (req, res, next) => {
+		try {
+			const {
+				marketIndex,
+				marketType,
+				direction,
+				baseSize,
+				reduceOnly,
+				allowInfSlippage,
+				slippageTolerance,
+				isOracleOrder,
+				auctionDuration,
+				auctionStartPriceOffset,
+				auctionEndPriceOffset,
+				auctionStartPriceOffsetFrom,
+				auctionEndPriceOffsetFrom,
+				additionalEndPriceBuffer,
+			} = req.query;
+
+			// Validate required parameters
+			if (!marketIndex || !marketType || !direction || !baseSize) {
+				res
+					.status(400)
+					.send(
+						'Bad Request: marketIndex, marketType, direction, and baseSize are required'
+					);
+				return;
+			}
+
+			// Parse and validate values
+			const parsedMarketIndex = parseInt(marketIndex as string);
+			if (isNaN(parsedMarketIndex)) {
+				res.status(400).send('Bad Request: marketIndex must be a valid number');
+				return;
+			}
+
+			if (direction !== 'long' && direction !== 'short') {
+				res
+					.status(400)
+					.send('Bad Request: direction must be either "long" or "short"');
+				return;
+			}
+
+			// Build auction params object
+			const auctionParamsInput: any = {
+				marketIndex: parsedMarketIndex,
+				marketType: marketType as string,
+				direction: direction as 'long' | 'short',
+				baseSize: baseSize as string,
+			};
+
+			// Add optional parameters if provided
+			const optionalParams = {
+				reduceOnly: parseBoolean(reduceOnly as string),
+				allowInfSlippage: parseBoolean(allowInfSlippage as string),
+				slippageTolerance: parseNumber(slippageTolerance as string),
+				isOracleOrder: parseBoolean(isOracleOrder as string),
+				auctionDuration: parseNumber(auctionDuration as string),
+				auctionStartPriceOffset: parseNumber(auctionStartPriceOffset as string),
+				auctionEndPriceOffset: parseNumber(auctionEndPriceOffset as string),
+				auctionStartPriceOffsetFrom: auctionStartPriceOffsetFrom as any,
+				auctionEndPriceOffsetFrom: auctionEndPriceOffsetFrom as any,
+				additionalEndPriceBuffer: additionalEndPriceBuffer as string,
+			};
+
+			// Only add non-undefined values
+			Object.entries(optionalParams).forEach(([key, value]) => {
+				if (value !== undefined) {
+					auctionParamsInput[key] = value;
+				}
+			});
+
+			const inputParams = createMarketBasedAuctionParams(auctionParamsInput);
+
+			const marketOrderParams = await mapToMarketOrderParams(
+				inputParams,
+				driftClient,
+				fetchFromRedis,
+				selectMostRecentBySlot
+			);
+			const auctionParams = COMMON_UI_UTILS.deriveMarketOrderParams(marketOrderParams);
+
+			res.status(200).json(auctionParams);
 		} catch (err) {
 			next(err);
 		}
