@@ -14,6 +14,14 @@ import {
 	SpotMarketConfig,
 	decodeUser,
 	isVariant,
+	PositionDirection,
+	ZERO,
+	BASE_PRECISION,
+	PRICE_PRECISION,
+	calculateEstimatedEntryPriceWithL2,
+	AssetType,
+	MainnetSpotMarkets,
+	DevnetSpotMarkets,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
 
@@ -31,6 +39,9 @@ export const GROUPING_DEPENDENCIES = {
 	500: 100,
 	1000: 100,
 };
+import { DEFAULT_AUCTION_PARAMS } from './constants';
+import { AuctionParamArgs } from './types';
+import { COMMON_MATH } from '@drift/common';
 
 export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	for (const key of Object.keys(l2)) {
@@ -631,4 +642,264 @@ export const selectMostRecentBySlot = (
 	return parsedResponses.reduce((mostRecent, current) => {
 		return !mostRecent || current.slot > mostRecent.slot ? current : mostRecent;
 	}, null);
+};
+
+export function createMarketBasedAuctionParams(
+	args: AuctionParamArgs,
+	overrideDefaults?: Partial<AuctionParamArgs>
+): AuctionParamArgs {
+	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
+	const isMajorMarket =
+		args.marketType?.toLowerCase() === 'perp' &&
+		[0, 1, 2].includes(args.marketIndex);
+
+	// Set market-specific defaults
+	const marketSpecificDefaults: Partial<AuctionParamArgs> = {
+		...DEFAULT_AUCTION_PARAMS,
+		auctionStartPriceOffsetFrom: isMajorMarket ? 'mark' : 'bestOffer',
+		auctionStartPriceOffset: isMajorMarket ? 0 : -0.1,
+	};
+
+	// Apply custom overrides if provided
+	const finalDefaults = overrideDefaults
+		? { ...marketSpecificDefaults, ...overrideDefaults }
+		: marketSpecificDefaults;
+
+	return {
+		...finalDefaults,
+		...args,
+	};
+}
+
+/**
+ * Parse boolean values from string query parameters
+ * @param value - string value from query parameter
+ * @returns boolean | undefined - true for 'true'/'1', false for other values, undefined if input is undefined
+ */
+export const parseBoolean = (
+	value: string | undefined
+): boolean | undefined => {
+	if (value === undefined) return undefined;
+	return value === 'true' || value === '1';
+};
+
+/**
+ * Safely parse numeric values from string query parameters
+ * @param value - string value from query parameter
+ * @returns number | undefined - parsed number or undefined if invalid/empty
+ */
+export const parseNumber = (value: string | undefined): number | undefined => {
+	if (!value) return undefined;
+	const parsed = parseFloat(value);
+	return isNaN(parsed) ? undefined : parsed;
+};
+
+/**
+ * Convert string to BN with specified precision
+ * @param value - string value to convert
+ * @param precision - BN precision constant (e.g., BASE_PRECISION, PRICE_PRECISION)
+ * @returns BN with proper precision applied
+ */
+export const stringToBN = (value: string, precision: BN): BN => {
+	return new BN(Math.round(parseFloat(value) * precision.toNumber()));
+};
+
+/**
+ * Convert raw Redis L2 data (with string prices/sizes) to proper L2OrderBook format (with BN values)
+ * @param rawL2 - Raw L2 data from Redis with string values
+ * @returns L2OrderBook with proper BN values
+ */
+export const convertRawL2ToBN = (rawL2: any): L2OrderBook => {
+	const convertLevel = (level: any) => ({
+		...level,
+		price: new BN(level.price),
+		size: new BN(level.size),
+	});
+
+	return {
+		...rawL2,
+		bids: rawL2.bids?.map(convertLevel) || [],
+		asks: rawL2.asks?.map(convertLevel) || [],
+	};
+};
+
+/**
+ * Get L2 orderbook data and calculate estimated prices
+ * @param driftClient - DriftClient instance
+ * @param marketType - MarketType enum
+ * @param marketIndex - Market index number
+ * @param direction - Position direction
+ * @param baseAmount - Base amount as BN
+ * @param fetchFromRedis - Redis fetch function
+ * @param selectMostRecentBySlot - Slot selection function
+ * @returns Price data object with oracle, best, entry, worst, and mark prices
+ */
+export const getEstimatedPrices = async (
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number,
+	direction: PositionDirection,
+	baseAmount: BN,
+	fetchFromRedis: (
+		key: string,
+		selectionCriteria: (responses: any) => any
+	) => Promise<any>,
+	selectMostRecentBySlot: (responses: any[]) => any
+) => {
+	const isSpot = isVariant(marketType, 'spot');
+
+	// Get L2 orderbook data using same logic as /l2 endpoint
+	const redisL2 = await fetchFromRedis(
+		`last_update_orderbook_${isSpot ? 'spot' : 'perp'}_${marketIndex}`,
+		selectMostRecentBySlot
+	);
+
+	let l2Formatted: L2OrderBook;
+	
+	if (redisL2) {
+		l2Formatted = convertRawL2ToBN(redisL2);
+	} else {
+		l2Formatted = {
+			bids: [],
+			asks: [],
+		};
+	}
+
+	const oracleData = isSpot
+		? driftClient.getOracleDataForSpotMarket(marketIndex)
+		: driftClient.getOracleDataForPerpMarket(marketIndex);
+
+	// Get oracle price
+	const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
+
+	const spreadInfo = COMMON_MATH.calculateSpreadBidAskMark(
+		l2Formatted,
+		oraclePrice
+	);
+
+	const markPrice = spreadInfo?.markPrice ?? oraclePrice;
+
+	// If we have L2 data, calculate estimated prices
+	if (l2Formatted.bids?.length > 0 || l2Formatted.asks?.length > 0) {
+		try {
+			const assetType: AssetType = isSpot ? 'quote' : 'base';
+			const basePrecision = !isSpot
+				? BASE_PRECISION
+				: MainnetSpotMarkets[marketIndex].precision;
+
+			const priceEstimate = calculateEstimatedEntryPriceWithL2(
+				assetType,
+				baseAmount,
+				direction,
+				basePrecision,
+				l2Formatted as L2OrderBook
+			);
+
+			return {
+				oraclePrice,
+				bestPrice: priceEstimate.bestPrice,
+				entryPrice: priceEstimate.entryPrice,
+				worstPrice: priceEstimate.worstPrice,
+				markPrice,
+			};
+		} catch (error) {
+			// If calculation fails, fallback to oracle prices
+			console.warn('Price calculation failed, using oracle fallback:', error);
+		}
+	}
+
+	// Fallback to oracle prices if no L2 data or calculation fails
+	return {
+		oraclePrice,
+		bestPrice: oraclePrice,
+		entryPrice: oraclePrice,
+		worstPrice: oraclePrice,
+		markPrice,
+	};
+};
+
+/**
+ * Maps AuctionParamArgs to the format expected by deriveMarketOrderParams
+ * @param params - AuctionParamArgs from the API request
+ * @param driftClient - DriftClient instance (optional, for price calculation)
+ * @param fetchFromRedis - Redis fetch function (optional, for price calculation)
+ * @param selectMostRecentBySlot - Slot selection function (optional, for price calculation)
+ * @returns Object formatted for deriveMarketOrderParams function
+ */
+export const mapToMarketOrderParams = async (
+	params: AuctionParamArgs,
+	driftClient?: DriftClient,
+	fetchFromRedis?: (
+		key: string,
+		selectionCriteria: (responses: any) => any
+	) => Promise<any>,
+	selectMostRecentBySlot?: (responses: any[]) => any
+) => {
+	// Convert marketType string to MarketType enum
+	const marketType =
+		params.marketType.toLowerCase() === 'spot'
+			? MarketType.SPOT
+			: MarketType.PERP;
+
+	// Convert direction string to PositionDirection enum
+	const direction =
+		params.direction === 'long'
+			? PositionDirection.LONG
+			: PositionDirection.SHORT;
+
+	// Convert baseSize string to BN with BASE_PRECISION (1e9)
+	const baseAmount = stringToBN(params.baseSize, BASE_PRECISION);
+
+	// Convert additionalEndPriceBuffer string to BN with PRICE_PRECISION (1e6) if provided
+	const additionalEndPriceBuffer = params.additionalEndPriceBuffer
+		? stringToBN(params.additionalEndPriceBuffer, PRICE_PRECISION)
+		: undefined;
+
+	// Calculate estimated prices
+	let estimatedPrices;
+	if (driftClient && fetchFromRedis && selectMostRecentBySlot) {
+		estimatedPrices = await getEstimatedPrices(
+			driftClient,
+			marketType,
+			params.marketIndex,
+			direction,
+			baseAmount,
+			fetchFromRedis,
+			selectMostRecentBySlot
+		);
+	} else {
+		// Fallback to zero prices if dependencies not provided
+		estimatedPrices = {
+			oraclePrice: ZERO,
+			bestPrice: ZERO,
+			entryPrice: ZERO,
+			worstPrice: ZERO,
+			markPrice: ZERO,
+		};
+	}
+
+	return {
+		marketType,
+		marketIndex: params.marketIndex,
+		direction,
+		maxLeverageSelected: false,
+		maxLeverageOrderSize: ZERO,
+		baseAmount,
+		reduceOnly: params.reduceOnly ?? false,
+		allowInfSlippage: params.allowInfSlippage ?? false,
+		oraclePrice: estimatedPrices.oraclePrice,
+		bestPrice: estimatedPrices.bestPrice,
+		entryPrice: estimatedPrices.entryPrice,
+		worstPrice: estimatedPrices.worstPrice,
+		markPrice: estimatedPrices.markPrice,
+		auctionDuration: params.auctionDuration,
+		auctionStartPriceOffset: params.auctionStartPriceOffset,
+		auctionEndPriceOffset: params.auctionEndPriceOffset,
+		auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom,
+		auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
+		slippageTolerance: params.slippageTolerance,
+		isOracleOrder: params.isOracleOrder,
+		additionalEndPriceBuffer,
+		forceUpToSlippage: true,
+	};
 };

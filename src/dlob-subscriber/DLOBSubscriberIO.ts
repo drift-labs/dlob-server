@@ -27,7 +27,7 @@ import {
 import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 import { OffloadQueue } from '../utils/offload';
 
-type wsMarketArgs = {
+export type wsMarketArgs = {
 	marketIndex: number;
 	marketType: MarketType;
 	marketName: string;
