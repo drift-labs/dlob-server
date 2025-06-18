@@ -126,7 +126,7 @@ export const OffloadQueue = () => {
 			throttle?: boolean;
 		} = {}
 	) => {
-		const { eventType = 'DLOBSnapshot', throttle = true } = options;
+		const { eventType = 'DLOBSnapshot', throttle = false } = options;
 		const currentTime = Date.now();
 
 		if (!throttle) {
