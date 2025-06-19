@@ -21,6 +21,7 @@ import {
 	AssetType,
 	MainnetSpotMarkets,
 	DevnetSpotMarkets,
+	QUOTE_PRECISION,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
 
@@ -30,7 +31,7 @@ import FEATURE_FLAGS from './featureFlags';
 import { Connection } from '@solana/web3.js';
 import { DEFAULT_AUCTION_PARAMS } from './constants';
 import { AuctionParamArgs } from './types';
-import { COMMON_MATH } from '@drift/common';
+import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
 
 export const l2WithBNToStrings = (l2: L2OrderBook): any => {
 	for (const key of Object.keys(l2)) {
@@ -528,7 +529,16 @@ export function createMarketBasedAuctionParams(
 		args.marketType?.toLowerCase() === 'perp' &&
 		[0, 1, 2].includes(args.marketIndex);
 
-	// Set market-specific defaults
+	// Resolve "marketBased" values
+	const resolvedAuctionStartPriceOffsetFrom = args.auctionStartPriceOffsetFrom === 'marketBased' 
+		? (isMajorMarket ? 'mark' : 'bestOffer')
+		: args.auctionStartPriceOffsetFrom;
+		
+	const resolvedAuctionStartPriceOffset = args.auctionStartPriceOffset === 'marketBased' 
+		? (isMajorMarket ? 0 : -0.1)
+		: args.auctionStartPriceOffset;
+
+	// Set market-specific defaults (only used if values are undefined)
 	const marketSpecificDefaults: Partial<AuctionParamArgs> = {
 		...DEFAULT_AUCTION_PARAMS,
 		auctionStartPriceOffsetFrom: isMajorMarket ? 'mark' : 'bestOffer',
@@ -543,6 +553,9 @@ export function createMarketBasedAuctionParams(
 	return {
 		...finalDefaults,
 		...args,
+		// Override with resolved "marketBased" values if they were provided
+		auctionStartPriceOffsetFrom: resolvedAuctionStartPriceOffsetFrom ?? finalDefaults.auctionStartPriceOffsetFrom,
+		auctionStartPriceOffset: resolvedAuctionStartPriceOffset ?? finalDefaults.auctionStartPriceOffset,
 	};
 }
 
@@ -604,7 +617,8 @@ export const convertRawL2ToBN = (rawL2: any): L2OrderBook => {
  * @param marketType - MarketType enum
  * @param marketIndex - Market index number
  * @param direction - Position direction
- * @param baseAmount - Base amount as BN
+ * @param amount - Amount as BN (could be base or quote amount)
+ * @param assetType - Whether amount is 'base' or 'quote'
  * @param fetchFromRedis - Redis fetch function
  * @param selectMostRecentBySlot - Slot selection function
  * @returns Price data object with oracle, best, entry, worst, and mark prices
@@ -614,7 +628,8 @@ export const getEstimatedPrices = async (
 	marketType: MarketType,
 	marketIndex: number,
 	direction: PositionDirection,
-	baseAmount: BN,
+	amount: BN,
+	assetType: AssetType,
 	fetchFromRedis: (
 		key: string,
 		selectionCriteria: (responses: any) => any
@@ -622,7 +637,7 @@ export const getEstimatedPrices = async (
 	selectMostRecentBySlot: (responses: any[]) => any
 ) => {
 	const isSpot = isVariant(marketType, 'spot');
-
+	
 	// Get L2 orderbook data using same logic as /l2 endpoint
 	const redisL2 = await fetchFromRedis(
 		`last_update_orderbook_${isSpot ? 'spot' : 'perp'}_${marketIndex}`,
@@ -630,7 +645,6 @@ export const getEstimatedPrices = async (
 	);
 
 	let l2Formatted: L2OrderBook;
-	
 	if (redisL2) {
 		l2Formatted = convertRawL2ToBN(redisL2);
 	} else {
@@ -657,14 +671,13 @@ export const getEstimatedPrices = async (
 	// If we have L2 data, calculate estimated prices
 	if (l2Formatted.bids?.length > 0 || l2Formatted.asks?.length > 0) {
 		try {
-			const assetType: AssetType = isSpot ? 'quote' : 'base';
 			const basePrecision = !isSpot
 				? BASE_PRECISION
 				: MainnetSpotMarkets[marketIndex].precision;
 
 			const priceEstimate = calculateEstimatedEntryPriceWithL2(
-				assetType,
-				baseAmount,
+				assetType, // Use the passed assetType directly
+				amount,    // Use the amount as-is (could be base or quote)
 				direction,
 				basePrecision,
 				l2Formatted as L2OrderBook
@@ -722,11 +735,15 @@ export const mapToMarketOrderParams = async (
 			? PositionDirection.LONG
 			: PositionDirection.SHORT;
 
-	// Convert baseSize string to BN with BASE_PRECISION (1e9)
-	const baseAmount = stringToBN(params.baseSize, BASE_PRECISION);
+	// Convert amount string to BN based on assetType
+	// For base assets, use BASE_PRECISION (1e9)
+	// For quote assets, use QUOTE_PRECISION (1e6, typical for USDC)
+	const amount = params.assetType === 'base' 
+		? stringToBN(params.amount, BASE_PRECISION)
+		: stringToBN(params.amount, QUOTE_PRECISION);
 
 	// Convert additionalEndPriceBuffer string to BN with PRICE_PRECISION (1e6) if provided
-	const additionalEndPriceBuffer = params.additionalEndPriceBuffer
+	const additionalEndPriceBuffer = params.additionalEndPriceBuffer 
 		? stringToBN(params.additionalEndPriceBuffer, PRICE_PRECISION)
 		: undefined;
 
@@ -738,7 +755,8 @@ export const mapToMarketOrderParams = async (
 			marketType,
 			params.marketIndex,
 			direction,
-			baseAmount,
+			amount,
+			params.assetType,
 			fetchFromRedis,
 			selectMostRecentBySlot
 		);
@@ -759,7 +777,7 @@ export const mapToMarketOrderParams = async (
 		direction,
 		maxLeverageSelected: false,
 		maxLeverageOrderSize: ZERO,
-		baseAmount,
+		baseAmount: amount, // Use the amount directly as base amount for the function
 		reduceOnly: params.reduceOnly ?? false,
 		allowInfSlippage: params.allowInfSlippage ?? false,
 		oraclePrice: estimatedPrices.oraclePrice,
@@ -768,13 +786,47 @@ export const mapToMarketOrderParams = async (
 		worstPrice: estimatedPrices.worstPrice,
 		markPrice: estimatedPrices.markPrice,
 		auctionDuration: params.auctionDuration,
-		auctionStartPriceOffset: params.auctionStartPriceOffset,
+		auctionStartPriceOffset: params.auctionStartPriceOffset as number,
 		auctionEndPriceOffset: params.auctionEndPriceOffset,
-		auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom,
+		auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom as any,
 		auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
 		slippageTolerance: params.slippageTolerance,
 		isOracleOrder: params.isOracleOrder,
 		additionalEndPriceBuffer,
 		forceUpToSlippage: true,
+		userOrderId: params.userOrderId,
 	};
+};
+
+/**
+ * Format auction parameters for API response
+ * @param auctionParams - Raw auction parameters from deriveMarketOrderParams
+ * @returns Formatted auction parameters with BNs as strings and enums as readable strings
+ */
+export const formatAuctionParamsForResponse = (auctionParams: any) => {	
+	const formatted = { ...auctionParams };
+	
+	// we don't use this field anymore, TODO to remove from ui 
+	delete formatted.constrainedBySlippage;
+	
+	// Convert all properties
+	Object.keys(formatted).forEach(key => {
+		const value = formatted[key];
+		
+		// Check if it's a BN using BN.isBN()
+		if (BN.isBN(value)) {
+			formatted[key] = value.toString();
+		}
+		// Check if it's an enum (has nested object structure like {oracle: {}})
+		else if (value && typeof value === 'object' && Object.keys(value).length === 1) {
+			try {
+				formatted[key] = ENUM_UTILS.toStr(value);
+			} catch (e) {
+				// If ENUM_UTILS.toStr fails, keep original value
+				formatted[key] = value;
+			}
+		}
+	});
+	
+	return formatted;
 };
