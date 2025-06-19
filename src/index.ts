@@ -45,6 +45,7 @@ import {
 	parseBoolean,
 	parseNumber,
 	mapToMarketOrderParams,
+	formatAuctionParamsForResponse,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
@@ -914,7 +915,8 @@ const main = async (): Promise<void> => {
 				marketIndex,
 				marketType,
 				direction,
-				baseSize,
+				amount,
+				assetType,
 				reduceOnly,
 				allowInfSlippage,
 				slippageTolerance,
@@ -925,14 +927,15 @@ const main = async (): Promise<void> => {
 				auctionStartPriceOffsetFrom,
 				auctionEndPriceOffsetFrom,
 				additionalEndPriceBuffer,
+				userOrderId
 			} = req.query;
 
 			// Validate required parameters
-			if (!marketIndex || !marketType || !direction || !baseSize) {
+			if (!marketIndex || !marketType || !direction || !amount || !assetType) {
 				res
 					.status(400)
 					.send(
-						'Bad Request: marketIndex, marketType, direction, and baseSize are required'
+						'Bad Request: marketIndex, marketType, direction, amount, and assetType are required'
 					);
 				return;
 			}
@@ -951,12 +954,20 @@ const main = async (): Promise<void> => {
 				return;
 			}
 
+			if (assetType !== 'base' && assetType !== 'quote') {
+				res
+					.status(400)
+					.send('Bad Request: assetType must be either "base" or "quote"');
+				return;
+			}
+
 			// Build auction params object
 			const auctionParamsInput: any = {
 				marketIndex: parsedMarketIndex,
 				marketType: marketType as string,
 				direction: direction as 'long' | 'short',
-				baseSize: baseSize as string,
+				amount: amount as string,
+				assetType: assetType as string,
 			};
 
 			// Add optional parameters if provided
@@ -966,11 +977,16 @@ const main = async (): Promise<void> => {
 				slippageTolerance: parseNumber(slippageTolerance as string),
 				isOracleOrder: parseBoolean(isOracleOrder as string),
 				auctionDuration: parseNumber(auctionDuration as string),
-				auctionStartPriceOffset: parseNumber(auctionStartPriceOffset as string),
+				auctionStartPriceOffset: auctionStartPriceOffset === 'marketBased' 
+					? 'marketBased' 
+					: parseNumber(auctionStartPriceOffset as string),
 				auctionEndPriceOffset: parseNumber(auctionEndPriceOffset as string),
-				auctionStartPriceOffsetFrom: auctionStartPriceOffsetFrom as any,
+				auctionStartPriceOffsetFrom: auctionStartPriceOffsetFrom === 'marketBased'
+					? 'marketBased'
+					: auctionStartPriceOffsetFrom as any,
 				auctionEndPriceOffsetFrom: auctionEndPriceOffsetFrom as any,
 				additionalEndPriceBuffer: additionalEndPriceBuffer as string,
+				userOrderId: parseNumber(userOrderId as string),
 			};
 
 			// Only add non-undefined values
@@ -990,7 +1006,7 @@ const main = async (): Promise<void> => {
 			);
 			const auctionParams = COMMON_UI_UTILS.deriveMarketOrderParams(marketOrderParams);
 
-			res.status(200).json(auctionParams);
+			res.status(200).json(formatAuctionParamsForResponse(auctionParams));
 		} catch (err) {
 			next(err);
 		}

@@ -1,4 +1,4 @@
-import { MarketTypeStr } from "@drift-labs/sdk";
+import { AssetType, MarketTypeStr } from "@drift-labs/sdk";
 import { TradeOffsetPrice } from "@drift/common";
 
 export type AuctionParamArgs = {
@@ -6,7 +6,8 @@ export type AuctionParamArgs = {
 	marketIndex: number;
 	marketType: MarketTypeStr;
 	direction: 'long' | 'short';
-	baseSize: string;
+	amount: string;
+	assetType: AssetType;
 
 	// optional settings args
 	reduceOnly?: boolean;
@@ -14,9 +15,10 @@ export type AuctionParamArgs = {
 	slippageTolerance?: number;
 	isOracleOrder?: boolean;
 	auctionDuration?: number;
-	auctionStartPriceOffset?: number;
+	auctionStartPriceOffset?: number | 'marketBased';
 	auctionEndPriceOffset?: number;
-	auctionStartPriceOffsetFrom?: TradeOffsetPrice;
+	auctionStartPriceOffsetFrom?: TradeOffsetPrice | 'marketBased';
 	auctionEndPriceOffsetFrom?: TradeOffsetPrice;
 	additionalEndPriceBuffer?: string;
+	userOrderId?: number;
 };
