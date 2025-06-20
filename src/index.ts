@@ -928,7 +928,7 @@ const main = async (): Promise<void> => {
 				auctionStartPriceOffsetFrom,
 				auctionEndPriceOffsetFrom,
 				additionalEndPriceBuffer,
-				userOrderId
+				userOrderId,
 			} = req.query;
 
 			// Validate required parameters
@@ -978,13 +978,15 @@ const main = async (): Promise<void> => {
 				slippageTolerance: parseNumber(slippageTolerance as string),
 				isOracleOrder: parseBoolean(isOracleOrder as string),
 				auctionDuration: parseNumber(auctionDuration as string),
-				auctionStartPriceOffset: auctionStartPriceOffset === 'marketBased' 
-					? 'marketBased' 
-					: parseNumber(auctionStartPriceOffset as string),
+				auctionStartPriceOffset:
+					auctionStartPriceOffset === 'marketBased'
+						? 'marketBased'
+						: parseNumber(auctionStartPriceOffset as string),
 				auctionEndPriceOffset: parseNumber(auctionEndPriceOffset as string),
-				auctionStartPriceOffsetFrom: auctionStartPriceOffsetFrom === 'marketBased'
-					? 'marketBased'
-					: auctionStartPriceOffsetFrom as any,
+				auctionStartPriceOffsetFrom:
+					auctionStartPriceOffsetFrom === 'marketBased'
+						? 'marketBased'
+						: (auctionStartPriceOffsetFrom as any),
 				auctionEndPriceOffsetFrom: auctionEndPriceOffsetFrom as any,
 				additionalEndPriceBuffer: additionalEndPriceBuffer as string,
 				userOrderId: parseNumber(userOrderId as string),
@@ -1005,7 +1007,8 @@ const main = async (): Promise<void> => {
 				fetchFromRedis,
 				selectMostRecentBySlot
 			);
-			const auctionParams = COMMON_UI_UTILS.deriveMarketOrderParams(marketOrderParams);
+			const auctionParams =
+				COMMON_UI_UTILS.deriveMarketOrderParams(marketOrderParams);
 
 			res.status(200).json(formatAuctionParamsForResponse(auctionParams));
 		} catch (err) {
