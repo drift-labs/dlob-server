@@ -655,13 +655,19 @@ export function createMarketBasedAuctionParams(
 		[0, 1, 2].includes(args.marketIndex);
 
 	// Resolve "marketBased" values
-	const resolvedAuctionStartPriceOffsetFrom = args.auctionStartPriceOffsetFrom === 'marketBased' 
-		? (isMajorMarket ? 'mark' : 'bestOffer')
-		: args.auctionStartPriceOffsetFrom;
-		
-	const resolvedAuctionStartPriceOffset = args.auctionStartPriceOffset === 'marketBased' 
-		? (isMajorMarket ? 0 : -0.1)
-		: args.auctionStartPriceOffset;
+	const resolvedAuctionStartPriceOffsetFrom =
+		args.auctionStartPriceOffsetFrom === 'marketBased'
+			? isMajorMarket
+				? 'mark'
+				: 'bestOffer'
+			: args.auctionStartPriceOffsetFrom;
+
+	const resolvedAuctionStartPriceOffset =
+		args.auctionStartPriceOffset === 'marketBased'
+			? isMajorMarket
+				? 0
+				: -0.1
+			: args.auctionStartPriceOffset;
 
 	// Set market-specific defaults (only used if values are undefined)
 	const marketSpecificDefaults: Partial<AuctionParamArgs> = {
@@ -679,8 +685,11 @@ export function createMarketBasedAuctionParams(
 		...finalDefaults,
 		...args,
 		// Override with resolved "marketBased" values if they were provided
-		auctionStartPriceOffsetFrom: resolvedAuctionStartPriceOffsetFrom ?? finalDefaults.auctionStartPriceOffsetFrom,
-		auctionStartPriceOffset: resolvedAuctionStartPriceOffset ?? finalDefaults.auctionStartPriceOffset,
+		auctionStartPriceOffsetFrom:
+			resolvedAuctionStartPriceOffsetFrom ??
+			finalDefaults.auctionStartPriceOffsetFrom,
+		auctionStartPriceOffset:
+			resolvedAuctionStartPriceOffset ?? finalDefaults.auctionStartPriceOffset,
 	};
 }
 
@@ -762,7 +771,7 @@ export const getEstimatedPrices = async (
 	selectMostRecentBySlot: (responses: any[]) => any
 ) => {
 	const isSpot = isVariant(marketType, 'spot');
-	
+
 	// Get L2 orderbook data using the new utility function
 	const redisL2 = await fetchL2FromRedis(
 		fetchFromRedis,
@@ -865,12 +874,13 @@ export const mapToMarketOrderParams = async (
 	// Convert amount string to BN based on assetType
 	// For base assets, use BASE_PRECISION (1e9)
 	// For quote assets, use QUOTE_PRECISION (1e6, typical for USDC)
-	const amount = params.assetType === 'base' 
-		? stringToBN(params.amount, BASE_PRECISION)
-		: stringToBN(params.amount, QUOTE_PRECISION);
+	const amount =
+		params.assetType === 'base'
+			? stringToBN(params.amount, BASE_PRECISION)
+			: stringToBN(params.amount, QUOTE_PRECISION);
 
 	// Convert additionalEndPriceBuffer string to BN with PRICE_PRECISION (1e6) if provided
-	const additionalEndPriceBuffer = params.additionalEndPriceBuffer 
+	const additionalEndPriceBuffer = params.additionalEndPriceBuffer
 		? stringToBN(params.additionalEndPriceBuffer, PRICE_PRECISION)
 		: undefined;
 
@@ -946,22 +956,26 @@ export const mapToMarketOrderParams = async (
  * @param auctionParams - Raw auction parameters from deriveMarketOrderParams
  * @returns Formatted auction parameters with BNs as strings and enums as readable strings
  */
-export const formatAuctionParamsForResponse = (auctionParams: any) => {	
+export const formatAuctionParamsForResponse = (auctionParams: any) => {
 	const formatted = { ...auctionParams };
-	
-	// we don't use this field anymore, TODO to remove from ui 
+
+	// we don't use this field anymore, TODO to remove from ui
 	delete formatted.constrainedBySlippage;
-	
+
 	// Convert all properties
-	Object.keys(formatted).forEach(key => {
+	Object.keys(formatted).forEach((key) => {
 		const value = formatted[key];
-		
+
 		// Check if it's a BN using BN.isBN()
 		if (BN.isBN(value)) {
 			formatted[key] = value.toString();
 		}
 		// Check if it's an enum (has nested object structure like {oracle: {}})
-		else if (value && typeof value === 'object' && Object.keys(value).length === 1) {
+		else if (
+			value &&
+			typeof value === 'object' &&
+			Object.keys(value).length === 1
+		) {
 			try {
 				formatted[key] = ENUM_UTILS.toStr(value);
 			} catch (e) {
@@ -970,14 +984,14 @@ export const formatAuctionParamsForResponse = (auctionParams: any) => {
 			}
 		}
 	});
-	
+
 	return formatted;
 };
 
 /**
  * Fetch L2 orderbook data from Redis
  * @param fetchFromRedis - Redis fetch function
- * @param selectMostRecentBySlot - Slot selection function  
+ * @param selectMostRecentBySlot - Slot selection function
  * @param marketType - MarketType enum (spot or perp)
  * @param marketIndex - Market index number
  * @param includeIndicative - Whether to include indicative orders (optional)
@@ -996,7 +1010,7 @@ export const fetchL2FromRedis = async (
 	const isSpot = isVariant(marketType, 'spot');
 	const marketTypeStr = isSpot ? 'spot' : 'perp';
 	const indicativeSuffix = includeIndicative ? '_indicative' : '';
-	
+
 	return await fetchFromRedis(
 		`last_update_orderbook_${marketTypeStr}_${marketIndex}${indicativeSuffix}`,
 		selectMostRecentBySlot
