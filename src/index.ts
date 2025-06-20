@@ -46,6 +46,7 @@ import {
 	parseNumber,
 	mapToMarketOrderParams,
 	formatAuctionParamsForResponse,
+	fetchL2FromRedis,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
@@ -552,11 +553,12 @@ const main = async (): Promise<void> => {
 			const adjustedDepth = depth ?? '100';
 
 			let l2Formatted: any;
-			const redisL2 = await fetchFromRedis(
-				`last_update_orderbook_${
-					isSpot ? 'spot' : 'perp'
-				}_${normedMarketIndex}${includeIndicativeStr ? '_indicative' : ''}`,
-				selectMostRecentBySlot
+			const redisL2 = await fetchL2FromRedis(
+				fetchFromRedis,
+				selectMostRecentBySlot,
+				normedMarketType,
+				normedMarketIndex,
+				includeIndicativeStr
 			);
 			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
 			let cacheMiss = true;
@@ -666,13 +668,12 @@ const main = async (): Promise<void> => {
 
 					const adjustedDepth = normedParam['depth'] ?? '100';
 					let l2Formatted: any;
-					const redisL2 = await fetchFromRedis(
-						`last_update_orderbook_${
-							isSpot ? 'spot' : 'perp'
-						}_${normedMarketIndex}${
-							normedIncludeIndicative ? '_indicative' : ''
-						}`,
-						selectMostRecentBySlot
+					const redisL2 = await fetchL2FromRedis(
+						fetchFromRedis,
+						selectMostRecentBySlot,
+						normedMarketType,
+						normedMarketIndex,
+						normedIncludeIndicative
 					);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
 					let cacheMiss = true;

@@ -763,10 +763,12 @@ export const getEstimatedPrices = async (
 ) => {
 	const isSpot = isVariant(marketType, 'spot');
 	
-	// Get L2 orderbook data using same logic as /l2 endpoint
-	const redisL2 = await fetchFromRedis(
-		`last_update_orderbook_${isSpot ? 'spot' : 'perp'}_${marketIndex}`,
-		selectMostRecentBySlot
+	// Get L2 orderbook data using the new utility function
+	const redisL2 = await fetchL2FromRedis(
+		fetchFromRedis,
+		selectMostRecentBySlot,
+		marketType,
+		marketIndex
 	);
 
 	let l2Formatted: L2OrderBook;
@@ -801,8 +803,8 @@ export const getEstimatedPrices = async (
 				: MainnetSpotMarkets[marketIndex].precision;
 
 			const priceEstimate = calculateEstimatedEntryPriceWithL2(
-				assetType, // Use the passed assetType directly
-				amount,    // Use the amount as-is (could be base or quote)
+				assetType,
+				amount,
 				direction,
 				basePrecision,
 				l2Formatted as L2OrderBook
@@ -896,13 +898,29 @@ export const mapToMarketOrderParams = async (
 		};
 	}
 
+	// Calculate baseAmount based on assetType
+	let baseAmount: BN;
+	if (params.assetType === 'base') {
+		// If assetType is base, use the amount directly
+		baseAmount = amount;
+	} else {
+		// If assetType is quote, convert quote amount to base amount using entry price
+		// baseAmount = (quoteAmount * PRICE_PRECISION) / entryPrice
+		if (estimatedPrices.entryPrice.gt(ZERO)) {
+			baseAmount = amount.mul(PRICE_PRECISION).div(estimatedPrices.entryPrice);
+		} else {
+			// Fallback to zero if entry price is zero or invalid
+			baseAmount = ZERO;
+		}
+	}
+
 	return {
 		marketType,
 		marketIndex: params.marketIndex,
 		direction,
 		maxLeverageSelected: false,
 		maxLeverageOrderSize: ZERO,
-		baseAmount: amount, // Use the amount directly as base amount for the function
+		baseAmount,
 		reduceOnly: params.reduceOnly ?? false,
 		allowInfSlippage: params.allowInfSlippage ?? false,
 		oraclePrice: estimatedPrices.oraclePrice,
@@ -954,4 +972,33 @@ export const formatAuctionParamsForResponse = (auctionParams: any) => {
 	});
 	
 	return formatted;
+};
+
+/**
+ * Fetch L2 orderbook data from Redis
+ * @param fetchFromRedis - Redis fetch function
+ * @param selectMostRecentBySlot - Slot selection function  
+ * @param marketType - MarketType enum (spot or perp)
+ * @param marketIndex - Market index number
+ * @param includeIndicative - Whether to include indicative orders (optional)
+ * @returns Promise<any> - Raw L2 data from Redis or null if not found
+ */
+export const fetchL2FromRedis = async (
+	fetchFromRedis: (
+		key: string,
+		selectionCriteria: (responses: any) => any
+	) => Promise<any>,
+	selectMostRecentBySlot: (responses: any[]) => any,
+	marketType: MarketType,
+	marketIndex: number,
+	includeIndicative?: boolean
+): Promise<any> => {
+	const isSpot = isVariant(marketType, 'spot');
+	const marketTypeStr = isSpot ? 'spot' : 'perp';
+	const indicativeSuffix = includeIndicative ? '_indicative' : '';
+	
+	return await fetchFromRedis(
+		`last_update_orderbook_${marketTypeStr}_${marketIndex}${indicativeSuffix}`,
+		selectMostRecentBySlot
+	);
 };
