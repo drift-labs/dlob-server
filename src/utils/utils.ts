@@ -809,7 +809,9 @@ export const getEstimatedPrices = async (
 		try {
 			const basePrecision = !isSpot
 				? BASE_PRECISION
-				: MainnetSpotMarkets[marketIndex].precision;
+				: process.env.ENV === 'mainnet-beta'
+					? MainnetSpotMarkets[marketIndex].precision
+					: DevnetSpotMarkets[marketIndex].precision;
 
 			const priceEstimate = calculateEstimatedEntryPriceWithL2(
 				assetType,
