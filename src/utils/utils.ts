@@ -1,4 +1,6 @@
 import {
+	BN,
+	BigNum,
 	DriftClient,
 	DriftEnv,
 	L2OrderBook,
@@ -13,7 +15,6 @@ import {
 	decodeUser,
 	isVariant,
 	PositionDirection,
-	BN,
 	ZERO,
 	BASE_PRECISION,
 	PRICE_PRECISION,
@@ -30,6 +31,16 @@ import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
 import { Connection } from '@solana/web3.js';
+import { wsMarketArgs } from 'src/dlob-subscriber/DLOBSubscriberIO';
+
+export const GROUPING_OPTIONS = [1, 10, 100, 500, 1000];
+export const GROUPING_DEPENDENCIES = {
+	1: null,
+	10: 1,
+	100: 10,
+	500: 100,
+	1000: 100,
+};
 import { DEFAULT_AUCTION_PARAMS } from './constants';
 import { AuctionParamArgs } from './types';
 import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
@@ -244,7 +255,8 @@ export function publishGroupings(
 	const groupingResults = new Map();
 
 	GROUPING_OPTIONS.forEach((group) => {
-		const pricePrecision = PRICE_PRECISION.toNumber();// BigNum.from(group).mul(marketArgs.tickSize).toNum();
+		// not sure what this is supposed to be -- todo confirm with jack
+		const pricePrecision = PRICE_PRECISION.toNumber(); // BigNum.from(group).mul(marketArgs.tickSize).toNum();
 		const dependency = GROUPING_DEPENDENCIES[group];
 
 		let fullAggregatedBids, fullAggregatedAsks;
@@ -611,6 +623,7 @@ export type SubscriberLookup = {
 		phoenix?: PhoenixSubscriber;
 		serum?: SerumSubscriber;
 		openbook?: OpenbookV2Subscriber;
+		tickSize?: BN;
 	};
 };
 

@@ -25,8 +25,9 @@ import {
 	parsePositiveIntArray,
 } from '../utils/utils';
 import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
+import { OffloadQueue } from '../utils/offload';
 
-type wsMarketArgs = {
+export type wsMarketArgs = {
 	marketIndex: number;
 	marketType: MarketType;
 	marketName: string;
@@ -69,12 +70,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		MarketType,
 		Map<number, { slot: number; ts: number }>
 	>;
+	public offloadQueue?: ReturnType<typeof OffloadQueue>;
+	public enableOffload: boolean;
 
 	constructor(
 		config: DLOBSubscriptionConfig & {
 			env: DriftEnv;
 			redisClient: RedisClient;
 			indicativeQuotesRedisClient?: RedisClient;
+			enableOffloadQueue?: boolean;
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
@@ -87,6 +91,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		this.killSwitchSlotDiffThreshold =
 			config.killSwitchSlotDiffThreshold || 200;
+
+		this.enableOffload = config.enableOffloadQueue || false;
+		if (this.enableOffload) {
+			this.offloadQueue = OffloadQueue();
+		}
 
 		// Set up appropriate maps
 		this.lastSeenL2Formatted = new Map();
@@ -392,6 +401,21 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			}`,
 			l2Formatted
 		);
+
+		if (this.offloadQueue) {
+			try {
+				this.offloadQueue.addMessage(
+					Object.assign({}, l2Formatted, {
+						bids: l2Formatted.bids.slice(0, 20),
+						asks: l2Formatted.asks.slice(0, 20),
+						ts: Math.floor(new Date().getTime() / 1000),
+					})
+				);
+			} catch (error) {
+				logger.error('Error adding message to offload queue:', error);
+			}
+		}
+
 		this.redisClient.set(
 			`last_update_orderbook_${marketType}_${marketArgs.marketIndex}${
 				this.indicativeQuotesRedisClient ? '_indicative' : ''
@@ -475,6 +499,19 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			marketArgs.marketType,
 			marketArgs.marketIndex
 		);
+
+		if (this.offloadQueue) {
+			try {
+				this.offloadQueue.addMessage(
+					Object.assign({}, l3, {
+						ts: Math.floor(new Date().getTime() / 1000),
+					}),
+					{ eventType: 'DLOBL3Snapshot', throttle: true }
+				);
+			} catch (error) {
+				logger.error('Error adding message to offload queue:', error);
+			}
+		}
 
 		this.redisClient.set(
 			`last_update_orderbook_l3_${marketType}_${marketArgs.marketIndex}${

@@ -20,6 +20,7 @@ import {
 	PhoenixSubscriber,
 	MarketType,
 	OraclePriceData,
+	ONE,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -124,6 +125,8 @@ const SPOT_MARKETS_TO_LOAD =
 	process.env.SPOT_MARKETS_TO_LOAD !== undefined
 		? parsePositiveIntArray(process.env.SPOT_MARKETS_TO_LOAD)
 		: undefined;
+
+const enableOffloadQueue = process.env.ENABLE_OFFLOAD === 'true';
 
 logger.info(`RPC endpoint:  ${endpoint}`);
 logger.info(`WS endpoint:   ${wsEndpoint}`);
@@ -299,6 +302,8 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 				}
 			}
 		}
+
+		markets[market.marketIndex].tickSize = market?.orderTickSize ?? ONE
 	}
 
 	return markets;
@@ -522,6 +527,7 @@ const main = async () => {
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
 		protectedMakerView: false,
 		indicativeQuotesRedisClient: indicativeRedisClient,
+		enableOffloadQueue
 	});
 	await dlobSubscriberIndicative.subscribe();
 
