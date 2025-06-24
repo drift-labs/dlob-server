@@ -977,7 +977,10 @@ const main = async (): Promise<void> => {
 			const optionalParams = {
 				reduceOnly: parseBoolean(reduceOnly as string),
 				allowInfSlippage: parseBoolean(allowInfSlippage as string),
-				slippageTolerance: parseNumber(slippageTolerance as string),
+				slippageTolerance:
+					slippageTolerance === 'dynamic'
+						? undefined
+						: parseNumber(slippageTolerance as string), // Convert "dynamic" to undefined for dynamic calculation
 				isOracleOrder: parseBoolean(isOracleOrder as string),
 				auctionDuration: parseNumber(auctionDuration as string),
 				auctionStartPriceOffset:
@@ -1020,6 +1023,7 @@ const main = async (): Promise<void> => {
 					result.estimatedPrices.priceImpact,
 					PRICE_PRECISION_EXP
 				).toNum(),
+				slippageTolerance: result.marketOrderParams.slippageTolerance,
 			};
 
 			res.status(200).json(response);
