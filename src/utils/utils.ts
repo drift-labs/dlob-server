@@ -22,6 +22,7 @@ import {
 	MainnetSpotMarkets,
 	DevnetSpotMarkets,
 	QUOTE_PRECISION,
+	PERCENTAGE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
 
@@ -183,6 +184,119 @@ export const addMarketSlotToResponse = (
 	}
 	response['marketSlot'] = marketSlot;
 };
+
+export function aggregatePrices(entries, side, pricePrecision) {
+	const isAsk = side === 'ask';
+	const result = new Map();
+
+	entries.forEach((entry) => {
+		const price = parseFloat(entry.price);
+		const data = {
+			size: parseFloat(entry.size),
+			sources: entry.sources || {},
+		};
+
+		let bucketPrice, displayPrice;
+		if (isAsk) {
+			displayPrice = Math.ceil(price / pricePrecision) * pricePrecision;
+			bucketPrice = displayPrice;
+		} else {
+			displayPrice = Math.floor(price / pricePrecision) * pricePrecision;
+			bucketPrice = displayPrice;
+		}
+
+		const bucketKey = Math.round(bucketPrice);
+
+		if (!result.has(bucketKey)) {
+			result.set(bucketKey, {
+				size: 0,
+				price: displayPrice,
+				sources: {},
+			});
+		}
+
+		const bucketData = result.get(bucketKey);
+		bucketData.size += data.size;
+
+		if (data.sources) {
+			Object.entries(data.sources).forEach(
+				([sourceKey, sourceSize]: [string, string]) => {
+					if (!bucketData.sources[sourceKey]) {
+						bucketData.sources[sourceKey] = 0;
+					}
+					bucketData.sources[sourceKey] += parseFloat(sourceSize);
+				}
+			);
+		}
+	});
+
+	return Array.from(result.values());
+}
+
+export function publishGroupings(
+	l2Formatted,
+	marketArgs: wsMarketArgs,
+	redisClient: RedisClient,
+	clientPrefix: string,
+	marketType: string,
+	indicativeQuotesRedisClient: RedisClient
+) {
+	const groupingResults = new Map();
+
+	GROUPING_OPTIONS.forEach((group) => {
+		const pricePrecision = PRICE_PRECISION.toNumber();// BigNum.from(group).mul(marketArgs.tickSize).toNum();
+		const dependency = GROUPING_DEPENDENCIES[group];
+
+		let fullAggregatedBids, fullAggregatedAsks;
+
+		if (dependency && groupingResults.has(dependency)) {
+			const previousResults = groupingResults.get(dependency);
+
+			fullAggregatedBids = aggregatePrices(
+				previousResults.bids,
+				'bid',
+				pricePrecision
+			).sort((a, b) => b[0] - a[0]);
+
+			fullAggregatedAsks = aggregatePrices(
+				previousResults.asks,
+				'ask',
+				pricePrecision
+			).sort((a, b) => a[0] - b[0]);
+		} else {
+			fullAggregatedBids = aggregatePrices(
+				l2Formatted.bids,
+				'bid',
+				pricePrecision
+			).sort((a, b) => b[0] - a[0]);
+
+			fullAggregatedAsks = aggregatePrices(
+				l2Formatted.asks,
+				'ask',
+				pricePrecision
+			).sort((a, b) => a[0] - b[0]);
+		}
+
+		groupingResults.set(group, {
+			bids: fullAggregatedBids,
+			asks: fullAggregatedAsks,
+		});
+
+		const aggregatedBids = fullAggregatedBids.slice(0, 20);
+		const aggregatedAsks = fullAggregatedAsks.slice(0, 20);
+		const l2Formatted_grouped20 = Object.assign({}, l2Formatted, {
+			bids: aggregatedBids,
+			asks: aggregatedAsks,
+		});
+
+		redisClient.publish(
+			`${clientPrefix}orderbook_${marketType}_${
+				marketArgs.marketIndex
+			}_grouped_${group}${indicativeQuotesRedisClient ? '_indicative' : ''}`,
+			l2Formatted_grouped20
+		);
+	});
+}
 
 /**
  * Takes in a req.query like: `{
@@ -770,19 +884,50 @@ export const mapToMarketOrderParams = async (
 		? stringToBN(params.additionalEndPriceBuffer, PRICE_PRECISION)
 		: undefined;
 
-	// Calculate estimated prices
+	// Calculate estimated prices and handle slippage tolerance calculation
 	let estimatedPrices;
+	let processedSlippageTolerance = params.slippageTolerance;
+
 	if (driftClient && fetchFromRedis && selectMostRecentBySlot) {
-		estimatedPrices = await getEstimatedPrices(
+		// Get L2 orderbook data using the utility function
+		const redisL2 = await fetchL2FromRedis(
+			fetchFromRedis,
+			selectMostRecentBySlot,
+			marketType,
+			params.marketIndex
+		);
+
+		// Calculate estimated prices using the fetched L2 data
+		estimatedPrices = await getEstimatedPricesWithL2(
 			driftClient,
 			marketType,
 			params.marketIndex,
 			direction,
 			amount,
 			params.assetType,
-			fetchFromRedis,
-			selectMostRecentBySlot
+			redisL2
 		);
+
+		// Handle dynamic slippage tolerance calculation if needed
+		if (params.slippageTolerance === undefined) {
+			// Convert raw L2 to formatted L2 for slippage calculation
+			let l2Formatted: L2OrderBook;
+			if (redisL2) {
+				l2Formatted = convertRawL2ToBN(redisL2);
+			} else {
+				l2Formatted = {
+					bids: [],
+					asks: [],
+				};
+			}
+
+			processedSlippageTolerance = calculateDynamicSlippage(
+				params.marketIndex,
+				params.marketType,
+				driftClient,
+				l2Formatted
+			);
+		}
 	} else {
 		// Fallback to zero prices if dependencies not provided
 		estimatedPrices = {
@@ -831,7 +976,7 @@ export const mapToMarketOrderParams = async (
 			auctionEndPriceOffset: params.auctionEndPriceOffset,
 			auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom as any,
 			auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
-			slippageTolerance: params.slippageTolerance,
+			slippageTolerance: processedSlippageTolerance,
 			isOracleOrder: params.isOracleOrder,
 			additionalEndPriceBuffer,
 			forceUpToSlippage: true,
@@ -905,4 +1050,166 @@ export const fetchL2FromRedis = async (
 		`last_update_orderbook_${marketTypeStr}_${marketIndex}${indicativeSuffix}`,
 		selectMostRecentBySlot
 	);
+};
+
+/**
+ * Calculate dynamic slippage tolerance using L2 data
+ * @param direction - Position direction ('long' or 'short')
+ * @param marketIndex - Market index number
+ * @param marketType - Market type ('spot' or 'perp')
+ * @param driftClient - DriftClient instance for oracle data
+ * @param l2Formatted - Already formatted L2OrderBook data
+ * @returns Dynamic slippage tolerance as a number
+ */
+export const calculateDynamicSlippage = (
+	marketIndex: number,
+	marketType: string,
+	driftClient: DriftClient,
+	l2Formatted: L2OrderBook
+): number => {
+	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
+	const isPerp = marketType.toLowerCase() === 'perp';
+	const isMajor = isPerp && marketIndex < 3;
+
+	const baseSlippage = isMajor
+		? parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_MAJOR || '0') // 0% default
+		: parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_NON_MAJOR || '0.5'); // 0.5% default
+
+	// Calculate spread using L2 data
+	let spreadBaseSlippage = 0.0005; // 0.05% fallback spread
+	try {
+		// Get oracle data
+		const oracleData = isPerp
+			? driftClient.getOracleDataForPerpMarket(marketIndex)
+			: driftClient.getOracleDataForSpotMarket(marketIndex);
+
+		// Get oracle price
+		const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
+
+		// Calculate actual spread
+		const spreadInfo = COMMON_MATH.calculateSpreadBidAskMark(
+			l2Formatted,
+			oraclePrice
+		);
+
+		const spreadPctNum = BigNum.from(
+			spreadInfo.spreadPct,
+			PERCENTAGE_PRECISION_EXP
+		)?.toNum();
+
+		if (spreadInfo?.spreadPct) {
+			spreadBaseSlippage = spreadPctNum / 2;
+		}
+	} catch (error) {
+		console.warn('Failed to calculate spread, using fallback:', error);
+	}
+
+	let dynamicSlippage = baseSlippage + spreadBaseSlippage;
+
+	// Apply multiplier from env var
+	const multiplier = isMajor
+		? parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR || '1.02')
+		: parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_NON_MAJOR || '1.2');
+	dynamicSlippage = dynamicSlippage * multiplier;
+
+	// Enforce minimum and maximum limits from env vars
+	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.05'); // 0.05% minimum
+	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
+
+	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+};
+
+/**
+ * Get L2 orderbook data and calculate estimated prices using pre-fetched L2 data
+ * @param driftClient - DriftClient instance
+ * @param marketType - MarketType enum
+ * @param marketIndex - Market index number
+ * @param direction - Position direction
+ * @param amount - Amount as BN (could be base or quote amount)
+ * @param assetType - Whether amount is 'base' or 'quote'
+ * @param redisL2 - Pre-fetched L2 data from Redis
+ * @returns Price data object with oracle, best, entry, worst, and mark prices
+ */
+export const getEstimatedPricesWithL2 = async (
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number,
+	direction: PositionDirection,
+	amount: BN,
+	assetType: AssetType,
+	redisL2: any
+): Promise<{
+	oraclePrice: BN;
+	bestPrice: BN;
+	entryPrice: BN;
+	worstPrice: BN;
+	markPrice: BN;
+	priceImpact: BN;
+}> => {
+	const isSpot = isVariant(marketType, 'spot');
+
+	let l2Formatted: L2OrderBook;
+	if (redisL2) {
+		l2Formatted = convertRawL2ToBN(redisL2);
+	} else {
+		l2Formatted = {
+			bids: [],
+			asks: [],
+		};
+	}
+
+	const oracleData = isSpot
+		? driftClient.getOracleDataForSpotMarket(marketIndex)
+		: driftClient.getOracleDataForPerpMarket(marketIndex);
+
+	// Get oracle price
+	const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
+
+	const spreadInfo = COMMON_MATH.calculateSpreadBidAskMark(
+		l2Formatted,
+		oraclePrice
+	);
+
+	const markPrice = spreadInfo?.markPrice ?? oraclePrice;
+
+	// If we have L2 data, calculate estimated prices
+	if (l2Formatted.bids?.length > 0 || l2Formatted.asks?.length > 0) {
+		try {
+			const basePrecision = !isSpot
+				? BASE_PRECISION
+				: process.env.ENV === 'mainnet-beta'
+				? MainnetSpotMarkets[marketIndex].precision
+				: DevnetSpotMarkets[marketIndex].precision;
+
+			const priceEstimate = calculateEstimatedEntryPriceWithL2(
+				assetType,
+				amount,
+				direction,
+				basePrecision,
+				l2Formatted as L2OrderBook
+			);
+
+			return {
+				oraclePrice,
+				bestPrice: priceEstimate.bestPrice,
+				entryPrice: priceEstimate.entryPrice,
+				worstPrice: priceEstimate.worstPrice,
+				markPrice,
+				priceImpact: priceEstimate.priceImpact,
+			};
+		} catch (error) {
+			// If calculation fails, fallback to oracle prices
+			console.warn('Price calculation failed, using oracle fallback:', error);
+		}
+	}
+
+	// Fallback to oracle prices if no L2 data or calculation fails
+	return {
+		oraclePrice,
+		bestPrice: oraclePrice,
+		entryPrice: oraclePrice,
+		worstPrice: oraclePrice,
+		markPrice,
+		priceImpact: ZERO,
+	};
 };
