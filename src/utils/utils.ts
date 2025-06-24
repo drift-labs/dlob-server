@@ -644,7 +644,14 @@ export const getEstimatedPrices = async (
 		selectionCriteria: (responses: any) => any
 	) => Promise<any>,
 	selectMostRecentBySlot: (responses: any[]) => any
-) => {
+): Promise<{
+	oraclePrice: BN;
+	bestPrice: BN;
+	entryPrice: BN;
+	worstPrice: BN;
+	markPrice: BN;
+	priceImpact: BN;
+}> => {
 	const isSpot = isVariant(marketType, 'spot');
 
 	// Get L2 orderbook data using the new utility function
@@ -685,8 +692,8 @@ export const getEstimatedPrices = async (
 			const basePrecision = !isSpot
 				? BASE_PRECISION
 				: process.env.ENV === 'mainnet-beta'
-					? MainnetSpotMarkets[marketIndex].precision
-					: DevnetSpotMarkets[marketIndex].precision;
+				? MainnetSpotMarkets[marketIndex].precision
+				: DevnetSpotMarkets[marketIndex].precision;
 
 			const priceEstimate = calculateEstimatedEntryPriceWithL2(
 				assetType,
@@ -702,6 +709,7 @@ export const getEstimatedPrices = async (
 				entryPrice: priceEstimate.entryPrice,
 				worstPrice: priceEstimate.worstPrice,
 				markPrice,
+				priceImpact: priceEstimate.priceImpact,
 			};
 		} catch (error) {
 			// If calculation fails, fallback to oracle prices
@@ -716,6 +724,7 @@ export const getEstimatedPrices = async (
 		entryPrice: oraclePrice,
 		worstPrice: oraclePrice,
 		markPrice,
+		priceImpact: ZERO,
 	};
 };
 
@@ -782,6 +791,7 @@ export const mapToMarketOrderParams = async (
 			entryPrice: ZERO,
 			worstPrice: ZERO,
 			markPrice: ZERO,
+			priceImpact: ZERO,
 		};
 	}
 
@@ -802,29 +812,32 @@ export const mapToMarketOrderParams = async (
 	}
 
 	return {
-		marketType,
-		marketIndex: params.marketIndex,
-		direction,
-		maxLeverageSelected: false,
-		maxLeverageOrderSize: ZERO,
-		baseAmount,
-		reduceOnly: params.reduceOnly ?? false,
-		allowInfSlippage: params.allowInfSlippage ?? false,
-		oraclePrice: estimatedPrices.oraclePrice,
-		bestPrice: estimatedPrices.bestPrice,
-		entryPrice: estimatedPrices.entryPrice,
-		worstPrice: estimatedPrices.worstPrice,
-		markPrice: estimatedPrices.markPrice,
-		auctionDuration: params.auctionDuration,
-		auctionStartPriceOffset: params.auctionStartPriceOffset as number,
-		auctionEndPriceOffset: params.auctionEndPriceOffset,
-		auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom as any,
-		auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
-		slippageTolerance: params.slippageTolerance,
-		isOracleOrder: params.isOracleOrder,
-		additionalEndPriceBuffer,
-		forceUpToSlippage: true,
-		userOrderId: params.userOrderId,
+		marketOrderParams: {
+			marketType,
+			marketIndex: params.marketIndex,
+			direction,
+			maxLeverageSelected: false,
+			maxLeverageOrderSize: ZERO,
+			baseAmount,
+			reduceOnly: params.reduceOnly ?? false,
+			allowInfSlippage: params.allowInfSlippage ?? false,
+			oraclePrice: estimatedPrices.oraclePrice,
+			bestPrice: estimatedPrices.bestPrice,
+			entryPrice: estimatedPrices.entryPrice,
+			worstPrice: estimatedPrices.worstPrice,
+			markPrice: estimatedPrices.markPrice,
+			auctionDuration: params.auctionDuration,
+			auctionStartPriceOffset: params.auctionStartPriceOffset as number,
+			auctionEndPriceOffset: params.auctionEndPriceOffset,
+			auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom as any,
+			auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
+			slippageTolerance: params.slippageTolerance,
+			isOracleOrder: params.isOracleOrder,
+			additionalEndPriceBuffer,
+			forceUpToSlippage: true,
+			userOrderId: params.userOrderId,
+		},
+		estimatedPrices,
 	};
 };
 

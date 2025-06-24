@@ -18,6 +18,8 @@ import {
 	isVariant,
 	OrderSubscriber,
 	DelistedMarketSetting,
+	BigNum,
+	PRICE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -1001,16 +1003,26 @@ const main = async (): Promise<void> => {
 
 			const inputParams = createMarketBasedAuctionParams(auctionParamsInput);
 
-			const marketOrderParams = await mapToMarketOrderParams(
+			const result = await mapToMarketOrderParams(
 				inputParams,
 				driftClient,
 				fetchFromRedis,
 				selectMostRecentBySlot
 			);
-			const auctionParams =
-				COMMON_UI_UTILS.deriveMarketOrderParams(marketOrderParams);
+			const auctionParams = COMMON_UI_UTILS.deriveMarketOrderParams(
+				result.marketOrderParams
+			);
 
-			res.status(200).json(formatAuctionParamsForResponse(auctionParams));
+			const response = {
+				params: formatAuctionParamsForResponse(auctionParams),
+				entryPrice: result.estimatedPrices.entryPrice.toString(),
+				priceImpact: BigNum.from(
+					result.estimatedPrices.priceImpact,
+					PRICE_PRECISION_EXP
+				).toNum(),
+			};
+
+			res.status(200).json(response);
 		} catch (err) {
 			next(err);
 		}
