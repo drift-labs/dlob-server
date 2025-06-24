@@ -1019,6 +1019,8 @@ const main = async (): Promise<void> => {
 			const response = {
 				params: formatAuctionParamsForResponse(auctionParams),
 				entryPrice: result.estimatedPrices.entryPrice.toString(),
+				bestPrice: result.estimatedPrices.bestPrice.toString(),
+				worstPrice: result.estimatedPrices.worstPrice.toString(),
 				priceImpact: BigNum.from(
 					result.estimatedPrices.priceImpact,
 					PRICE_PRECISION_EXP
