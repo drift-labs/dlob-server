@@ -1026,6 +1026,7 @@ const main = async (): Promise<void> => {
 					PRICE_PRECISION_EXP
 				).toNum(),
 				slippageTolerance: result.marketOrderParams.slippageTolerance,
+				baseFilled: result.estimatedPrices.baseFilled,
 			};
 
 			res.status(200).json(response);
