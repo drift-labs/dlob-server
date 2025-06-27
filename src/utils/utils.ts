@@ -719,13 +719,13 @@ export const parseNumber = (value: string | undefined): number | undefined => {
 };
 
 /**
- * Convert string to BN with specified precision
+ * Convert string to BN
  * @param value - string value to convert
- * @param precision - BN precision constant (e.g., BASE_PRECISION, PRICE_PRECISION)
- * @returns BN with proper precision applied
+ * @returns BN
  */
-export const stringToBN = (value: string, precision: BN): BN => {
-	return new BN(Math.round(parseFloat(value) * precision.toNumber()));
+export const stringToBN = (value: string): BN => {
+	if (!value) return ZERO;
+	return new BN(value);
 };
 
 /**
@@ -885,16 +885,14 @@ export const mapToMarketOrderParams = async (
 			: PositionDirection.SHORT;
 
 	// Convert amount string to BN based on assetType
-	// For base assets, use BASE_PRECISION (1e9)
-	// For quote assets, use QUOTE_PRECISION (1e6, typical for USDC)
 	const amount =
 		params.assetType === 'base'
-			? stringToBN(params.amount, BASE_PRECISION)
-			: stringToBN(params.amount, QUOTE_PRECISION);
+			? stringToBN(params.amount)
+			: stringToBN(params.amount);
 
 	// Convert additionalEndPriceBuffer string to BN with PRICE_PRECISION (1e6) if provided
 	const additionalEndPriceBuffer = params.additionalEndPriceBuffer
-		? stringToBN(params.additionalEndPriceBuffer, PRICE_PRECISION)
+		? stringToBN(params.additionalEndPriceBuffer)
 		: undefined;
 
 	// Calculate estimated prices and handle slippage tolerance calculation
