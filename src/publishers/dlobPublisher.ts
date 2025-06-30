@@ -20,6 +20,7 @@ import {
 	PhoenixSubscriber,
 	MarketType,
 	OraclePriceData,
+	ONE,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -301,6 +302,8 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 				}
 			}
 		}
+
+		markets[market.marketIndex].tickSize = market?.orderTickSize ?? ONE
 	}
 
 	return markets;
