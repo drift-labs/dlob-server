@@ -24,6 +24,7 @@ import {
 	DevnetSpotMarkets,
 	QUOTE_PRECISION,
 	PERCENTAGE_PRECISION_EXP,
+	PRICE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
 import { logger } from './logger';
@@ -885,12 +886,12 @@ export const mapToMarketOrderParams = async (
 	// Convert amount string to BN based on assetType
 	const amount =
 		params.assetType === 'base'
-			? stringToBN(params.amount)
-			: stringToBN(params.amount);
+			? stringToBN(params.amount).mul(BASE_PRECISION)
+			: stringToBN(params.amount).mul(QUOTE_PRECISION);
 
 	// Convert additionalEndPriceBuffer string to BN with PRICE_PRECISION (1e6) if provided
 	const additionalEndPriceBuffer = params.additionalEndPriceBuffer
-		? stringToBN(params.additionalEndPriceBuffer)
+		? stringToBN(params.additionalEndPriceBuffer).mul(PRICE_PRECISION)
 		: undefined;
 
 	// Calculate estimated prices and handle slippage tolerance calculation
@@ -1172,7 +1173,7 @@ export const getEstimatedPricesWithL2 = async (
 		: driftClient.getOracleDataForPerpMarket(marketIndex);
 
 	// Get oracle price
-	const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
+	const oraclePrice = oracleData.price ?? ZERO;
 
 	const spreadInfo = COMMON_MATH.calculateSpreadBidAskMark(
 		l2Formatted,
