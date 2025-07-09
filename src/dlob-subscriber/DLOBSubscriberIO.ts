@@ -237,7 +237,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											this.slotSource.getSlot()
 										);
 										if (
-											limitPrice.gt(oraclePriceData.price.muln(101).divn(100))
+											limitPrice.lte(oraclePriceData.price.muln(101).divn(100))
 										) {
 											this.dlob.insertOrder(
 												indicativeBid,
@@ -270,7 +270,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											this.slotSource.getSlot()
 										);
 										if (
-											limitPrice.lt(oraclePriceData.price.muln(99).divn(100))
+											limitPrice.gte(oraclePriceData.price.muln(99).divn(100))
 										) {
 											this.dlob.insertOrder(
 												indicativeAsk,
