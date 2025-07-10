@@ -227,20 +227,20 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 									};
 
 									if (quote['bid_size'] && quote['bid_price'] != null) {
-										// Sanity check bid price and size
-										const indicativeBid: Order = Object.assign(
+										// Sanity check bid price and size and change to top of book if necessary
+										let indicativeBid: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
 											{
 												orderId: indicativeOrderId,
+												direction: PositionDirection.LONG,
+												baseAssetAmount: new BN(quote['bid_size']),
 												oraclePriceOffset: quote['is_oracle_offset']
 													? quote['bid_price']
 													: 0,
 												price: quote['is_oracle_offset']
 													? 0
 													: new BN(quote['bid_price']),
-												baseAssetAmount: new BN(quote['bid_size']),
-												direction: PositionDirection.LONG,
 											}
 										);
 										const limitPrice = getLimitPrice(
@@ -248,18 +248,22 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											oraclePriceData,
 											this.slotSource.getSlot()
 										);
-										if (limitPrice.lte(bestBid)) {
-											this.dlob.insertOrder(
-												indicativeBid,
-												INDICATIVE_QUOTES_PUBKEY,
-												this.slotSource.getSlot(),
-												false
-											);
-											indicativeOrderId += 1;
+										if (limitPrice.gt(bestBid)) {
+											indicativeBid = Object.assign({}, indicativeBid, {
+												price: bestBid,
+												oraclePriceOffset: 0,
+											});
 										}
+										this.dlob.insertOrder(
+											indicativeBid,
+											INDICATIVE_QUOTES_PUBKEY,
+											this.slotSource.getSlot(),
+											false
+										);
+										indicativeOrderId += 1;
 									}
 									if (quote['ask_size'] && quote['ask_price'] != null) {
-										const indicativeAsk: Order = Object.assign(
+										let indicativeAsk: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
 											{
@@ -279,15 +283,19 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											oraclePriceData,
 											this.slotSource.getSlot()
 										);
-										if (limitPrice.gte(bestAsk)) {
-											this.dlob.insertOrder(
-												indicativeAsk,
-												INDICATIVE_QUOTES_PUBKEY,
-												this.slotSource.getSlot(),
-												false
-											);
-											indicativeOrderId += 1;
+										if (limitPrice.lt(bestAsk)) {
+											indicativeAsk = Object.assign({}, indicativeAsk, {
+												price: bestAsk,
+												oraclePriceOffset: 0,
+											});
 										}
+										this.dlob.insertOrder(
+											indicativeAsk,
+											INDICATIVE_QUOTES_PUBKEY,
+											this.slotSource.getSlot(),
+											false
+										);
+										indicativeOrderId += 1;
 									}
 								}
 							}
