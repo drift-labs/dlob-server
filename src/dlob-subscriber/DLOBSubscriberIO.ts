@@ -227,14 +227,12 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 									};
 
 									if (quote['bid_size'] && quote['bid_price'] != null) {
-										// Sanity check bid price and size and change to top of book if necessary
+										// Sanity check bid price and size
 										let indicativeBid: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
 											{
 												orderId: indicativeOrderId,
-												direction: PositionDirection.LONG,
-												baseAssetAmount: new BN(quote['bid_size']),
 												oraclePriceOffset: quote['is_oracle_offset']
 													? quote['bid_price']
 													: 0,
