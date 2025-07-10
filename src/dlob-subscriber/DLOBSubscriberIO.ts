@@ -5,6 +5,7 @@ import {
 	DriftEnv,
 	L2OrderBookGenerator,
 	MarketType,
+	ONE,
 	Order,
 	OrderStatus,
 	OrderTriggerCondition,
@@ -12,6 +13,7 @@ import {
 	PerpOperation,
 	PositionDirection,
 	ZERO,
+	getLimitPrice,
 	isOperationPaused,
 	isVariant,
 } from '@drift-labs/sdk';
@@ -23,11 +25,12 @@ import {
 	addOracletoResponse,
 	l2WithBNToStrings,
 	parsePositiveIntArray,
+	publishGroupings,
 } from '../utils/utils';
 import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 import { OffloadQueue } from '../utils/offload';
 
-type wsMarketArgs = {
+export type wsMarketArgs = {
 	marketIndex: number;
 	marketType: MarketType;
 	marketName: string;
@@ -36,6 +39,7 @@ type wsMarketArgs = {
 	numVammOrders?: number;
 	fallbackL2Generators?: L2OrderBookGenerator[];
 	updateOnChange?: boolean;
+	tickSize?: BN;
 };
 
 require('dotenv').config();
@@ -123,6 +127,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				includeVamm,
 				updateOnChange: false,
 				fallbackL2Generators: [],
+				tickSize: perpMarket?.amm?.orderTickSize ?? ONE,
 			});
 		}
 		for (const market of config.spotMarketInfos) {
@@ -137,16 +142,39 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					config.spotMarketSubscribers[market.marketIndex].phoenix,
 					config.spotMarketSubscribers[market.marketIndex].openbook,
 				].filter((a) => !!a),
+				tickSize:
+					config.spotMarketSubscribers[market.marketIndex].tickSize ?? ONE,
 			});
 		}
 	}
 
 	override async updateDLOB(): Promise<void> {
 		await super.updateDLOB();
+		const dlob = this.getDLOB();
 		let indicativeOrderId = 0;
 		for (const marketArgs of this.marketArgs) {
 			try {
 				if (this.indicativeQuotesRedisClient) {
+					const oraclePriceData = isVariant(marketArgs.marketType, 'perp')
+						? this.driftClient.getOracleDataForPerpMarket(
+								marketArgs.marketIndex
+						  )
+						: this.driftClient.getOracleDataForSpotMarket(
+								marketArgs.marketIndex
+						  );
+					const bestBid = dlob.getBestBid(
+						marketArgs.marketIndex,
+						this.slotSource.getSlot(),
+						marketArgs.marketType,
+						oraclePriceData
+					);
+					const bestAsk = dlob.getBestAsk(
+						marketArgs.marketIndex,
+						this.slotSource.getSlot(),
+						marketArgs.marketType,
+						oraclePriceData
+					);
+
 					const marketType = isVariant(marketArgs.marketType, 'perp')
 						? 'perp'
 						: 'spot';
@@ -200,7 +228,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 									if (quote['bid_size'] && quote['bid_price'] != null) {
 										// Sanity check bid price and size
-
 										const indicativeBid: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
@@ -216,15 +243,21 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 												direction: PositionDirection.LONG,
 											}
 										);
-										this.dlob.insertOrder(
+										const limitPrice = getLimitPrice(
 											indicativeBid,
-											INDICATIVE_QUOTES_PUBKEY,
-											this.slotSource.getSlot(),
-											false
+											oraclePriceData,
+											this.slotSource.getSlot()
 										);
-										indicativeOrderId += 1;
+										if (limitPrice.lte(bestBid)) {
+											this.dlob.insertOrder(
+												indicativeBid,
+												INDICATIVE_QUOTES_PUBKEY,
+												this.slotSource.getSlot(),
+												false
+											);
+											indicativeOrderId += 1;
+										}
 									}
-
 									if (quote['ask_size'] && quote['ask_price'] != null) {
 										const indicativeAsk: Order = Object.assign(
 											{},
@@ -241,13 +274,20 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 												direction: PositionDirection.SHORT,
 											}
 										);
-										this.dlob.insertOrder(
+										const limitPrice = getLimitPrice(
 											indicativeAsk,
-											INDICATIVE_QUOTES_PUBKEY,
-											this.slotSource.getSlot(),
-											false
+											oraclePriceData,
+											this.slotSource.getSlot()
 										);
-										indicativeOrderId += 1;
+										if (limitPrice.gte(bestAsk)) {
+											this.dlob.insertOrder(
+												indicativeAsk,
+												INDICATIVE_QUOTES_PUBKEY,
+												this.slotSource.getSlot(),
+												false
+											);
+											indicativeOrderId += 1;
+										}
 									}
 								}
 							}
@@ -421,6 +461,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				this.indicativeQuotesRedisClient ? '_indicative' : ''
 			}`,
 			l2Formatted_depth100
+		);
+
+		publishGroupings(
+			l2Formatted,
+			marketArgs,
+			this.redisClient,
+			clientPrefix,
+			marketType,
+			this.indicativeQuotesRedisClient
 		);
 
 		if (!this.indicativeQuotesRedisClient) {
