@@ -150,10 +150,31 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	override async updateDLOB(): Promise<void> {
 		await super.updateDLOB();
+		const dlob = this.getDLOB();
 		let indicativeOrderId = 0;
 		for (const marketArgs of this.marketArgs) {
 			try {
 				if (this.indicativeQuotesRedisClient) {
+					const oraclePriceData = isVariant(marketArgs.marketType, 'perp')
+						? this.driftClient.getOracleDataForPerpMarket(
+								marketArgs.marketIndex
+						  )
+						: this.driftClient.getOracleDataForSpotMarket(
+								marketArgs.marketIndex
+						  );
+					const bestBid = dlob.getBestBid(
+						marketArgs.marketIndex,
+						this.slotSource.getSlot(),
+						marketArgs.marketType,
+						oraclePriceData
+					);
+					const bestAsk = dlob.getBestAsk(
+						marketArgs.marketIndex,
+						this.slotSource.getSlot(),
+						marketArgs.marketType,
+						oraclePriceData
+					);
+
 					const marketType = isVariant(marketArgs.marketType, 'perp')
 						? 'perp'
 						: 'spot';
@@ -205,17 +226,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 										postedSlotTail: 0,
 									};
 
-									const oraclePriceData =
-										marketType == 'perp'
-											? this.driftClient.getOracleDataForPerpMarket(
-													marketArgs.marketIndex
-											  )
-											: this.driftClient.getOracleDataForSpotMarket(
-													marketArgs.marketIndex
-											  );
 									if (quote['bid_size'] && quote['bid_price'] != null) {
 										// Sanity check bid price and size
-
 										const indicativeBid: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
@@ -236,9 +248,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											oraclePriceData,
 											this.slotSource.getSlot()
 										);
-										if (
-											limitPrice.lte(oraclePriceData.price.muln(101).divn(100))
-										) {
+										if (limitPrice.lte(bestBid)) {
 											this.dlob.insertOrder(
 												indicativeBid,
 												INDICATIVE_QUOTES_PUBKEY,
@@ -269,9 +279,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											oraclePriceData,
 											this.slotSource.getSlot()
 										);
-										if (
-											limitPrice.gte(oraclePriceData.price.muln(99).divn(100))
-										) {
+										if (limitPrice.gte(bestAsk)) {
 											this.dlob.insertOrder(
 												indicativeAsk,
 												INDICATIVE_QUOTES_PUBKEY,
