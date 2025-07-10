@@ -13,6 +13,7 @@ import {
 	PerpOperation,
 	PositionDirection,
 	ZERO,
+	getLimitPrice,
 	isOperationPaused,
 	isVariant,
 } from '@drift-labs/sdk';
@@ -149,10 +150,31 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 	override async updateDLOB(): Promise<void> {
 		await super.updateDLOB();
+		const dlob = this.getDLOB();
 		let indicativeOrderId = 0;
 		for (const marketArgs of this.marketArgs) {
 			try {
 				if (this.indicativeQuotesRedisClient) {
+					const oraclePriceData = isVariant(marketArgs.marketType, 'perp')
+						? this.driftClient.getOracleDataForPerpMarket(
+								marketArgs.marketIndex
+						  )
+						: this.driftClient.getOracleDataForSpotMarket(
+								marketArgs.marketIndex
+						  );
+					const bestBid = dlob.getBestBid(
+						marketArgs.marketIndex,
+						this.slotSource.getSlot(),
+						marketArgs.marketType,
+						oraclePriceData
+					);
+					const bestAsk = dlob.getBestAsk(
+						marketArgs.marketIndex,
+						this.slotSource.getSlot(),
+						marketArgs.marketType,
+						oraclePriceData
+					);
+
 					const marketType = isVariant(marketArgs.marketType, 'perp')
 						? 'perp'
 						: 'spot';
@@ -206,7 +228,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 									if (quote['bid_size'] && quote['bid_price'] != null) {
 										// Sanity check bid price and size
-
 										const indicativeBid: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
@@ -222,15 +243,21 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 												direction: PositionDirection.LONG,
 											}
 										);
-										this.dlob.insertOrder(
+										const limitPrice = getLimitPrice(
 											indicativeBid,
-											INDICATIVE_QUOTES_PUBKEY,
-											this.slotSource.getSlot(),
-											false
+											oraclePriceData,
+											this.slotSource.getSlot()
 										);
-										indicativeOrderId += 1;
+										if (limitPrice.lte(bestBid)) {
+											this.dlob.insertOrder(
+												indicativeBid,
+												INDICATIVE_QUOTES_PUBKEY,
+												this.slotSource.getSlot(),
+												false
+											);
+											indicativeOrderId += 1;
+										}
 									}
-
 									if (quote['ask_size'] && quote['ask_price'] != null) {
 										const indicativeAsk: Order = Object.assign(
 											{},
@@ -247,13 +274,20 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 												direction: PositionDirection.SHORT,
 											}
 										);
-										this.dlob.insertOrder(
+										const limitPrice = getLimitPrice(
 											indicativeAsk,
-											INDICATIVE_QUOTES_PUBKEY,
-											this.slotSource.getSlot(),
-											false
+											oraclePriceData,
+											this.slotSource.getSlot()
 										);
-										indicativeOrderId += 1;
+										if (limitPrice.gte(bestAsk)) {
+											this.dlob.insertOrder(
+												indicativeAsk,
+												INDICATIVE_QUOTES_PUBKEY,
+												this.slotSource.getSlot(),
+												false
+											);
+											indicativeOrderId += 1;
+										}
 									}
 								}
 							}
