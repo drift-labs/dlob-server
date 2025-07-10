@@ -13,6 +13,7 @@ import {
 	PerpOperation,
 	PositionDirection,
 	ZERO,
+	calculateBidAskPrice,
 	getLimitPrice,
 	isOperationPaused,
 	isVariant,
@@ -39,7 +40,7 @@ export type wsMarketArgs = {
 	numVammOrders?: number;
 	fallbackL2Generators?: L2OrderBookGenerator[];
 	updateOnChange?: boolean;
-	tickSize?: BN;
+	tickSize: BN;
 };
 
 require('dotenv').config();
@@ -162,13 +163,13 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 						: this.driftClient.getOracleDataForSpotMarket(
 								marketArgs.marketIndex
 						  );
-					const bestBid = dlob.getBestBid(
+					const bestDlobBid = dlob.getBestBid(
 						marketArgs.marketIndex,
 						this.slotSource.getSlot(),
 						marketArgs.marketType,
 						oraclePriceData
 					);
-					const bestAsk = dlob.getBestAsk(
+					const bestDlobAsk = dlob.getBestAsk(
 						marketArgs.marketIndex,
 						this.slotSource.getSlot(),
 						marketArgs.marketType,
@@ -178,6 +179,21 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					const marketType = isVariant(marketArgs.marketType, 'perp')
 						? 'perp'
 						: 'spot';
+
+					let bestBid = bestDlobBid;
+					let bestAsk = bestDlobAsk;
+					if (marketType === 'perp') {
+						const [bestVammBid, bestVammAsk] = calculateBidAskPrice(
+							this.driftClient.getPerpMarketAccount(marketArgs.marketIndex).amm,
+							oraclePriceData,
+							true
+						);
+
+						bestBid =
+							bestBid && bestBid.gt(bestVammBid) ? bestBid : bestVammBid;
+						bestAsk =
+							bestAsk && bestAsk.lt(bestVammAsk) ? bestAsk : bestVammAsk;
+					}
 
 					const mms = await this.indicativeQuotesRedisClient.smembers(
 						`market_mms_${marketType}_${marketArgs.marketIndex}`
@@ -228,19 +244,18 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 									if (quote['bid_size'] && quote['bid_price'] != null) {
 										// Sanity check bid price and size
-										const indicativeBid: Order = Object.assign(
+										let indicativeBid: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
 											{
 												orderId: indicativeOrderId,
+												baseAssetAmount: new BN(quote['bid_size']),
 												oraclePriceOffset: quote['is_oracle_offset']
 													? quote['bid_price']
 													: 0,
 												price: quote['is_oracle_offset']
 													? 0
 													: new BN(quote['bid_price']),
-												baseAssetAmount: new BN(quote['bid_size']),
-												direction: PositionDirection.LONG,
 											}
 										);
 										const limitPrice = getLimitPrice(
@@ -248,18 +263,22 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											oraclePriceData,
 											this.slotSource.getSlot()
 										);
-										if (limitPrice.lte(bestBid)) {
-											this.dlob.insertOrder(
-												indicativeBid,
-												INDICATIVE_QUOTES_PUBKEY,
-												this.slotSource.getSlot(),
-												false
-											);
-											indicativeOrderId += 1;
+										if (bestBid && limitPrice.gt(bestBid)) {
+											indicativeBid = Object.assign({}, indicativeBid, {
+												price: bestBid,
+												oraclePriceOffset: 0,
+											});
 										}
+										this.dlob.insertOrder(
+											indicativeBid,
+											INDICATIVE_QUOTES_PUBKEY,
+											this.slotSource.getSlot(),
+											false
+										);
+										indicativeOrderId += 1;
 									}
 									if (quote['ask_size'] && quote['ask_price'] != null) {
-										const indicativeAsk: Order = Object.assign(
+										let indicativeAsk: Order = Object.assign(
 											{},
 											indicativeBaseOrder,
 											{
@@ -279,15 +298,19 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											oraclePriceData,
 											this.slotSource.getSlot()
 										);
-										if (limitPrice.gte(bestAsk)) {
-											this.dlob.insertOrder(
-												indicativeAsk,
-												INDICATIVE_QUOTES_PUBKEY,
-												this.slotSource.getSlot(),
-												false
-											);
-											indicativeOrderId += 1;
+										if (bestAsk && limitPrice.lt(bestAsk)) {
+											indicativeAsk = Object.assign({}, indicativeAsk, {
+												price: bestAsk,
+												oraclePriceOffset: 0,
+											});
 										}
+										this.dlob.insertOrder(
+											indicativeAsk,
+											INDICATIVE_QUOTES_PUBKEY,
+											this.slotSource.getSlot(),
+											false
+										);
+										indicativeOrderId += 1;
 									}
 								}
 							}
@@ -419,9 +442,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			lastMarketSlotAndTime &&
 			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot
 		) {
-			logger.warn(
-				`Updating market slot for ${marketArgs.marketName} from ${lastMarketSlotAndTime.slot} -> ${l2Formatted['marketSlot']}`
-			);
 			this.lastMarketSlotMap
 				.get(marketArgs.marketType)
 				.set(marketArgs.marketIndex, {
