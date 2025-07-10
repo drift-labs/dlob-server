@@ -303,7 +303,7 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 			}
 		}
 
-		markets[market.marketIndex].tickSize = market?.orderTickSize ?? ONE
+		markets[market.marketIndex].tickSize = market?.orderTickSize ?? ONE;
 	}
 
 	return markets;
@@ -527,7 +527,7 @@ const main = async () => {
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
 		protectedMakerView: false,
 		indicativeQuotesRedisClient: indicativeRedisClient,
-		enableOffloadQueue
+		enableOffloadQueue,
 	});
 	await dlobSubscriberIndicative.subscribe();
 
