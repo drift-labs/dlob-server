@@ -24,7 +24,6 @@ import {
 	DevnetSpotMarkets,
 	QUOTE_PRECISION,
 	PERCENTAGE_PRECISION_EXP,
-	PRICE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
 import { logger } from './logger';
@@ -655,16 +654,16 @@ export function createMarketBasedAuctionParams(
 		args.marketType?.toLowerCase() === 'perp' &&
 		[0, 1, 2].includes(args.marketIndex);
 
-	// Resolve "marketBased" values
+	// Resolve "marketBased" values and undefined values (both should use market-based logic)
 	const resolvedAuctionStartPriceOffsetFrom =
-		args.auctionStartPriceOffsetFrom === 'marketBased'
+		args.auctionStartPriceOffsetFrom === 'marketBased' || args.auctionStartPriceOffsetFrom === undefined
 			? isMajorMarket
 				? 'mark'
 				: 'bestOffer'
 			: args.auctionStartPriceOffsetFrom;
 
 	const resolvedAuctionStartPriceOffset =
-		args.auctionStartPriceOffset === 'marketBased'
+		args.auctionStartPriceOffset === 'marketBased' || args.auctionStartPriceOffset === undefined
 			? isMajorMarket
 				? 0
 				: -0.1
@@ -860,7 +859,7 @@ export const getEstimatedPrices = async (
  * @param driftClient - DriftClient instance (optional, for price calculation)
  * @param fetchFromRedis - Redis fetch function (optional, for price calculation)
  * @param selectMostRecentBySlot - Slot selection function (optional, for price calculation)
- * @returns Object formatted for deriveMarketOrderParams function
+ * @returns Object formatted for deriveMarketOrderParams function or error response
  */
 export const mapToMarketOrderParams = async (
 	params: AuctionParamArgs,
@@ -870,7 +869,14 @@ export const mapToMarketOrderParams = async (
 		selectionCriteria: (responses: any) => any
 	) => Promise<any>,
 	selectMostRecentBySlot?: (responses: any[]) => any
-) => {
+): Promise<{
+	success: boolean;
+	data?: {
+		marketOrderParams: any;
+		estimatedPrices: any;
+	};
+	error?: string;
+}> => {
 	// Convert marketType string to MarketType enum
 	const marketType =
 		params.marketType.toLowerCase() === 'spot'
@@ -939,14 +945,9 @@ export const mapToMarketOrderParams = async (
 			);
 		}
 	} else {
-		// Fallback to zero prices if dependencies not provided
-		estimatedPrices = {
-			oraclePrice: ZERO,
-			bestPrice: ZERO,
-			entryPrice: ZERO,
-			worstPrice: ZERO,
-			markPrice: ZERO,
-			priceImpact: ZERO,
+		return {
+			success: false,
+			error: 'Cannot create valid auction parameters: could not fetch prices',
 		};
 	}
 
@@ -958,41 +959,39 @@ export const mapToMarketOrderParams = async (
 	} else {
 		// If assetType is quote, convert quote amount to base amount using entry price
 		// baseAmount = (quoteAmount * PRICE_PRECISION) / entryPrice
-		if (estimatedPrices.entryPrice.gt(ZERO)) {
-			baseAmount = amount.mul(PRICE_PRECISION).div(estimatedPrices.entryPrice);
-		} else {
-			// Fallback to zero if entry price is zero or invalid
-			baseAmount = ZERO;
-		}
+		baseAmount = amount.mul(PRICE_PRECISION).div(estimatedPrices.entryPrice);
 	}
 
 	return {
-		marketOrderParams: {
-			marketType,
-			marketIndex: params.marketIndex,
-			direction,
-			maxLeverageSelected: false,
-			maxLeverageOrderSize: ZERO,
-			baseAmount,
-			reduceOnly: params.reduceOnly ?? false,
-			allowInfSlippage: params.allowInfSlippage ?? false,
-			oraclePrice: estimatedPrices.oraclePrice,
-			bestPrice: estimatedPrices.bestPrice,
-			entryPrice: estimatedPrices.entryPrice,
-			worstPrice: estimatedPrices.worstPrice,
-			markPrice: estimatedPrices.markPrice,
-			auctionDuration: params.auctionDuration,
-			auctionStartPriceOffset: params.auctionStartPriceOffset as number,
-			auctionEndPriceOffset: params.auctionEndPriceOffset,
-			auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom as any,
-			auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
-			slippageTolerance: processedSlippageTolerance,
-			isOracleOrder: params.isOracleOrder,
-			additionalEndPriceBuffer,
-			forceUpToSlippage: true,
-			userOrderId: params.userOrderId,
+		success: true,
+		data: {
+			marketOrderParams: {
+				marketType,
+				marketIndex: params.marketIndex,
+				direction,
+				maxLeverageSelected: false,
+				maxLeverageOrderSize: ZERO,
+				baseAmount,
+				reduceOnly: params.reduceOnly ?? false,
+				allowInfSlippage: params.allowInfSlippage ?? false,
+				oraclePrice: estimatedPrices.oraclePrice,
+				bestPrice: estimatedPrices.bestPrice,
+				entryPrice: estimatedPrices.entryPrice,
+				worstPrice: estimatedPrices.worstPrice,
+				markPrice: estimatedPrices.markPrice,
+				auctionDuration: params.auctionDuration,
+				auctionStartPriceOffset: params.auctionStartPriceOffset as number,
+				auctionEndPriceOffset: params.auctionEndPriceOffset,
+				auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom as any,
+				auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
+				slippageTolerance: processedSlippageTolerance,
+				isOracleOrder: params.isOracleOrder,
+				additionalEndPriceBuffer,
+				forceUpToSlippage: true,
+				userOrderId: params.userOrderId,
+			},
+			estimatedPrices,
 		},
-		estimatedPrices,
 	};
 };
 
@@ -1119,7 +1118,7 @@ export const calculateDynamicSlippage = (
 	// Apply multiplier from env var
 	const multiplier = isMajor
 		? parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR || '1.02')
-		: parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_NON_MAJOR || '1.2');
+		: parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_NON_MAJOR || '1.5');
 	dynamicSlippage = dynamicSlippage * multiplier;
 
 	// Enforce minimum and maximum limits from env vars
