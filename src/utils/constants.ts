@@ -18,9 +18,8 @@ const DEFAULT_AUCTION_END_PRICE_FROM = 'worst';
 export const DEFAULT_AUCTION_PARAMS: Partial<AuctionParamArgs> = {
 	isOracleOrder: true,
 	auctionDuration: DEFAULT_MARKET_AUCTION_DURATION,
-	auctionStartPriceOffset: 0,
+	auctionStartPriceOffset: 'marketBased',
 	auctionEndPriceOffset: DEFAULT_AUCTION_END_PRICE_OFFSET,
-	auctionStartPriceOffsetFrom: 'oracle',
+	auctionStartPriceOffsetFrom: 'marketBased',
 	auctionEndPriceOffsetFrom: DEFAULT_AUCTION_END_PRICE_FROM,
-	additionalEndPriceBuffer: '0',
 };

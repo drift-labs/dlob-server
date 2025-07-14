@@ -20,6 +20,8 @@ import {
 	DelistedMarketSetting,
 	BigNum,
 	PRICE_PRECISION_EXP,
+	MarketTypeStr,
+	AssetType,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -55,6 +57,7 @@ import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { setGlobalDispatcher, Agent } from 'undici';
 import { HermesClient } from '@pythnetwork/hermes-client';
 import { COMMON_UI_UTILS } from '@drift/common';
+import { AuctionParamArgs } from './utils/types';
 
 setGlobalDispatcher(
 	new Agent({
@@ -965,12 +968,12 @@ const main = async (): Promise<void> => {
 			}
 
 			// Build auction params object
-			const auctionParamsInput: any = {
+			const auctionParamsInput: AuctionParamArgs = {
 				marketIndex: parsedMarketIndex,
-				marketType: marketType as string,
+				marketType: marketType as MarketTypeStr,
 				direction: direction as 'long' | 'short',
 				amount: amount as string,
-				assetType: assetType as string,
+				assetType: assetType as AssetType,
 			};
 
 			// Add optional parameters if provided
@@ -1012,22 +1015,30 @@ const main = async (): Promise<void> => {
 				fetchFromRedis,
 				selectMostRecentBySlot
 			);
+
+			if (!result.success) {
+				res.status(400).json({
+					error: result.error,
+				});
+				return;
+			}
+
 			const auctionParams = COMMON_UI_UTILS.deriveMarketOrderParams(
-				result.marketOrderParams
+				result.data.marketOrderParams
 			);
 
 			const response = {
 				data: {
 					params: formatAuctionParamsForResponse(auctionParams),
-					entryPrice: result.estimatedPrices.entryPrice.toString(),
-					bestPrice: result.estimatedPrices.bestPrice.toString(),
-					worstPrice: result.estimatedPrices.worstPrice.toString(),
+					entryPrice: result.data.estimatedPrices.entryPrice.toString(),
+					bestPrice: result.data.estimatedPrices.bestPrice.toString(),
+					worstPrice: result.data.estimatedPrices.worstPrice.toString(),
 					priceImpact: BigNum.from(
-						result.estimatedPrices.priceImpact,
+						result.data.estimatedPrices.priceImpact,
 						PRICE_PRECISION_EXP
 					).toNum(),
-					slippageTolerance: result.marketOrderParams.slippageTolerance,
-					baseFilled: result.estimatedPrices.baseFilled,
+					slippageTolerance: result.data.marketOrderParams.slippageTolerance,
+					baseFilled: result.data.estimatedPrices.baseFilled,
 				},
 			};
 
