@@ -18,6 +18,10 @@ import {
 	isVariant,
 	OrderSubscriber,
 	DelistedMarketSetting,
+	BigNum,
+	PRICE_PRECISION_EXP,
+	MarketTypeStr,
+	AssetType,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -41,11 +45,19 @@ import {
 	getAccountFromId,
 	getRawAccountFromId,
 	selectMostRecentBySlot,
+	createMarketBasedAuctionParams,
+	parseBoolean,
+	parseNumber,
+	mapToMarketOrderParams,
+	formatAuctionParamsForResponse,
+	fetchL2FromRedis,
 } from './utils/utils';
 import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { setGlobalDispatcher, Agent } from 'undici';
 import { HermesClient } from '@pythnetwork/hermes-client';
+import { COMMON_UI_UTILS } from '@drift/common';
+import { AuctionParamArgs } from './utils/types';
 
 setGlobalDispatcher(
 	new Agent({
@@ -546,11 +558,12 @@ const main = async (): Promise<void> => {
 			const adjustedDepth = depth ?? '100';
 
 			let l2Formatted: any;
-			const redisL2 = await fetchFromRedis(
-				`last_update_orderbook_${
-					isSpot ? 'spot' : 'perp'
-				}_${normedMarketIndex}${includeIndicativeStr ? '_indicative' : ''}`,
-				selectMostRecentBySlot
+			const redisL2 = await fetchL2FromRedis(
+				fetchFromRedis,
+				selectMostRecentBySlot,
+				normedMarketType,
+				normedMarketIndex,
+				includeIndicativeStr
 			);
 			const depthToUse = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
 			let cacheMiss = true;
@@ -660,13 +673,12 @@ const main = async (): Promise<void> => {
 
 					const adjustedDepth = normedParam['depth'] ?? '100';
 					let l2Formatted: any;
-					const redisL2 = await fetchFromRedis(
-						`last_update_orderbook_${
-							isSpot ? 'spot' : 'perp'
-						}_${normedMarketIndex}${
-							normedIncludeIndicative ? '_indicative' : ''
-						}`,
-						selectMostRecentBySlot
+					const redisL2 = await fetchL2FromRedis(
+						fetchFromRedis,
+						selectMostRecentBySlot,
+						normedMarketType,
+						normedMarketIndex,
+						normedIncludeIndicative
 					);
 					const depth = Math.min(parseInt(adjustedDepth as string) ?? 1, 100);
 					let cacheMiss = true;
@@ -898,6 +910,139 @@ const main = async (): Promise<void> => {
 				res.writeHead(404);
 				res.end('Not found');
 			}
+		} catch (err) {
+			next(err);
+		}
+	});
+
+	app.get('/auctionParams', async (req, res, next) => {
+		try {
+			const {
+				marketIndex,
+				marketType,
+				direction,
+				amount,
+				assetType,
+				reduceOnly,
+				allowInfSlippage,
+				slippageTolerance,
+				isOracleOrder,
+				auctionDuration,
+				auctionStartPriceOffset,
+				auctionEndPriceOffset,
+				auctionStartPriceOffsetFrom,
+				auctionEndPriceOffsetFrom,
+				additionalEndPriceBuffer,
+				userOrderId,
+			} = req.query;
+
+			// Validate required parameters
+			if (!marketIndex || !marketType || !direction || !amount || !assetType) {
+				res
+					.status(400)
+					.send(
+						'Bad Request: marketIndex, marketType, direction, amount, and assetType are required'
+					);
+				return;
+			}
+
+			// Parse and validate values
+			const parsedMarketIndex = parseInt(marketIndex as string);
+			if (isNaN(parsedMarketIndex)) {
+				res.status(400).send('Bad Request: marketIndex must be a valid number');
+				return;
+			}
+
+			if (direction !== 'long' && direction !== 'short') {
+				res
+					.status(400)
+					.send('Bad Request: direction must be either "long" or "short"');
+				return;
+			}
+
+			if (assetType !== 'base' && assetType !== 'quote') {
+				res
+					.status(400)
+					.send('Bad Request: assetType must be either "base" or "quote"');
+				return;
+			}
+
+			// Build auction params object
+			const auctionParamsInput: AuctionParamArgs = {
+				marketIndex: parsedMarketIndex,
+				marketType: marketType as MarketTypeStr,
+				direction: direction as 'long' | 'short',
+				amount: amount as string,
+				assetType: assetType as AssetType,
+			};
+
+			// Add optional parameters if provided
+			const optionalParams = {
+				reduceOnly: parseBoolean(reduceOnly as string),
+				allowInfSlippage: parseBoolean(allowInfSlippage as string),
+				slippageTolerance:
+					slippageTolerance === 'dynamic'
+						? undefined
+						: parseNumber(slippageTolerance as string), // Convert "dynamic" to undefined for dynamic calculation
+				isOracleOrder: parseBoolean(isOracleOrder as string),
+				auctionDuration: parseNumber(auctionDuration as string),
+				auctionStartPriceOffset:
+					auctionStartPriceOffset === 'marketBased'
+						? 'marketBased'
+						: parseNumber(auctionStartPriceOffset as string),
+				auctionEndPriceOffset: parseNumber(auctionEndPriceOffset as string),
+				auctionStartPriceOffsetFrom:
+					auctionStartPriceOffsetFrom === 'marketBased'
+						? 'marketBased'
+						: (auctionStartPriceOffsetFrom as any),
+				auctionEndPriceOffsetFrom: auctionEndPriceOffsetFrom as any,
+				additionalEndPriceBuffer: additionalEndPriceBuffer as string,
+				userOrderId: parseNumber(userOrderId as string),
+			};
+
+			// Only add non-undefined values
+			Object.entries(optionalParams).forEach(([key, value]) => {
+				if (value !== undefined) {
+					auctionParamsInput[key] = value;
+				}
+			});
+
+			const inputParams = createMarketBasedAuctionParams(auctionParamsInput);
+
+			const result = await mapToMarketOrderParams(
+				inputParams,
+				driftClient,
+				fetchFromRedis,
+				selectMostRecentBySlot
+			);
+
+			if (!result.success) {
+				res.status(400).json({
+					error: result.error,
+				});
+				return;
+			}
+
+			const auctionParams = COMMON_UI_UTILS.deriveMarketOrderParams(
+				result.data.marketOrderParams
+			);
+
+			const response = {
+				data: {
+					params: formatAuctionParamsForResponse(auctionParams),
+					entryPrice: result.data.estimatedPrices.entryPrice.toString(),
+					bestPrice: result.data.estimatedPrices.bestPrice.toString(),
+					worstPrice: result.data.estimatedPrices.worstPrice.toString(),
+					priceImpact: BigNum.from(
+						result.data.estimatedPrices.priceImpact,
+						PRICE_PRECISION_EXP
+					).toNum(),
+					slippageTolerance: result.data.marketOrderParams.slippageTolerance,
+					baseFilled: result.data.estimatedPrices.baseFilled,
+				},
+			};
+
+			res.status(200).json(response);
 		} catch (err) {
 			next(err);
 		}

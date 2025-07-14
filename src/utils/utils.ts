@@ -14,14 +14,26 @@ import {
 	SpotMarketConfig,
 	decodeUser,
 	isVariant,
+	PositionDirection,
+	ZERO,
+	BASE_PRECISION,
+	PRICE_PRECISION,
+	calculateEstimatedEntryPriceWithL2,
+	AssetType,
+	MainnetSpotMarkets,
+	DevnetSpotMarkets,
+	QUOTE_PRECISION,
+	PERCENTAGE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
-
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
 import { Connection } from '@solana/web3.js';
 import { wsMarketArgs } from 'src/dlob-subscriber/DLOBSubscriberIO';
+import { DEFAULT_AUCTION_PARAMS } from './constants';
+import { AuctionParamArgs } from './types';
+import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
 
 export const GROUPING_OPTIONS = [1, 10, 100, 500, 1000];
 export const GROUPING_DEPENDENCIES = {
@@ -631,4 +643,582 @@ export const selectMostRecentBySlot = (
 	return parsedResponses.reduce((mostRecent, current) => {
 		return !mostRecent || current.slot > mostRecent.slot ? current : mostRecent;
 	}, null);
+};
+
+export function createMarketBasedAuctionParams(
+	args: AuctionParamArgs,
+	overrideDefaults?: Partial<AuctionParamArgs>
+): AuctionParamArgs {
+	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
+	const isMajorMarket =
+		args.marketType?.toLowerCase() === 'perp' &&
+		[0, 1, 2].includes(args.marketIndex);
+
+	// Resolve "marketBased" values and undefined values (both should use market-based logic)
+	const resolvedAuctionStartPriceOffsetFrom =
+		args.auctionStartPriceOffsetFrom === 'marketBased' || args.auctionStartPriceOffsetFrom === undefined
+			? isMajorMarket
+				? 'mark'
+				: 'bestOffer'
+			: args.auctionStartPriceOffsetFrom;
+
+	const resolvedAuctionStartPriceOffset =
+		args.auctionStartPriceOffset === 'marketBased' || args.auctionStartPriceOffset === undefined
+			? isMajorMarket
+				? 0
+				: -0.1
+			: args.auctionStartPriceOffset;
+
+	// Set market-specific defaults (only used if values are undefined)
+	const marketSpecificDefaults: Partial<AuctionParamArgs> = {
+		...DEFAULT_AUCTION_PARAMS,
+		auctionStartPriceOffsetFrom: isMajorMarket ? 'mark' : 'bestOffer',
+		auctionStartPriceOffset: isMajorMarket ? 0 : -0.1,
+	};
+
+	// Apply custom overrides if provided
+	const finalDefaults = overrideDefaults
+		? { ...marketSpecificDefaults, ...overrideDefaults }
+		: marketSpecificDefaults;
+
+	return {
+		...finalDefaults,
+		...args,
+		// Override with resolved "marketBased" values if were provided
+		auctionStartPriceOffsetFrom:
+			resolvedAuctionStartPriceOffsetFrom ??
+			finalDefaults.auctionStartPriceOffsetFrom,
+		auctionStartPriceOffset:
+			resolvedAuctionStartPriceOffset ?? finalDefaults.auctionStartPriceOffset,
+	};
+}
+
+/**
+ * Parse boolean values from string query parameters
+ * @param value - string value from query parameter
+ * @returns boolean | undefined - true for 'true'/'1', false for other values, undefined if input is undefined
+ */
+export const parseBoolean = (
+	value: string | undefined
+): boolean | undefined => {
+	if (value === undefined) return undefined;
+	return value === 'true' || value === '1';
+};
+
+/**
+ * Safely parse numeric values from string query parameters
+ * @param value - string value from query parameter
+ * @returns number | undefined - parsed number or undefined if invalid/empty
+ */
+export const parseNumber = (value: string | undefined): number | undefined => {
+	if (!value) return undefined;
+	const parsed = parseFloat(value);
+	return isNaN(parsed) ? undefined : parsed;
+};
+
+/**
+ * Convert string to BN
+ * @param value - string value to convert
+ * @returns BN
+ */
+export const stringToBN = (value: string): BN => {
+	if (!value) return ZERO;
+	return new BN(value);
+};
+
+/**
+ * Convert raw Redis L2 data (with string prices/sizes) to proper L2OrderBook format (with BN values)
+ * @param rawL2 - Raw L2 data from Redis with string values
+ * @returns L2OrderBook with proper BN values
+ */
+export const convertRawL2ToBN = (rawL2: any): L2OrderBook => {
+	const convertLevel = (level: any) => ({
+		...level,
+		price: new BN(level.price),
+		size: new BN(level.size),
+	});
+
+	return {
+		...rawL2,
+		bids: rawL2.bids?.map(convertLevel) || [],
+		asks: rawL2.asks?.map(convertLevel) || [],
+	};
+};
+
+/**
+ * Get L2 orderbook data and calculate estimated prices
+ * @param driftClient - DriftClient instance
+ * @param marketType - MarketType enum
+ * @param marketIndex - Market index number
+ * @param direction - Position direction
+ * @param amount - Amount as BN (could be base or quote amount)
+ * @param assetType - Whether amount is 'base' or 'quote'
+ * @param fetchFromRedis - Redis fetch function
+ * @param selectMostRecentBySlot - Slot selection function
+ * @returns Price data object with oracle, best, entry, worst, and mark prices
+ */
+export const getEstimatedPrices = async (
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number,
+	direction: PositionDirection,
+	amount: BN,
+	assetType: AssetType,
+	fetchFromRedis: (
+		key: string,
+		selectionCriteria: (responses: any) => any
+	) => Promise<any>,
+	selectMostRecentBySlot: (responses: any[]) => any
+): Promise<{
+	oraclePrice: BN;
+	bestPrice: BN;
+	entryPrice: BN;
+	worstPrice: BN;
+	markPrice: BN;
+	priceImpact: BN;
+}> => {
+	const isSpot = isVariant(marketType, 'spot');
+
+	// Get L2 orderbook data using the new utility function
+	const redisL2 = await fetchL2FromRedis(
+		fetchFromRedis,
+		selectMostRecentBySlot,
+		marketType,
+		marketIndex
+	);
+
+	let l2Formatted: L2OrderBook;
+	if (redisL2) {
+		l2Formatted = convertRawL2ToBN(redisL2);
+	} else {
+		l2Formatted = {
+			bids: [],
+			asks: [],
+		};
+	}
+
+	const oracleData = isSpot
+		? driftClient.getOracleDataForSpotMarket(marketIndex)
+		: driftClient.getOracleDataForPerpMarket(marketIndex);
+
+	// Get oracle price
+	const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
+
+	const spreadInfo = COMMON_MATH.calculateSpreadBidAskMark(
+		l2Formatted,
+		oraclePrice
+	);
+
+	const markPrice = spreadInfo?.markPrice ?? oraclePrice;
+
+	// If we have L2 data, calculate estimated prices
+	if (l2Formatted.bids?.length > 0 || l2Formatted.asks?.length > 0) {
+		try {
+			const basePrecision = !isSpot
+				? BASE_PRECISION
+				: process.env.ENV === 'mainnet-beta'
+				? MainnetSpotMarkets[marketIndex].precision
+				: DevnetSpotMarkets[marketIndex].precision;
+
+			const priceEstimate = calculateEstimatedEntryPriceWithL2(
+				assetType,
+				amount,
+				direction,
+				basePrecision,
+				l2Formatted as L2OrderBook
+			);
+
+			return {
+				oraclePrice,
+				bestPrice: priceEstimate.bestPrice,
+				entryPrice: priceEstimate.entryPrice,
+				worstPrice: priceEstimate.worstPrice,
+				markPrice,
+				priceImpact: priceEstimate.priceImpact,
+			};
+		} catch (error) {
+			// If calculation fails, fallback to oracle prices
+			console.warn('Price calculation failed, using oracle fallback:', error);
+		}
+	}
+
+	// Fallback to oracle prices if no L2 data or calculation fails
+	return {
+		oraclePrice,
+		bestPrice: oraclePrice,
+		entryPrice: oraclePrice,
+		worstPrice: oraclePrice,
+		markPrice,
+		priceImpact: ZERO,
+	};
+};
+
+/**
+ * Maps AuctionParamArgs to the format expected by deriveMarketOrderParams
+ * @param params - AuctionParamArgs from the API request
+ * @param driftClient - DriftClient instance (optional, for price calculation)
+ * @param fetchFromRedis - Redis fetch function (optional, for price calculation)
+ * @param selectMostRecentBySlot - Slot selection function (optional, for price calculation)
+ * @returns Object formatted for deriveMarketOrderParams function or error response
+ */
+export const mapToMarketOrderParams = async (
+	params: AuctionParamArgs,
+	driftClient?: DriftClient,
+	fetchFromRedis?: (
+		key: string,
+		selectionCriteria: (responses: any) => any
+	) => Promise<any>,
+	selectMostRecentBySlot?: (responses: any[]) => any
+): Promise<{
+	success: boolean;
+	data?: {
+		marketOrderParams: any;
+		estimatedPrices: any;
+	};
+	error?: string;
+}> => {
+	// Convert marketType string to MarketType enum
+	const marketType =
+		params.marketType.toLowerCase() === 'spot'
+			? MarketType.SPOT
+			: MarketType.PERP;
+
+	// Convert direction string to PositionDirection enum
+	const direction =
+		params.direction === 'long'
+			? PositionDirection.LONG
+			: PositionDirection.SHORT;
+
+	// Convert amount string to BN based on assetType
+	const amount =
+		params.assetType === 'base'
+			? stringToBN(params.amount).mul(BASE_PRECISION)
+			: stringToBN(params.amount).mul(QUOTE_PRECISION);
+
+	// Convert additionalEndPriceBuffer string to BN with PRICE_PRECISION (1e6) if provided
+	const additionalEndPriceBuffer = params.additionalEndPriceBuffer
+		? stringToBN(params.additionalEndPriceBuffer).mul(PRICE_PRECISION)
+		: undefined;
+
+	// Calculate estimated prices and handle slippage tolerance calculation
+	let estimatedPrices;
+	let processedSlippageTolerance = params.slippageTolerance;
+
+	if (driftClient && fetchFromRedis && selectMostRecentBySlot) {
+		// Get L2 orderbook data using the utility function
+		const redisL2 = await fetchL2FromRedis(
+			fetchFromRedis,
+			selectMostRecentBySlot,
+			marketType,
+			params.marketIndex
+		);
+
+		// Calculate estimated prices using the fetched L2 data
+		estimatedPrices = await getEstimatedPricesWithL2(
+			driftClient,
+			marketType,
+			params.marketIndex,
+			direction,
+			amount,
+			params.assetType,
+			redisL2
+		);
+
+		// Handle dynamic slippage tolerance calculation if needed
+		if (params.slippageTolerance === undefined) {
+			// Convert raw L2 to formatted L2 for slippage calculation
+			let l2Formatted: L2OrderBook;
+			if (redisL2) {
+				l2Formatted = convertRawL2ToBN(redisL2);
+			} else {
+				l2Formatted = {
+					bids: [],
+					asks: [],
+				};
+			}
+
+			processedSlippageTolerance = calculateDynamicSlippage(
+				params.marketIndex,
+				params.marketType,
+				driftClient,
+				l2Formatted
+			);
+		}
+	} else {
+		return {
+			success: false,
+			error: 'Cannot create valid auction parameters: could not fetch prices',
+		};
+	}
+
+	// Calculate baseAmount based on assetType
+	let baseAmount: BN;
+	if (params.assetType === 'base') {
+		// If assetType is base, use the amount directly
+		baseAmount = amount;
+	} else {
+		// If assetType is quote, convert quote amount to base amount using entry price
+		// baseAmount = (quoteAmount * QUOTE_PRECISION * BASE_PRECISION) / entryPrice
+		baseAmount = amount.mul(BASE_PRECISION).div(estimatedPrices.entryPrice);
+	}
+
+	return {
+		success: true,
+		data: {
+			marketOrderParams: {
+				marketType,
+				marketIndex: params.marketIndex,
+				direction,
+				maxLeverageSelected: false,
+				maxLeverageOrderSize: ZERO,
+				baseAmount,
+				reduceOnly: params.reduceOnly ?? false,
+				allowInfSlippage: params.allowInfSlippage ?? false,
+				oraclePrice: estimatedPrices.oraclePrice,
+				bestPrice: estimatedPrices.bestPrice,
+				entryPrice: estimatedPrices.entryPrice,
+				worstPrice: estimatedPrices.worstPrice,
+				markPrice: estimatedPrices.markPrice,
+				auctionDuration: params.auctionDuration,
+				auctionStartPriceOffset: params.auctionStartPriceOffset as number,
+				auctionEndPriceOffset: params.auctionEndPriceOffset,
+				auctionStartPriceOffsetFrom: params.auctionStartPriceOffsetFrom as any,
+				auctionEndPriceOffsetFrom: params.auctionEndPriceOffsetFrom,
+				slippageTolerance: processedSlippageTolerance,
+				isOracleOrder: params.isOracleOrder,
+				additionalEndPriceBuffer,
+				forceUpToSlippage: true,
+				userOrderId: params.userOrderId,
+			},
+			estimatedPrices,
+		},
+	};
+};
+
+/**
+ * Format auction parameters for API response
+ * @param auctionParams - Raw auction parameters from deriveMarketOrderParams
+ * @returns Formatted auction parameters with BNs as strings and enums as readable strings
+ */
+export const formatAuctionParamsForResponse = (auctionParams: any) => {
+	const formatted = { ...auctionParams };
+
+	// we don't use this field anymore, TODO to remove from ui
+	delete formatted.constrainedBySlippage;
+
+	// Convert all properties
+	Object.keys(formatted).forEach((key) => {
+		const value = formatted[key];
+
+		// Check if it's a BN using BN.isBN()
+		if (BN.isBN(value)) {
+			formatted[key] = value.toString();
+		}
+		// Check if it's an enum (has nested object structure like {oracle: {}})
+		else if (
+			value &&
+			typeof value === 'object' &&
+			Object.keys(value).length === 1
+		) {
+			try {
+				formatted[key] = ENUM_UTILS.toStr(value);
+			} catch (e) {
+				// If ENUM_UTILS.toStr fails, keep original value
+				formatted[key] = value;
+			}
+		}
+	});
+
+	return formatted;
+};
+
+/**
+ * Fetch L2 orderbook data from Redis
+ * @param fetchFromRedis - Redis fetch function
+ * @param selectMostRecentBySlot - Slot selection function
+ * @param marketType - MarketType enum (spot or perp)
+ * @param marketIndex - Market index number
+ * @param includeIndicative - Whether to include indicative orders (optional)
+ * @returns Promise<any> - Raw L2 data from Redis or null if not found
+ */
+export const fetchL2FromRedis = async (
+	fetchFromRedis: (
+		key: string,
+		selectionCriteria: (responses: any) => any
+	) => Promise<any>,
+	selectMostRecentBySlot: (responses: any[]) => any,
+	marketType: MarketType,
+	marketIndex: number,
+	includeIndicative?: boolean
+): Promise<any> => {
+	const isSpot = isVariant(marketType, 'spot');
+	const marketTypeStr = isSpot ? 'spot' : 'perp';
+	const indicativeSuffix = includeIndicative ? '_indicative' : '';
+
+	return await fetchFromRedis(
+		`last_update_orderbook_${marketTypeStr}_${marketIndex}${indicativeSuffix}`,
+		selectMostRecentBySlot
+	);
+};
+
+/**
+ * Calculate dynamic slippage tolerance using L2 data
+ * @param direction - Position direction ('long' or 'short')
+ * @param marketIndex - Market index number
+ * @param marketType - Market type ('spot' or 'perp')
+ * @param driftClient - DriftClient instance for oracle data
+ * @param l2Formatted - Already formatted L2OrderBook data
+ * @returns Dynamic slippage tolerance as a number
+ */
+export const calculateDynamicSlippage = (
+	marketIndex: number,
+	marketType: string,
+	driftClient: DriftClient,
+	l2Formatted: L2OrderBook
+): number => {
+	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
+	const isPerp = marketType.toLowerCase() === 'perp';
+	const isMajor = isPerp && marketIndex < 3;
+
+	const baseSlippage = isMajor
+		? parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_MAJOR || '0') // 0% default
+		: parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_NON_MAJOR || '0.5'); // 0.5% default
+
+	// Calculate spread using L2 data
+	let spreadBaseSlippage = 0.0005; // 0.05% fallback spread
+	try {
+		// Get oracle data
+		const oracleData = isPerp
+			? driftClient.getOracleDataForPerpMarket(marketIndex)
+			: driftClient.getOracleDataForSpotMarket(marketIndex);
+
+		// Get oracle price
+		const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
+
+		// Calculate actual spread
+		const spreadInfo = COMMON_MATH.calculateSpreadBidAskMark(
+			l2Formatted,
+			oraclePrice
+		);
+
+		const spreadPctNum = BigNum.from(
+			spreadInfo.spreadPct,
+			PERCENTAGE_PRECISION_EXP
+		)?.toNum();
+
+		if (spreadInfo?.spreadPct) {
+			spreadBaseSlippage = spreadPctNum / 2;
+		}
+	} catch (error) {
+		console.warn('Failed to calculate spread, using fallback:', error);
+	}
+
+	let dynamicSlippage = baseSlippage + spreadBaseSlippage;
+
+	// Apply multiplier from env var
+	const multiplier = isMajor
+		? parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR || '1.02')
+		: parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_NON_MAJOR || '1.5');
+	dynamicSlippage = dynamicSlippage * multiplier;
+
+	// Enforce minimum and maximum limits from env vars
+	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.05'); // 0.05% minimum
+	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
+
+	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+};
+
+/**
+ * Get L2 orderbook data and calculate estimated prices using pre-fetched L2 data
+ * @param driftClient - DriftClient instance
+ * @param marketType - MarketType enum
+ * @param marketIndex - Market index number
+ * @param direction - Position direction
+ * @param amount - Amount as BN (could be base or quote amount)
+ * @param assetType - Whether amount is 'base' or 'quote'
+ * @param redisL2 - Pre-fetched L2 data from Redis
+ * @returns Price data object with oracle, best, entry, worst, and mark prices
+ */
+export const getEstimatedPricesWithL2 = async (
+	driftClient: DriftClient,
+	marketType: MarketType,
+	marketIndex: number,
+	direction: PositionDirection,
+	amount: BN,
+	assetType: AssetType,
+	redisL2: any
+): Promise<{
+	oraclePrice: BN;
+	bestPrice: BN;
+	entryPrice: BN;
+	worstPrice: BN;
+	markPrice: BN;
+	priceImpact: BN;
+}> => {
+	const isSpot = isVariant(marketType, 'spot');
+
+	let l2Formatted: L2OrderBook;
+	if (redisL2) {
+		l2Formatted = convertRawL2ToBN(redisL2);
+	} else {
+		l2Formatted = {
+			bids: [],
+			asks: [],
+		};
+	}
+
+	const oracleData = isSpot
+		? driftClient.getOracleDataForSpotMarket(marketIndex)
+		: driftClient.getOracleDataForPerpMarket(marketIndex);
+
+	// Get oracle price
+	const oraclePrice = oracleData.price ?? ZERO;
+
+	const spreadInfo = COMMON_MATH.calculateSpreadBidAskMark(
+		l2Formatted,
+		oraclePrice
+	);
+
+	const markPrice = spreadInfo?.markPrice ?? oraclePrice;
+
+	// If we have L2 data, calculate estimated prices
+	if (l2Formatted.bids?.length > 0 || l2Formatted.asks?.length > 0) {
+		try {
+			const basePrecision = !isSpot
+				? BASE_PRECISION
+				: process.env.ENV === 'mainnet-beta'
+				? MainnetSpotMarkets[marketIndex].precision
+				: DevnetSpotMarkets[marketIndex].precision;
+
+			const priceEstimate = calculateEstimatedEntryPriceWithL2(
+				assetType,
+				amount,
+				direction,
+				basePrecision,
+				l2Formatted as L2OrderBook
+			);
+
+			return {
+				oraclePrice,
+				bestPrice: priceEstimate.bestPrice,
+				entryPrice: priceEstimate.entryPrice,
+				worstPrice: priceEstimate.worstPrice,
+				markPrice,
+				priceImpact: priceEstimate.priceImpact,
+			};
+		} catch (error) {
+			// If calculation fails, fallback to oracle prices
+			console.warn('Price calculation failed, using oracle fallback:', error);
+		}
+	}
+
+	// Fallback to oracle prices if no L2 data or calculation fails
+	return {
+		oraclePrice,
+		bestPrice: oraclePrice,
+		entryPrice: oraclePrice,
+		worstPrice: oraclePrice,
+		markPrice,
+		priceImpact: ZERO,
+	};
 };
