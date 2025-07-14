@@ -958,8 +958,8 @@ export const mapToMarketOrderParams = async (
 		baseAmount = amount;
 	} else {
 		// If assetType is quote, convert quote amount to base amount using entry price
-		// baseAmount = (quoteAmount * PRICE_PRECISION) / entryPrice
-		baseAmount = amount.mul(PRICE_PRECISION).div(estimatedPrices.entryPrice);
+		// baseAmount = (quoteAmount * QUOTE_PRECISION * BASE_PRECISION) / entryPrice
+		baseAmount = amount.mul(BASE_PRECISION).div(estimatedPrices.entryPrice);
 	}
 
 	return {

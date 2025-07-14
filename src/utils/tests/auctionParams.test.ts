@@ -300,10 +300,10 @@ describe('Auction Parameters Functions', () => {
 			expect(baseAmount).toBeDefined();
 			expect(baseAmount.gt(ZERO)).toBe(true);
 
-			// Calculate expected base amount: (quoteAmount * QUOTE_PRECISION * PRICE_PRECISION) / entryPrice
+			// Calculate expected base amount: (quoteAmount * QUOTE_PRECISION * BASE_PRECISION) / entryPrice
 			const expectedBaseAmount = new BN(quoteAmount)
 				.mul(QUOTE_PRECISION)
-				.mul(PRICE_PRECISION)
+				.mul(new BN(10).pow(new BN(9))) // BASE_PRECISION = 10^9
 				.div(result.data?.estimatedPrices.entryPrice);
 
 			expect(baseAmount.toString()).toBe(expectedBaseAmount.toString());
