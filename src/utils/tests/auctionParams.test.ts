@@ -53,7 +53,7 @@ describe('Auction Parameters Functions', () => {
 			});
 		});
 
-		it('should apply market-based logic for all SPOT markets', () => {
+		it('should apply market-based logic for SPOT markets when "marketBased" is passed', () => {
 			[0, 1, 2, 5, 10].forEach(marketIndex => {
 				const args = {
 					marketIndex,
