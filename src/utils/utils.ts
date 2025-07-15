@@ -889,11 +889,8 @@ export const mapToMarketOrderParams = async (
 			? PositionDirection.LONG
 			: PositionDirection.SHORT;
 
-	// Convert amount string to BN based on assetType
-	const amount =
-		params.assetType === 'base'
-			? stringToBN(params.amount).mul(BASE_PRECISION)
-			: stringToBN(params.amount).mul(QUOTE_PRECISION);
+	// Convert amount string to BN - amount is already in base or quote precision
+	const amount = stringToBN(params.amount);
 
 	// Convert additionalEndPriceBuffer string to BN with PRICE_PRECISION (1e6) if provided
 	const additionalEndPriceBuffer = params.additionalEndPriceBuffer
