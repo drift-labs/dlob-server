@@ -1,12 +1,12 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import { 
+import {
 	BN,
-	PositionDirection, 
-	MarketType, 
-	ZERO, 
-	QUOTE_PRECISION, 
+	PositionDirection,
+	MarketType,
+	ZERO,
+	QUOTE_PRECISION,
 	PRICE_PRECISION,
-	BASE_PRECISION 
+	BASE_PRECISION,
 } from '@drift-labs/sdk';
 import {
 	createMarketBasedAuctionParams,
@@ -17,7 +17,7 @@ import {
 describe('Auction Parameters Functions', () => {
 	describe('createMarketBasedAuctionParams', () => {
 		it('should apply market-based logic for major PERP markets (0, 1, 2)', () => {
-			[0, 1, 2].forEach(marketIndex => {
+			[0, 1, 2].forEach((marketIndex) => {
 				const args = {
 					marketIndex,
 					marketType: 'perp' as any,
@@ -36,7 +36,7 @@ describe('Auction Parameters Functions', () => {
 		});
 
 		it('should apply market-based logic for minor PERP markets (>2)', () => {
-			[3, 4, 5, 10].forEach(marketIndex => {
+			[3, 4, 5, 10].forEach((marketIndex) => {
 				const args = {
 					marketIndex,
 					marketType: 'perp' as any,
@@ -55,7 +55,7 @@ describe('Auction Parameters Functions', () => {
 		});
 
 		it('should apply market-based logic for SPOT markets when "marketBased" is passed', () => {
-			[0, 1, 2, 5, 10].forEach(marketIndex => {
+			[0, 1, 2, 5, 10].forEach((marketIndex) => {
 				const args = {
 					marketIndex,
 					marketType: 'spot' as any,
@@ -207,7 +207,7 @@ describe('Auction Parameters Functions', () => {
 
 		it('should successfully calculate prices with mock L2 orderbook data', async () => {
 			const solPrice = 160; // $160 SOL price
-			
+
 			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
 			});
@@ -296,7 +296,7 @@ describe('Auction Parameters Functions', () => {
 			);
 
 			expect(result.success).toBe(true);
-			
+
 			// With $1,000 at $160 per SOL, we should get ~6.25 SOL
 			const baseAmount = result.data?.marketOrderParams.baseAmount;
 			expect(baseAmount).toBeDefined();
@@ -312,7 +312,7 @@ describe('Auction Parameters Functions', () => {
 
 		it('should handle different market types correctly', async () => {
 			const usdcPrice = 1; // $1 USDC price
-			
+
 			mockDriftClient.getOracleDataForSpotMarket.mockReturnValue({
 				price: new BN(usdcPrice).mul(PRICE_PRECISION),
 			});
@@ -350,7 +350,7 @@ describe('Auction Parameters Functions', () => {
 
 		it('should handle different directions correctly', async () => {
 			const solPrice = 160; // $160 SOL price
-			
+
 			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
 			});
@@ -382,13 +382,15 @@ describe('Auction Parameters Functions', () => {
 			);
 
 			expect(result.success).toBe(true);
-			expect(result.data?.marketOrderParams.direction).toBe(PositionDirection.SHORT);
+			expect(result.data?.marketOrderParams.direction).toBe(
+				PositionDirection.SHORT
+			);
 			expect(result.data?.estimatedPrices.entryPrice.gt(ZERO)).toBe(true);
 		});
 
 		it('should handle various order sizes with L2 depth', async () => {
 			const solPrice = 160; // $160 SOL price
-			
+
 			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
 			});
@@ -398,12 +400,12 @@ describe('Auction Parameters Functions', () => {
 				if (key.includes('dlob_orderbook')) {
 					return {
 						bids: [
-							{ price: '159950000', size: '500000000' },  // $159.95, 0.5 SOL
+							{ price: '159950000', size: '500000000' }, // $159.95, 0.5 SOL
 							{ price: '159900000', size: '1000000000' }, // $159.90, 1 SOL
 							{ price: '159850000', size: '2000000000' }, // $159.85, 2 SOL
 						],
 						asks: [
-							{ price: '160050000', size: '500000000' },  // $160.05, 0.5 SOL
+							{ price: '160050000', size: '500000000' }, // $160.05, 0.5 SOL
 							{ price: '160100000', size: '1000000000' }, // $160.10, 1 SOL
 							{ price: '160150000', size: '2000000000' }, // $160.15, 2 SOL
 						],
@@ -443,9 +445,13 @@ describe('Auction Parameters Functions', () => {
 
 			expect(largeResult.success).toBe(true);
 			expect(largeResult.data?.estimatedPrices.entryPrice.gt(ZERO)).toBe(true);
-			
+
 			// Large orders should have higher price impact
-			expect(largeResult.data?.estimatedPrices.priceImpact.gte(smallResult.data?.estimatedPrices.priceImpact)).toBe(true);
+			expect(
+				largeResult.data?.estimatedPrices.priceImpact.gte(
+					smallResult.data?.estimatedPrices.priceImpact
+				)
+			).toBe(true);
 		});
 
 		it('should handle zero oracle price scenario', async () => {
@@ -601,12 +607,16 @@ describe('Auction Parameters Functions', () => {
 				},
 			];
 
-			scenarios.forEach(scenario => {
+			scenarios.forEach((scenario) => {
 				const result = createMarketBasedAuctionParams(scenario.input);
-				
-				expect(result.auctionStartPriceOffsetFrom).toBe(scenario.expectedOffset.from);
-				expect(result.auctionStartPriceOffset).toBe(scenario.expectedOffset.value);
-				
+
+				expect(result.auctionStartPriceOffsetFrom).toBe(
+					scenario.expectedOffset.from
+				);
+				expect(result.auctionStartPriceOffset).toBe(
+					scenario.expectedOffset.value
+				);
+
 				// Verify all original parameters are preserved
 				expect(result.marketIndex).toBe(scenario.input.marketIndex);
 				expect(result.marketType).toBe(scenario.input.marketType);
@@ -653,7 +663,7 @@ describe('Auction Parameters Functions', () => {
 			};
 
 			const auctionParams = createMarketBasedAuctionParams(input);
-			
+
 			// Simulate the structure that would come from deriveMarketOrderParams
 			const mockDerivedParams = {
 				auctionStartPriceOffsetFrom: auctionParams.auctionStartPriceOffsetFrom,
@@ -667,7 +677,8 @@ describe('Auction Parameters Functions', () => {
 				isOracleOrder: true,
 			};
 
-			const formattedResponse = formatAuctionParamsForResponse(mockDerivedParams);
+			const formattedResponse =
+				formatAuctionParamsForResponse(mockDerivedParams);
 
 			// Verify the complete flow
 			expect(formattedResponse.auctionStartPriceOffsetFrom).toBe('mark'); // Market-based for major market

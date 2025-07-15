@@ -22,7 +22,6 @@ import {
 	AssetType,
 	MainnetSpotMarkets,
 	DevnetSpotMarkets,
-	QUOTE_PRECISION,
 	PERCENTAGE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
@@ -656,14 +655,16 @@ export function createMarketBasedAuctionParams(
 
 	// Resolve "marketBased" values and undefined values (both should use market-based logic)
 	const resolvedAuctionStartPriceOffsetFrom =
-		args.auctionStartPriceOffsetFrom === 'marketBased' || args.auctionStartPriceOffsetFrom === undefined
+		args.auctionStartPriceOffsetFrom === 'marketBased' ||
+		args.auctionStartPriceOffsetFrom === undefined
 			? isMajorMarket
 				? 'mark'
 				: 'bestOffer'
 			: args.auctionStartPriceOffsetFrom;
 
 	const resolvedAuctionStartPriceOffset =
-		args.auctionStartPriceOffset === 'marketBased' || args.auctionStartPriceOffset === undefined
+		args.auctionStartPriceOffset === 'marketBased' ||
+		args.auctionStartPriceOffset === undefined
 			? isMajorMarket
 				? 0
 				: -0.1

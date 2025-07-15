@@ -1,4 +1,4 @@
-import { AuctionParamArgs } from "./types";
+import { AuctionParamArgs } from './types';
 
 export const MEASURED_ENDPOINTS = [
 	'/priorityFees',
