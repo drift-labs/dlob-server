@@ -18,15 +18,10 @@ import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
-import {
-	handleHealthCheck,
-	cacheHitCounter,
-	incomingRequestsCounter,
-	runtimeSpecsGauge,
-} from './core/metrics';
-import { handleResponseTime } from './core/middleware';
+import { handleHealthCheck } from './core/middleware';
 import { errorHandler, selectMostRecentBySlot, sleep } from './utils/utils';
 import { setGlobalDispatcher, Agent } from 'undici';
+import { Metrics } from './core/metricsV2';
 
 setGlobalDispatcher(
 	new Agent({
@@ -51,13 +46,16 @@ console.log('Redis Clients:', REDIS_CLIENTS);
 
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
+const endpoint = process.env.ENDPOINT;
+const wsEndpoint = process.env.WS_ENDPOINT;
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
 
 const stateCommitment: Commitment = 'confirmed';
 const serverPort = process.env.PORT || 6969;
-export const ORDERBOOK_UPDATE_INTERVAL = 1000;
-const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
+const metricsPort = process.env.METRICS_PORT
+	? parseInt(process.env.METRICS_PORT)
+	: 9464;
 const SLOT_STALENESS_TOLERANCE =
 	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 100000;
 
@@ -67,12 +65,27 @@ const logHttp = morgan(logFormat, {
 	skip: (_req, res) => res.statusCode <= 500,
 });
 
+// init metrics
+const metricsV2 = new Metrics('dlob-server-lite', [], metricsPort);
+const healthStatusGauge = metricsV2.addGauge(
+	'health_status',
+	'Health check status'
+);
+const cacheHitCounter = metricsV2.addCounter(
+	'cache_hits',
+	'Number of cache hits/misses'
+);
+const incomingRequestsCounter = metricsV2.addCounter(
+	'incoming_requests',
+	'Number of incoming requests'
+);
+metricsV2.finalizeObservables();
+
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
-app.use(handleResponseTime());
 
 // strip off /dlob, if the request comes from exchange history server LB
 app.use((req, _res, next) => {
@@ -82,19 +95,10 @@ app.use((req, _res, next) => {
 			req.url = '/';
 		}
 	}
-	incomingRequestsCounter.add(1);
-	next();
-});
-
-// Metrics defined here
-const bootTimeMs = Date.now();
-runtimeSpecsGauge.addCallback((obs) => {
-	obs.observe(bootTimeMs, {
-		commit: commitHash,
-		driftEnv,
-		rpcEndpoint: endpoint,
-		wsEndpoint: wsEndpoint,
+	incomingRequestsCounter.add(1, {
+		path: req.baseUrl + req.path,
 	});
+	next();
 });
 
 app.use(errorHandler);
@@ -110,8 +114,6 @@ server.headersTimeout = 65 * 1000;
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
 
-const endpoint = process.env.ENDPOINT;
-const wsEndpoint = process.env.WS_ENDPOINT;
 logger.info(`RPC endpoint:       ${endpoint}`);
 logger.info(`WS endpoint:        ${wsEndpoint}`);
 logger.info(`DriftEnv:           ${driftEnv}`);
@@ -155,15 +157,9 @@ const main = async (): Promise<void> => {
 		}
 	};
 
-	app.get(
-		'/health',
-		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSubscriber)
-	);
+	app.get('/health', handleHealthCheck(slotSubscriber, healthStatusGauge));
 	app.get('/startup', handleStartup);
-	app.get(
-		'/',
-		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSubscriber)
-	);
+	app.get('/', handleHealthCheck(slotSubscriber, healthStatusGauge));
 
 	app.get('/l3', async (req, res, next) => {
 		try {
@@ -186,6 +182,8 @@ const main = async (): Promise<void> => {
 				cacheHitCounter.add(1, {
 					miss: false,
 					path: req.baseUrl + req.path,
+					marketIndex: normedMarketIndex,
+					marketType: isSpot ? 'spot' : 'perp',
 				});
 				res.writeHead(200);
 				res.end(JSON.stringify(redisL3));
@@ -194,6 +192,8 @@ const main = async (): Promise<void> => {
 				cacheHitCounter.add(1, {
 					miss: true,
 					path: req.baseUrl + req.path,
+					marketIndex: normedMarketIndex,
+					marketType: isSpot ? 'spot' : 'perp',
 				});
 				res.writeHead(500);
 				res.end(JSON.stringify({ error: 'No cached L3 found' }));

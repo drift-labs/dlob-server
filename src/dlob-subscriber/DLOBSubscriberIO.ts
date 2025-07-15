@@ -28,8 +28,9 @@ import {
 	parsePositiveIntArray,
 	publishGroupings,
 } from '../utils/utils';
-import { setHealthStatus, HEALTH_STATUS } from '../core/metrics';
 import { OffloadQueue } from '../utils/offload';
+import { setHealthStatus, HEALTH_STATUS } from '../core/healthCheck';
+import { CounterValue } from '../core/metricsV2';
 
 export type wsMarketArgs = {
 	marketIndex: number;
@@ -84,6 +85,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			redisClient: RedisClient;
 			indicativeQuotesRedisClient?: RedisClient;
 			enableOffloadQueue?: boolean;
+			offloadQueueCounter?: CounterValue;
 			perpMarketInfos: wsMarketInfo[];
 			spotMarketInfos: wsMarketInfo[];
 			spotMarketSubscribers: SubscriberLookup;
@@ -99,7 +101,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		this.enableOffload = config.enableOffloadQueue || false;
 		if (this.enableOffload) {
-			this.offloadQueue = OffloadQueue();
+			this.offloadQueue = OffloadQueue(config.offloadQueueCounter);
 		}
 
 		// Set up appropriate maps

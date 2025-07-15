@@ -43,9 +43,9 @@ import {
 } from '../dlobProvider';
 import FEATURE_FLAGS from '../utils/featureFlags';
 import express, { Response, Request } from 'express';
-import { handleHealthCheck } from '../core/metrics';
+import { handleHealthCheck } from '../core/middleware';
 import { setGlobalDispatcher, Agent } from 'undici';
-import { register, Gauge } from 'prom-client';
+import { Metrics } from '../core/metricsV2';
 
 setGlobalDispatcher(
 	new Agent({
@@ -57,35 +57,34 @@ require('dotenv').config();
 const stateCommitment: Commitment = 'confirmed';
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
+const metricsPort = process.env.METRICS_PORT
+	? parseInt(process.env.METRICS_PORT)
+	: 9464;
 
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
 
 // Set up express for health checks
 const app = express();
 
-// metrics
-const dlobSlotGauge = new Gauge({
-	name: 'dlob_slot',
-	help: 'Last updated slot of DLOB',
-	labelNames: [
-		'marketIndex',
-		'marketType',
-		'marketName',
-		'redisPrefix',
-		'redisClient',
-	],
-});
-const oracleSlotGauge = new Gauge({
-	name: 'oracle_slot',
-	help: 'Last updated slot of oracle',
-	labelNames: [
-		'marketIndex',
-		'marketType',
-		'marketName',
-		'redisPrefix',
-		'redisClient',
-	],
-});
+// init metrics
+const metricsV2 = new Metrics('dlob-publisher', undefined, metricsPort);
+const healthStatusGauge = metricsV2.addGauge(
+	'health_status',
+	'Health check status'
+);
+const dlobSlotGauge = metricsV2.addGauge(
+	'dlob_slot',
+	'Last updated slot of DLOB'
+);
+const oracleSlotGauge = metricsV2.addGauge(
+	'oracle_slot',
+	'Last updated slot of oracle'
+);
+const kinesisRecordsSentCounter = metricsV2.addCounter(
+	'kinesis_records_sent',
+	'Number of records sent to Kinesis'
+);
+metricsV2.finalizeObservables();
 
 //@ts-ignore
 const sdkConfig = initialize({ env: process.env.ENV });
@@ -528,6 +527,7 @@ const main = async () => {
 		protectedMakerView: false,
 		indicativeQuotesRedisClient: indicativeRedisClient,
 		enableOffloadQueue,
+		offloadQueueCounter: kinesisRecordsSentCounter,
 	});
 	await dlobSubscriberIndicative.subscribe();
 
@@ -555,41 +555,32 @@ const main = async () => {
 			const oracleDataAndSlot = driftClient.getOracleDataForPerpMarket(
 				market.marketIndex
 			);
-			dlobSlotGauge.set(
-				{
-					marketIndex: market.marketIndex,
-					marketType: 'perp',
-					marketName: market.marketName,
-					redisClient: REDIS_CLIENT,
-					redisPrefix: RedisClientPrefix[REDIS_CLIENT],
-				},
-				slot
-			);
-			oracleSlotGauge.set(
-				{
-					marketIndex: market.marketIndex,
-					marketType: 'perp',
-					marketName: market.marketName,
-					redisClient: REDIS_CLIENT,
-					redisPrefix: RedisClientPrefix[REDIS_CLIENT],
-				},
-				oracleDataAndSlot.slot.toNumber()
-			);
+			dlobSlotGauge.setLatestValue(slot, {
+				marketIndex: market.marketIndex,
+				marketType: 'perp',
+				marketName: market.marketName,
+				redisClient: REDIS_CLIENT,
+				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+			});
+			oracleSlotGauge.setLatestValue(oracleDataAndSlot.slot.toNumber(), {
+				marketIndex: market.marketIndex,
+				marketType: 'perp',
+				marketName: market.marketName,
+				redisClient: REDIS_CLIENT,
+				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+			});
 		});
 		spotMarketInfos.forEach((market) => {
 			const oracleDataAndSlot = driftClient.getOracleDataForSpotMarket(
 				market.marketIndex
 			);
-			dlobSlotGauge.set(
-				{
-					marketIndex: market.marketIndex,
-					marketType: 'spot',
-					marketName: market.marketName,
-					redisClient: REDIS_CLIENT,
-					redisPrefix: RedisClientPrefix[REDIS_CLIENT],
-				},
-				oracleDataAndSlot.slot.toNumber()
-			);
+			dlobSlotGauge.setLatestValue(oracleDataAndSlot.slot.toNumber(), {
+				marketIndex: market.marketIndex,
+				marketType: 'spot',
+				marketName: market.marketName,
+				redisClient: REDIS_CLIENT,
+				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+			});
 		});
 	}, 10_000);
 
@@ -646,18 +637,9 @@ const main = async () => {
 		}
 	};
 	app.get('/debug', handleDebug);
-
-	app.get('/metrics', async (req, res) => {
-		res.set('Content-Type', register.contentType);
-		res.end(await register.metrics());
-	});
-
-	app.get(
-		'/health',
-		handleHealthCheck(WS_FALLBACK_FETCH_INTERVAL, dlobProvider)
-	);
+	app.get('/health', handleHealthCheck(slotSource, healthStatusGauge));
 	app.get('/startup', handleStartup);
-	app.get('/', handleHealthCheck(WS_FALLBACK_FETCH_INTERVAL, dlobProvider));
+	app.get('/', handleHealthCheck(slotSource, healthStatusGauge));
 	const server = app.listen(8080);
 
 	// Default keepalive is 5s, since the AWS ALB timeout is 60 seconds, clients

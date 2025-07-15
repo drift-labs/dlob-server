@@ -656,14 +656,16 @@ export function createMarketBasedAuctionParams(
 
 	// Resolve "marketBased" values and undefined values (both should use market-based logic)
 	const resolvedAuctionStartPriceOffsetFrom =
-		args.auctionStartPriceOffsetFrom === 'marketBased' || args.auctionStartPriceOffsetFrom === undefined
+		args.auctionStartPriceOffsetFrom === 'marketBased' ||
+		args.auctionStartPriceOffsetFrom === undefined
 			? isMajorMarket
 				? 'mark'
 				: 'bestOffer'
 			: args.auctionStartPriceOffsetFrom;
 
 	const resolvedAuctionStartPriceOffset =
-		args.auctionStartPriceOffset === 'marketBased' || args.auctionStartPriceOffset === undefined
+		args.auctionStartPriceOffset === 'marketBased' ||
+		args.auctionStartPriceOffset === undefined
 			? isMajorMarket
 				? 0
 				: -0.1
