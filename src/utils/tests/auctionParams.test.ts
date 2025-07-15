@@ -5,7 +5,8 @@ import {
 	MarketType, 
 	ZERO, 
 	QUOTE_PRECISION, 
-	PRICE_PRECISION 
+	PRICE_PRECISION,
+	BASE_PRECISION 
 } from '@drift-labs/sdk';
 import {
 	createMarketBasedAuctionParams,
@@ -191,7 +192,7 @@ describe('Auction Parameters Functions', () => {
 			marketIndex: 0,
 			marketType: 'perp' as any,
 			direction: 'long' as any,
-			amount: '100',
+			amount: new BN(100).mul(BASE_PRECISION).toString(), // 100 in BASE_PRECISION
 			assetType: 'base' as any,
 			auctionDuration: 30,
 			auctionStartPriceOffset: 0,
@@ -261,6 +262,7 @@ describe('Auction Parameters Functions', () => {
 		it('should handle quote-to-base conversion with realistic prices', async () => {
 			const solPrice = 160; // $160 SOL price
 			const quoteAmount = 1000; // $1,000 worth
+			const quoteAmountInPrecision = new BN(quoteAmount).mul(QUOTE_PRECISION); // Convert to quote precision
 
 			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
@@ -282,7 +284,7 @@ describe('Auction Parameters Functions', () => {
 
 			const quoteParams = {
 				...validParams,
-				amount: quoteAmount.toString(),
+				amount: quoteAmountInPrecision.toString(),
 				assetType: 'quote' as any,
 			};
 
@@ -300,10 +302,9 @@ describe('Auction Parameters Functions', () => {
 			expect(baseAmount).toBeDefined();
 			expect(baseAmount.gt(ZERO)).toBe(true);
 
-			// Calculate expected base amount: (quoteAmount * QUOTE_PRECISION * BASE_PRECISION) / entryPrice
-			const expectedBaseAmount = new BN(quoteAmount)
-				.mul(QUOTE_PRECISION)
-				.mul(new BN(10).pow(new BN(9))) // BASE_PRECISION = 10^9
+			// Calculate expected base amount: (amount * BASE_PRECISION) / entryPrice
+			const expectedBaseAmount = quoteAmountInPrecision
+				.mul(BASE_PRECISION)
 				.div(result.data?.estimatedPrices.entryPrice);
 
 			expect(baseAmount.toString()).toBe(expectedBaseAmount.toString());
@@ -414,7 +415,7 @@ describe('Auction Parameters Functions', () => {
 			// Test small order
 			const smallOrderParams = {
 				...validParams,
-				amount: '10', // Small order
+				amount: new BN(10).mul(BASE_PRECISION).toString(), // 10 in BASE_PRECISION
 			};
 
 			const smallResult = await mapToMarketOrderParams(
@@ -430,7 +431,7 @@ describe('Auction Parameters Functions', () => {
 			// Test large order
 			const largeOrderParams = {
 				...validParams,
-				amount: '1000', // Large order
+				amount: new BN(1000).mul(BASE_PRECISION).toString(), // 1000 in BASE_PRECISION
 			};
 
 			const largeResult = await mapToMarketOrderParams(
@@ -565,7 +566,7 @@ describe('Auction Parameters Functions', () => {
 						marketIndex: 0,
 						marketType: 'perp' as any,
 						direction: 'long' as any,
-						amount: '100',
+						amount: new BN(100).mul(BASE_PRECISION).toString(), // 100 in BASE_PRECISION
 						assetType: 'base' as any,
 						auctionStartPriceOffsetFrom: 'marketBased' as any,
 						auctionStartPriceOffset: 'marketBased' as any,
@@ -578,7 +579,7 @@ describe('Auction Parameters Functions', () => {
 						marketIndex: 5,
 						marketType: 'perp' as any,
 						direction: 'short' as any,
-						amount: '500',
+						amount: new BN(500).mul(QUOTE_PRECISION).toString(), // 500 in QUOTE_PRECISION
 						assetType: 'quote' as any,
 						auctionStartPriceOffsetFrom: 'marketBased' as any,
 						auctionStartPriceOffset: 'marketBased' as any,
@@ -591,7 +592,7 @@ describe('Auction Parameters Functions', () => {
 						marketIndex: 2,
 						marketType: 'spot' as any,
 						direction: 'long' as any,
-						amount: '1000',
+						amount: new BN(1000).mul(BASE_PRECISION).toString(), // 1000 in BASE_PRECISION
 						assetType: 'base' as any,
 						auctionStartPriceOffsetFrom: 'marketBased' as any,
 						auctionStartPriceOffset: 'marketBased' as any,
@@ -621,7 +622,7 @@ describe('Auction Parameters Functions', () => {
 				marketIndex: 0, // Major market - would normally get 'mark' and 0
 				marketType: 'perp' as any,
 				direction: 'long' as any,
-				amount: '100',
+				amount: new BN(100).mul(BASE_PRECISION).toString(), // 100 in BASE_PRECISION
 				assetType: 'base' as any,
 				auctionStartPriceOffsetFrom: 'oracle' as any, // explicit value
 				auctionStartPriceOffset: 0.25, // explicit value
@@ -644,7 +645,7 @@ describe('Auction Parameters Functions', () => {
 				marketIndex: 1,
 				marketType: 'perp' as any,
 				direction: 'long' as any,
-				amount: '100',
+				amount: new BN(100).mul(BASE_PRECISION).toString(), // 100 in BASE_PRECISION
 				assetType: 'base' as any,
 				auctionStartPriceOffsetFrom: 'marketBased' as any,
 				auctionStartPriceOffset: 'marketBased' as any,
