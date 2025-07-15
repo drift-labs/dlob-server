@@ -28,15 +28,8 @@ import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 import { logger, setLogLevel } from './utils/logger';
 
 import * as http from 'http';
-import {
-	handleHealthCheck,
-	accountUpdatesCounter,
-	cacheHitCounter,
-	setLastReceivedWsMsgTs,
-	incomingRequestsCounter,
-	runtimeSpecsGauge,
-} from './core/metrics';
-import { handleResponseTime } from './core/middleware';
+import { Metrics } from './core/metricsV2';
+import { handleHealthCheck } from './core/middleware';
 import {
 	errorHandler,
 	normalizeBatchQueryParams,
@@ -93,11 +86,39 @@ const hermesUrl = process.env.HERMES_ENDPOINT;
 const pythLazerDriftToken = process.env.PYTH_LAZER_DRIFT_TOKEN;
 const pythLazerEndpoint = process.env.PYTH_LAZER_ENDPOINT;
 
+const metricsPort = process.env.METRICS_PORT
+	? parseInt(process.env.METRICS_PORT)
+	: 9464;
+
 const logFormat =
 	':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :req[x-forwarded-for]';
 const logHttp = morgan(logFormat, {
 	skip: (_req, res) => res.statusCode <= 500,
 });
+
+// init metrics
+const metricsV2 = new Metrics('dlob-publisher', undefined, metricsPort);
+const healthStatusGauge = metricsV2.addGauge(
+	'health_status',
+	'Health check status'
+);
+const accountUpdatesCounter = metricsV2.addCounter(
+	'account_updates_count',
+	'Total accounts update'
+);
+const cacheHitCounter = metricsV2.addCounter(
+	'cache_hit_count',
+	'Total cache hit'
+);
+const lastWsReceivedTsGauge = metricsV2.addGauge(
+	'last_ws_message_received_ts',
+	'Timestamp of last received websocket message'
+);
+const incomingRequestsCounter = metricsV2.addCounter(
+	'incoming_requests_count',
+	'Total incoming requests'
+);
+metricsV2.finalizeObservables();
 
 let driftClient: DriftClient;
 
@@ -106,7 +127,6 @@ app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 app.use(logHttp);
-app.use(handleResponseTime());
 
 // strip off /dlob, if the request comes from exchange history server LB
 app.use((req, _res, next) => {
@@ -116,19 +136,8 @@ app.use((req, _res, next) => {
 			req.url = '/';
 		}
 	}
-	incomingRequestsCounter.add(1);
+	incomingRequestsCounter.add(1, {});
 	next();
-});
-
-// Metrics defined here
-const bootTimeMs = Date.now();
-runtimeSpecsGauge.addCallback((obs) => {
-	obs.observe(bootTimeMs, {
-		commit: commitHash,
-		driftEnv,
-		rpcEndpoint: endpoint,
-		wsEndpoint: wsEndpoint,
-	});
 });
 
 app.use(errorHandler);
@@ -179,7 +188,6 @@ const main = async (): Promise<void> => {
 		delistedMarketSetting: DelistedMarketSetting.Discard,
 	});
 
-	let updatesReceivedTotal = 0;
 	const orderSubscriber = new OrderSubscriber({
 		driftClient,
 		subscriptionConfig: {
@@ -192,10 +200,8 @@ const main = async (): Promise<void> => {
 	orderSubscriber.eventEmitter.on(
 		'updateReceived',
 		(_pubkey: PublicKey, _slot: number, _dataType: 'raw' | 'decoded') => {
-			setLastReceivedWsMsgTs(Date.now());
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
-			updatesReceivedTotal++;
-			accountUpdatesCounter.add(1);
+			lastWsReceivedTsGauge.setLatestValue(Date.now(), {});
+			accountUpdatesCounter.add(1, {});
 		}
 	);
 
@@ -265,9 +271,9 @@ const main = async (): Promise<void> => {
 		}
 	};
 
-	app.get('/health', handleHealthCheck(dlobProvider));
+	app.get('/health', handleHealthCheck(dlobProvider, healthStatusGauge));
 	app.get('/startup', handleStartup);
-	app.get('/', handleHealthCheck(dlobProvider));
+	app.get('/', handleHealthCheck(dlobProvider, healthStatusGauge));
 
 	app.get('/priorityFees', async (req, res, next) => {
 		try {

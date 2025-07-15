@@ -4,33 +4,37 @@ import * as http from 'http';
 import compression from 'compression';
 import { WebSocket, WebSocketServer } from 'ws';
 import { sleep, selectMostRecentBySlot, GROUPING_OPTIONS } from './utils/utils';
-import { register, Gauge, Counter } from 'prom-client';
 import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
+import { Metrics } from './core/metricsV2';
 
 // Set up env constants
 require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
+const metricsPort = process.env.METRICS_PORT
+	? parseInt(process.env.METRICS_PORT)
+	: 9464;
 
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(compression());
 app.set('trust proxy', 1);
 
-const wsConnectionsGauge = new Gauge({
-	name: 'websocket_connections',
-	help: 'Number of active WebSocket connections',
-});
-const wsOrderbookSourceCounter = new Counter({
-	name: 'websocket_orderbook_source',
-	help: 'Number of orderbook messages sent from source',
-	labelNames: ['source'],
-});
-const wsOrderbookSourceLastSlotGauge = new Gauge({
-	name: 'websocket_orderbook_source_last_slot',
-	help: 'Last slot of orderbook messages from a source',
-	labelNames: ['source'],
-});
+// init metrics
+const metricsV2 = new Metrics('ws-connection-manager', undefined, metricsPort);
+const wsConnectionsCounter = metricsV2.addCounter(
+	'websocket_connections',
+	'Number of active WebSocket connections'
+);
+const wsOrderbookSourceCounter = metricsV2.addCounter(
+	'websocket_orderbook_source',
+	'Number of orderbook messages sent from source'
+);
+const wsOrderbookSourceLastSlotGauge = metricsV2.addGauge(
+	'websocket_orderbook_source_last_slot',
+	'Last slot of orderbook messages from a source'
+);
+metricsV2.finalizeObservables();
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({
@@ -143,12 +147,9 @@ async function main() {
 			if (subscribers) {
 				if (sanitizedChannel.includes('orderbook')) {
 					const messageSlot = JSON.parse(message)['slot'];
-					wsOrderbookSourceLastSlotGauge.set(
-						{
-							source: channelPrefix,
-						},
-						messageSlot
-					);
+					wsOrderbookSourceLastSlotGauge.setLatestValue(messageSlot, {
+						source: channelPrefix,
+					});
 
 					const lastMessageSlot = subscribedChannelToSlot.get(sanitizedChannel);
 					if (!lastMessageSlot || lastMessageSlot <= messageSlot) {
@@ -162,7 +163,7 @@ async function main() {
 						ws.readyState === WebSocket.OPEN &&
 						ws.bufferedAmount < MAX_BUFFERED_AMOUNT
 					) {
-						wsOrderbookSourceCounter.inc({
+						wsOrderbookSourceCounter.add(1, {
 							source: channelPrefix,
 						});
 						ws.send(
@@ -185,8 +186,7 @@ async function main() {
 	const subscribedChannels = new Set<string>();
 
 	wss.on('connection', (ws: WebSocket) => {
-		console.log('Client connected');
-		wsConnectionsGauge.inc();
+		wsConnectionsCounter.add(1, {});
 
 		ws.on('message', async (msg) => {
 			let parsedMessage: any;
@@ -356,7 +356,6 @@ async function main() {
 
 		// Handle disconnection
 		ws.on('close', () => {
-			console.log('Client disconnected');
 			// Clear any existing intervals
 			clearInterval(heartbeatInterval);
 			clearInterval(bufferInterval);
@@ -367,7 +366,7 @@ async function main() {
 					subscribedChannels.delete(channel);
 				}
 			});
-			wsConnectionsGauge.dec();
+			wsConnectionsCounter.add(-1, {});
 		});
 
 		ws.on('error', (error) => {
@@ -377,11 +376,6 @@ async function main() {
 
 	server.listen(WS_PORT, () => {
 		console.log(`connection manager running on ${WS_PORT}`);
-	});
-
-	app.get('/metrics', async (req, res) => {
-		res.set('Content-Type', register.contentType);
-		res.end(await register.metrics());
 	});
 
 	server.on('error', (error) => {

@@ -5,7 +5,7 @@ import {
 } from '@aws-sdk/client-kinesis';
 import { ConfiguredRetryStrategy } from '@aws-sdk/util-retry';
 import { logger } from '../utils/logger';
-import { setKinesisRecordsSent } from '../core/metrics';
+import { CounterValue } from '../core/metricsV2';
 
 type EventType = 'DLOBSnapshot' | 'DLOBL3Snapshot';
 
@@ -29,7 +29,7 @@ const batchInterval = process.env.KINESIS_BATCH_INTERVAL
 	? parseInt(process.env.KINESIS_BATCH_INTERVAL)
 	: 10000;
 
-export const OffloadQueue = () => {
+export const OffloadQueue = (offloadQueueCounter?: CounterValue) => {
 	const queue: QueueMessage[] = [];
 	const throttleMap: Map<string, ThrottleInfo> = new Map();
 	let isProcessing = false;
@@ -84,7 +84,11 @@ export const OffloadQueue = () => {
 			}
 
 			const successCount = batch.length - (response.FailedRecordCount || 0);
-			setKinesisRecordsSent(successCount, kinesisStream);
+			if (offloadQueueCounter) {
+				offloadQueueCounter.add(successCount, {
+					stream: kinesisStream,
+				});
+			}
 		} catch (error) {
 			logger.error('Error processing queue:', error);
 		} finally {
