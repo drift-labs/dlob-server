@@ -56,8 +56,6 @@ const sdkConfig = initialize({ env: process.env.ENV });
 
 const stateCommitment: Commitment = 'confirmed';
 const serverPort = process.env.PORT || 6969;
-export const ORDERBOOK_UPDATE_INTERVAL = 1000;
-const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
 const SLOT_STALENESS_TOLERANCE =
 	parseInt(process.env.SLOT_STALENESS_TOLERANCE) || 100000;
 
@@ -155,15 +153,9 @@ const main = async (): Promise<void> => {
 		}
 	};
 
-	app.get(
-		'/health',
-		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSubscriber)
-	);
+	app.get('/health', handleHealthCheck(slotSubscriber));
 	app.get('/startup', handleStartup);
-	app.get(
-		'/',
-		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, slotSubscriber)
-	);
+	app.get('/', handleHealthCheck(slotSubscriber));
 
 	app.get('/l3', async (req, res, next) => {
 		try {

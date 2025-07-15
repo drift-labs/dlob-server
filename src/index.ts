@@ -265,12 +265,9 @@ const main = async (): Promise<void> => {
 		}
 	};
 
-	app.get(
-		'/health',
-		handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider)
-	);
+	app.get('/health', handleHealthCheck(dlobProvider));
 	app.get('/startup', handleStartup);
-	app.get('/', handleHealthCheck(2 * WS_FALLBACK_FETCH_INTERVAL, dlobProvider));
+	app.get('/', handleHealthCheck(dlobProvider));
 
 	app.get('/priorityFees', async (req, res, next) => {
 		try {

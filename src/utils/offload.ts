@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-kinesis';
 import { ConfiguredRetryStrategy } from '@aws-sdk/util-retry';
 import { logger } from '../utils/logger';
+import { setKinesisRecordsSent } from '../core/metrics';
 
 type EventType = 'DLOBSnapshot' | 'DLOBL3Snapshot';
 
@@ -83,9 +84,7 @@ export const OffloadQueue = () => {
 			}
 
 			const successCount = batch.length - (response.FailedRecordCount || 0);
-			logger.info(
-				`Successfully sent ${successCount} records to Kinesis stream: ${kinesisStream}`
-			);
+			setKinesisRecordsSent(successCount, kinesisStream);
 		} catch (error) {
 			logger.error('Error processing queue:', error);
 		} finally {

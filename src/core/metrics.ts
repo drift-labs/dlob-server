@@ -39,6 +39,7 @@ enum METRIC_TYPES {
 	current_system_ts = 'current_system_ts',
 	health_status = 'health_status',
 	incoming_requests_count = 'incoming_requests_count',
+	kinesis_records_sent = 'kinesis_records_sent',
 }
 
 export enum HEALTH_STATUS {
@@ -165,72 +166,123 @@ const responseStatusCounter = meter.createCounter(
 	}
 );
 
-const healthCheckInterval = 2000;
-let lastHealthCheckSlot = -1;
-let lastHealthCheckState = true; // true = healthy, false = unhealthy
-let lastHealthCheckPerformed = Date.now() - healthCheckInterval;
-let lastTimeHealthy = Date.now() - healthCheckInterval;
+const kinesisRecordsSentGauge = meter.createObservableGauge(
+	METRIC_TYPES.kinesis_records_sent,
+	{
+		description: 'Number of records successfully sent to Kinesis stream',
+	}
+);
 
-export const setHealthStatus = (status: HEALTH_STATUS): void => {
-	healthStatus = status;
+let kinesisRecordsSent: KinesisMetric = {
+	stream: '',
+	count: 0,
+};
+
+const setKinesisRecordsSent = (count: number, stream: string): void => {
+	kinesisRecordsSent = {
+		stream,
+		count,
+	};
+};
+
+kinesisRecordsSentGauge.addCallback((obs: ObservableResult) => {
+	obs.observe(kinesisRecordsSent.count, { stream: kinesisRecordsSent.stream });
+});
+
+/**
+ * Health check configuration
+ */
+const HEALTH_CHECK_CONFIG = {
+	CHECK_INTERVAL_MS: 2000,
+	// Maximum time allowed between slot updates
+	MAX_SLOT_STALENESS_MS: 5000,
+	// Minimum expected slot advancement rate (slots per second)
+	MIN_SLOT_RATE: 1,
+} as const;
+
+/**
+ * Tracks the health state of the slot subscriber
+ */
+type HealthState = {
+	lastSlot: number;
+	lastSlotTimestamp: number;
+};
+
+const globalHealthState: HealthState = {
+	lastSlot: -1,
+	lastSlotTimestamp: Date.now(),
 };
 
 /**
- * Middleware that checks if we are in general healthy by checking that the bulk account loader slot
- * has changed recently.
- *
- * We may be hit by multiple sources performing health checks on us, so this middleware will latch
- * to its health state and only update every `healthCheckInterval`.
- *
- * A grace period is also used to report unhealthy only if we have been unhealthy beyond the grace period.
+ * Evaluates if the current state is healthy based on slot progression
  */
-const handleHealthCheck = (
-	healthCheckGracePeriod: number,
-	slotSource: SlotSource
-) => {
+function evaluateHealth(currentSlot: number): {
+	isHealthy: boolean;
+	reason?: string;
+} {
+	const now = Date.now();
+
+	// First health check
+	if (globalHealthState.lastSlot === -1) {
+		globalHealthState.lastSlot = currentSlot;
+		globalHealthState.lastSlotTimestamp = now;
+		return { isHealthy: true };
+	}
+
+	const timeDelta = now - globalHealthState.lastSlotTimestamp;
+	const slotDelta = currentSlot - globalHealthState.lastSlot;
+
+	// Update state if slot has progressed
+	if (currentSlot > globalHealthState.lastSlot) {
+		globalHealthState.lastSlot = currentSlot;
+		globalHealthState.lastSlotTimestamp = now;
+	}
+
+	// Check if slots are too stale
+	if (timeDelta > HEALTH_CHECK_CONFIG.MAX_SLOT_STALENESS_MS) {
+		return {
+			isHealthy: false,
+			reason: `No slot updates in ${timeDelta}ms (max ${HEALTH_CHECK_CONFIG.MAX_SLOT_STALENESS_MS}ms)`,
+		};
+	}
+
+	// Check if slot update rate is too low
+	const slotRate = (slotDelta / timeDelta) * 1000; // Convert to per second
+	if (slotRate < HEALTH_CHECK_CONFIG.MIN_SLOT_RATE) {
+		return {
+			isHealthy: false,
+			reason: `Slot update rate ${slotRate.toFixed(
+				2
+			)} slots/sec below minimum ${HEALTH_CHECK_CONFIG.MIN_SLOT_RATE}`,
+		};
+	}
+
+	return { isHealthy: true };
+}
+
+/**
+ * Middleware that checks the health of the slot subscriber.
+ * Health is determined by:
+ * 1. Regular slot updates
+ * 2. Minimum slot update rate
+ */
+const handleHealthCheck = (slotSource: SlotSource) => {
 	return async (_req, res, _next) => {
-		if (healthStatus === HEALTH_STATUS.Restart) {
-			logger.error(`Health status: Restart`);
-			res.writeHead(500);
-			res.end(`NOK`);
-			return;
-		}
+		const currentSlot = slotSource.getSlot();
+		const { isHealthy, reason } = evaluateHealth(currentSlot);
 
-		if (Date.now() < lastHealthCheckPerformed + healthCheckInterval) {
-			if (lastHealthCheckState) {
-				res.writeHead(200);
-				res.end('OK');
-				lastHealthCheckPerformed = Date.now();
-				return;
-			}
-			// always check if last check was unhealthy (give it another chance to recover)
-		}
-
-		// healthy if slot has advanced since the last check
-		const lastSlotReceived = slotSource.getSlot();
-		const inGracePeriod =
-			Date.now() - lastTimeHealthy <= healthCheckGracePeriod;
-		lastHealthCheckState = lastSlotReceived > lastHealthCheckSlot;
-		if (!lastHealthCheckState) {
+		if (!isHealthy) {
 			logger.error(
-				`Unhealthy: lastSlot: ${lastSlotReceived}, lastHealthCheckSlot: ${lastHealthCheckSlot}, timeSinceLastCheck: ${
-					Date.now() - lastHealthCheckPerformed
-				} ms, sinceLastTimeHealthy: ${
-					Date.now() - lastTimeHealthy
-				} ms, inGracePeriod: ${inGracePeriod}`
+				`Unhealthy: ${reason}, ` +
+					`Details: currentSlot=${currentSlot}, ` +
+					`lastSlot=${globalHealthState.lastSlot}, ` +
+					`timeSinceLastSlot=${
+						Date.now() - globalHealthState.lastSlotTimestamp
+					}ms`
 			);
-		} else {
-			lastTimeHealthy = Date.now();
-		}
-
-		lastHealthCheckSlot = lastSlotReceived;
-		lastHealthCheckPerformed = Date.now();
-
-		if (!lastHealthCheckState && !inGracePeriod) {
 			setHealthStatus(HEALTH_STATUS.UnhealthySlotSubscriber);
-
 			res.writeHead(500);
-			res.end(`NOK`);
+			res.end('NOK');
 			return;
 		}
 
@@ -239,6 +291,15 @@ const handleHealthCheck = (
 		res.end('OK');
 	};
 };
+
+export const setHealthStatus = (status: HEALTH_STATUS): void => {
+	healthStatus = status;
+};
+
+interface KinesisMetric {
+	stream: string;
+	count: number;
+}
 
 export {
 	endpointResponseTimeHistogram,
@@ -250,4 +311,5 @@ export {
 	accountUpdatesCounter,
 	cacheHitCounter,
 	runtimeSpecsGauge,
+	setKinesisRecordsSent,
 };
