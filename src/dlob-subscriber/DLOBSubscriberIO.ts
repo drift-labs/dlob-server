@@ -347,7 +347,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			dlobSlot - oracleSlot.toNumber() > STALE_ORACLE_REMOVE_VAMM_THRESHOLD &&
 			!isPerpMarketAndPrelaunchMarket
 		) {
-			logger.info('Oracle is stale, removing vamm orders');
+			logger.info(
+				`Oracle is stale, removing vamm orders ${marketArgs.marketName}`
+			);
 			includeVamm = false;
 		}
 
