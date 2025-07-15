@@ -46,8 +46,6 @@ export type wsMarketArgs = {
 
 require('dotenv').config();
 
-const PERP_MAKRET_STALENESS_THRESHOLD = 30 * 60 * 1000;
-const SPOT_MAKRET_STALENESS_THRESHOLD = 60 * 60 * 1000;
 const STALE_ORACLE_REMOVE_VAMM_THRESHOLD = 160;
 
 const INDICATIVE_QUOTES_PUBKEY = 'inDNdu3ML4vG5LNExqcwuCQtLcCU8KfK5YM2qYV3JJz';
@@ -72,10 +70,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 	redisClient: RedisClient;
 	indicativeQuotesRedisClient?: RedisClient;
 	public killSwitchSlotDiffThreshold: number;
-	public lastMarketSlotMap: Map<
-		MarketType,
-		Map<number, { slot: number; ts: number }>
-	>;
 	public offloadQueue?: ReturnType<typeof OffloadQueue>;
 	public enableOffload: boolean;
 
@@ -108,9 +102,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		this.lastSeenL2Formatted = new Map();
 		this.lastSeenL2Formatted.set(MarketType.SPOT, new Map());
 		this.lastSeenL2Formatted.set(MarketType.PERP, new Map());
-		this.lastMarketSlotMap = new Map();
-		this.lastMarketSlotMap.set(MarketType.SPOT, new Map());
-		this.lastMarketSlotMap.set(MarketType.PERP, new Map());
 
 		for (const market of config.perpMarketInfos) {
 			const perpMarket = this.driftClient.getPerpMarketAccount(
@@ -362,14 +353,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 
 		const l2 = this.getL2({ ...l2FuncArgs, includeVamm });
 		const slot = l2.slot;
-		const lastMarketSlotAndTime = this.lastMarketSlotMap
-			.get(marketArgs.marketType)
-			.get(marketArgs.marketIndex);
-		if (!lastMarketSlotAndTime) {
-			this.lastMarketSlotMap
-				.get(marketArgs.marketType)
-				.set(marketArgs.marketIndex, { slot, ts: Date.now() });
-		}
 
 		if (slot) {
 			delete l2.slot;
@@ -423,33 +406,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				`Unhealthy process due to slot diffs for market ${marketName}. dlobProviderSlot: ${slot}, oracleSlot: ${l2Formatted['oracleData']['slot']}`
 			);
 			setHealthStatus(HEALTH_STATUS.Restart);
-		}
-
-		// Check if times and slots are too different for market
-		const MAKRET_STALENESS_THRESHOLD =
-			marketType === 'perp'
-				? PERP_MAKRET_STALENESS_THRESHOLD
-				: SPOT_MAKRET_STALENESS_THRESHOLD;
-		if (
-			lastMarketSlotAndTime &&
-			l2Formatted['marketSlot'] === lastMarketSlotAndTime.slot &&
-			Date.now() - lastMarketSlotAndTime.ts > MAKRET_STALENESS_THRESHOLD &&
-			!skipSlotCheck
-		) {
-			logger.warn(
-				`Unhealthy process due to same slot for market ${marketName} after > ${MAKRET_STALENESS_THRESHOLD}ms. dlobProviderSlot: ${slot}, marketSlot: ${l2Formatted['marketSlot']}`
-			);
-			setHealthStatus(HEALTH_STATUS.Restart);
-		} else if (
-			lastMarketSlotAndTime &&
-			l2Formatted['marketSlot'] !== lastMarketSlotAndTime.slot
-		) {
-			this.lastMarketSlotMap
-				.get(marketArgs.marketType)
-				.set(marketArgs.marketIndex, {
-					slot: l2Formatted['marketSlot'],
-					ts: Date.now(),
-				});
 		}
 
 		const l2Formatted_depth100 = Object.assign({}, l2Formatted, {
@@ -526,14 +482,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		const { marketName, ...l2FuncArgs } = marketArgs;
 		const l3 = this.getL3(l2FuncArgs);
 		const slot = l3.slot;
-		const lastMarketSlotAndTime = this.lastMarketSlotMap
-			.get(marketArgs.marketType)
-			.get(marketArgs.marketIndex);
-		if (!lastMarketSlotAndTime) {
-			this.lastMarketSlotMap
-				.get(marketArgs.marketType)
-				.set(marketArgs.marketIndex, { slot, ts: Date.now() });
-		}
 
 		if (slot) {
 			delete l3.slot;
