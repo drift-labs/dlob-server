@@ -22,7 +22,6 @@ import {
 	AssetType,
 	MainnetSpotMarkets,
 	DevnetSpotMarkets,
-	QUOTE_PRECISION,
 	PERCENTAGE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';

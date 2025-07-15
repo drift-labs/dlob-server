@@ -1,12 +1,12 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import {
 	BN,
-	PositionDirection, 
-	MarketType, 
-	ZERO, 
-	QUOTE_PRECISION, 
+	PositionDirection,
+	MarketType,
+	ZERO,
+	QUOTE_PRECISION,
 	PRICE_PRECISION,
-	BASE_PRECISION 
+	BASE_PRECISION,
 } from '@drift-labs/sdk';
 import {
 	createMarketBasedAuctionParams,
