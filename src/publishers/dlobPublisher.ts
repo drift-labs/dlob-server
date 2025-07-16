@@ -574,7 +574,14 @@ const main = async () => {
 			const oracleDataAndSlot = driftClient.getOracleDataForSpotMarket(
 				market.marketIndex
 			);
-			dlobSlotGauge.setLatestValue(oracleDataAndSlot.slot.toNumber(), {
+			dlobSlotGauge.setLatestValue(slot, {
+				marketIndex: market.marketIndex,
+				marketType: 'spot',
+				marketName: market.marketName,
+				redisClient: REDIS_CLIENT,
+				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+			});
+			oracleSlotGauge.setLatestValue(oracleDataAndSlot.slot.toNumber(), {
 				marketIndex: market.marketIndex,
 				marketType: 'spot',
 				marketName: market.marketName,
