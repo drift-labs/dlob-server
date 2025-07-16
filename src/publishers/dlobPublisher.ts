@@ -21,6 +21,7 @@ import {
 	MarketType,
 	OraclePriceData,
 	ONE,
+	decodeName,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -381,6 +382,7 @@ const main = async () => {
 			type: 'websocket',
 			commitment: stateCommitment,
 			resubTimeoutMs: 30_000,
+			logResubMessages: true,
 		};
 		slotSubscriber = new SlotSubscriber(connection, {
 			resubTimeoutMs: 10_000,
@@ -394,6 +396,7 @@ const main = async () => {
 
 	const { perpMarketInfos, spotMarketInfos, oracleInfos } =
 		getMarketsAndOraclesToLoad(sdkConfig);
+
 	driftClient = new DriftClient({
 		connection,
 		wallet,
@@ -602,46 +605,38 @@ const main = async () => {
 	};
 
 	const handleDebug = async (req: Request, res: Response) => {
-		const marketIndex = +req.query.marketIndex;
-		let marketType: MarketType = MarketType.PERP;
-		let oraclePriceData: OraclePriceData;
-		if (req.query.marketType === 'spot') {
-			marketType = MarketType.SPOT;
-			oraclePriceData = driftClient.getOracleDataForSpotMarket(marketIndex);
-		} else {
-			oraclePriceData = driftClient.getOracleDataForPerpMarket(marketIndex);
+		const slot = slotSource.getSlot();
+		const slotInfos = [];
+		for (const market of driftClient.getPerpMarketAccounts()) {
+			const oracleDataAndSlot = driftClient.getOracleDataForPerpMarket(
+				market.marketIndex
+			);
+			const marketSlot = market.amm.lastUpdateSlot.toNumber();
+			const oracleSlot = oracleDataAndSlot.slot.toNumber();
+			slotInfos.push({
+				marketName: decodeName(market.name),
+				slot,
+				marketSlot,
+				oracleSlot,
+				marketSlotDiff: marketSlot - slot,
+				oracleSlotDiff: oracleSlot - slot,
+			});
 		}
-		try {
-			const slot = slotSource.getSlot();
-			const dlob = await dlobProvider.getDLOB(slot);
-			const l2 = dlob.getL2({
-				marketIndex,
-				marketType,
-				depth: 5,
-				slot,
-				oraclePriceData,
-			});
-			const l3 = dlob.getL3({
-				marketIndex,
-				marketType,
-				slot,
-				oraclePriceData,
-			});
-			const state = {
-				dlobSize: dlobProvider.size(),
-				slot,
-				markets: {
-					perp: perpMarketInfos,
-					spot: spotMarketInfos,
-				},
-				l2: l2WithBNToStrings(l2),
-				l3,
-			};
 
-			res.json(state);
-		} catch (e) {
-			res.status(500).json({ error: e.message });
+		for (const market of driftClient.getSpotMarketAccounts()) {
+			const oracleDataAndSlot = driftClient.getOracleDataForSpotMarket(
+				market.marketIndex
+			);
+			const oracleSlot = oracleDataAndSlot.slot.toNumber();
+			slotInfos.push({
+				marketName: decodeName(market.name),
+				slot,
+				oracleSlot,
+				oracleSlotDiff: oracleSlot - slot,
+			});
 		}
+
+		res.json(slotInfos);
 	};
 	app.get('/debug', handleDebug);
 	app.get('/health', handleHealthCheck(slotSource, healthStatusGauge));
