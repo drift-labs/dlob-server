@@ -128,6 +128,7 @@ const SPOT_MARKETS_TO_LOAD =
 		: undefined;
 
 const enableOffloadQueue = process.env.ENABLE_OFFLOAD === 'true';
+const ignoreList = process.env.IGNORE_LIST?.split(',') || ['5N1AcdftujhXWZdBaqfciaKtXn6uVBKjmgwf6aQxR1vW'];
 
 logger.info(`RPC endpoint:  ${endpoint}`);
 logger.info(`WS endpoint:   ${wsEndpoint}`);
@@ -478,7 +479,7 @@ const main = async () => {
 		const orderSubscriber = new OrderSubscriberFiltered({
 			driftClient,
 			subscriptionConfig,
-			ignoreList: ['5N1AcdftujhXWZdBaqfciaKtXn6uVBKjmgwf6aQxR1vW']
+			ignoreList
 		});
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
