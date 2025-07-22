@@ -47,6 +47,7 @@ import express, { Response, Request } from 'express';
 import { handleHealthCheck } from '../core/middleware';
 import { setGlobalDispatcher, Agent } from 'undici';
 import { Metrics } from '../core/metricsV2';
+import { OrderSubscriberFiltered } from '../dlob-subscriber/OrderSubscriberFiltered';
 
 setGlobalDispatcher(
 	new Agent({
@@ -474,9 +475,10 @@ const main = async () => {
 			};
 		}
 
-		const orderSubscriber = new OrderSubscriber({
+		const orderSubscriber = new OrderSubscriberFiltered({
 			driftClient,
 			subscriptionConfig,
+			ignoreList: ['5N1AcdftujhXWZdBaqfciaKtXn6uVBKjmgwf6aQxR1vW']
 		});
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
