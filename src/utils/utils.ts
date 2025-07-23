@@ -985,7 +985,7 @@ export const mapToMarketOrderParams = async (
 				slippageTolerance: processedSlippageTolerance,
 				isOracleOrder: params.isOracleOrder,
 				additionalEndPriceBuffer,
-				forceUpToSlippage: true,
+				forceUpToSlippage: params.forceUpToSlippage,
 				userOrderId: params.userOrderId,
 			},
 			estimatedPrices,
