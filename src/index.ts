@@ -937,6 +937,7 @@ const main = async (): Promise<void> => {
 				auctionEndPriceOffsetFrom,
 				additionalEndPriceBuffer,
 				userOrderId,
+				forceUpToSlippage,
 			} = req.query;
 
 			// Validate required parameters
@@ -1001,6 +1002,7 @@ const main = async (): Promise<void> => {
 				auctionEndPriceOffsetFrom: auctionEndPriceOffsetFrom as any,
 				additionalEndPriceBuffer: additionalEndPriceBuffer as string,
 				userOrderId: parseNumber(userOrderId as string),
+				forceUpToSlippage: parseBoolean(forceUpToSlippage as string),
 			};
 
 			// Only add non-undefined values
