@@ -31,6 +31,7 @@ import {
 import { OffloadQueue } from '../utils/offload';
 import { setHealthStatus, HEALTH_STATUS } from '../core/healthCheck';
 import { CounterValue } from '../core/metricsV2';
+import { COMMON_MATH } from '@drift/common';
 
 export type wsMarketArgs = {
 	marketIndex: number;
@@ -354,6 +355,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		}
 
 		const l2 = this.getL2({ ...l2FuncArgs, includeVamm });
+		const { markPrice } = COMMON_MATH.calculateSpreadBidAskMark(l2);
 		const slot = l2.slot;
 
 		if (slot) {
@@ -379,6 +381,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		l2Formatted['marketIndex'] = marketArgs.marketIndex;
 		l2Formatted['ts'] = Date.now();
 		l2Formatted['slot'] = slot;
+		l2Formatted['markPrice'] = markPrice?.toString();
+
 		addOracletoResponse(
 			l2Formatted,
 			this.driftClient,
@@ -391,6 +395,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			marketArgs.marketType,
 			marketArgs.marketIndex
 		);
+
+		if (!markPrice) {
+			l2Formatted['markPrice'] = l2Formatted['oracle'];
+		}
 
 		// Check if slot diffs are too large for oracle
 		const skipSlotCheck =
