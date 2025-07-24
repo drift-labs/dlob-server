@@ -21,4 +21,5 @@ export type AuctionParamArgs = {
 	auctionEndPriceOffsetFrom?: TradeOffsetPrice;
 	additionalEndPriceBuffer?: string;
 	userOrderId?: number;
+	forceUpToSlippage?: boolean;
 };
