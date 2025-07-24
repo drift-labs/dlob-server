@@ -355,7 +355,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		}
 
 		const l2 = this.getL2({ ...l2FuncArgs, includeVamm });
-		const { markPrice } = COMMON_MATH.calculateSpreadBidAskMark(l2);
+		const { markPrice, bestBidPrice, bestAskPrice, spreadPct, spreadQuote } =
+			COMMON_MATH.calculateSpreadBidAskMark(l2);
 		const slot = l2.slot;
 
 		if (slot) {
@@ -382,6 +383,10 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		l2Formatted['ts'] = Date.now();
 		l2Formatted['slot'] = slot;
 		l2Formatted['markPrice'] = markPrice?.toString();
+		l2Formatted['bestBidPrice'] = bestBidPrice?.toString();
+		l2Formatted['bestAskPrice'] = bestAskPrice?.toString();
+		l2Formatted['spreadPct'] = spreadPct?.toString();
+		l2Formatted['spreadQuote'] = spreadQuote?.toString();
 
 		addOracletoResponse(
 			l2Formatted,
