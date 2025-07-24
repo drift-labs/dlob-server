@@ -1038,6 +1038,7 @@ const main = async (): Promise<void> => {
 					entryPrice: result.data.estimatedPrices.entryPrice.toString(),
 					bestPrice: result.data.estimatedPrices.bestPrice.toString(),
 					worstPrice: result.data.estimatedPrices.worstPrice.toString(),
+					oraclePrice: result.data.estimatedPrices.oraclePrice.toString(),
 					priceImpact: BigNum.from(
 						result.data.estimatedPrices.priceImpact,
 						PRICE_PRECISION_EXP
