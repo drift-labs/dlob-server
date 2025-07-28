@@ -1116,7 +1116,7 @@ export const calculateDynamicSlippage = (
 	// Apply multiplier from env var
 	const multiplier = isMajor
 		? parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR || '1.02')
-		: parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_NON_MAJOR || '1.5');
+		: parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_NON_MAJOR || '1.4');
 	dynamicSlippage = dynamicSlippage * multiplier;
 
 	// Enforce minimum and maximum limits from env vars

@@ -109,7 +109,7 @@ const useOrderSubscriber =
 	process.env.USE_ORDER_SUBSCRIBER?.toLowerCase() === 'true';
 
 const ORDERBOOK_UPDATE_INTERVAL =
-	parseInt(process.env.ORDERBOOK_UPDATE_INTERVAL) || 500;
+	parseInt(process.env.ORDERBOOK_UPDATE_INTERVAL) || 400;
 const WS_FALLBACK_FETCH_INTERVAL = 60_000;
 
 const KILLSWITCH_SLOT_DIFF_THRESHOLD =
