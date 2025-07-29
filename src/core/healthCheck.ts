@@ -46,6 +46,14 @@ function evaluateHealth(currentSlot: number): {
 		return { isHealthy: true };
 	}
 
+	const currentHealthStatus = getHealthStatus();
+	if (currentHealthStatus !== HEALTH_STATUS.Ok) {
+		return {
+			isHealthy: false,
+			reason: `Unhealthy state: ${currentHealthStatus}`,
+		};
+	}
+
 	const timeDelta = now - globalHealthState.lastSlotTimestamp;
 	const slotDelta = currentSlot - globalHealthState.lastSlot;
 

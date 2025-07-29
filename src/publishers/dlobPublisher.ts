@@ -82,6 +82,10 @@ const oracleSlotGauge = metricsV2.addGauge(
 	'oracle_slot',
 	'Last updated slot of oracle'
 );
+const marketSlotGauge = metricsV2.addGauge(
+	'market_slot',
+	'Last updated slot of market account'
+);
 const kinesisRecordsSentCounter = metricsV2.addCounter(
 	'kinesis_records_sent',
 	'Number of records sent to Kinesis'
@@ -128,6 +132,9 @@ const SPOT_MARKETS_TO_LOAD =
 		: undefined;
 
 const enableOffloadQueue = process.env.ENABLE_OFFLOAD === 'true';
+const ignoreList = process.env.IGNORE_LIST?.split(',') || [
+	'5N1AcdftujhXWZdBaqfciaKtXn6uVBKjmgwf6aQxR1vW',
+];
 
 logger.info(`RPC endpoint:  ${endpoint}`);
 logger.info(`WS endpoint:   ${wsEndpoint}`);
@@ -478,7 +485,7 @@ const main = async () => {
 		const orderSubscriber = new OrderSubscriberFiltered({
 			driftClient,
 			subscriptionConfig,
-			ignoreList: ['5N1AcdftujhXWZdBaqfciaKtXn6uVBKjmgwf6aQxR1vW']
+			ignoreList,
 		});
 
 		dlobProvider = getDLOBProviderFromOrderSubscriber(orderSubscriber);
@@ -560,6 +567,10 @@ const main = async () => {
 			const oracleDataAndSlot = driftClient.getOracleDataForPerpMarket(
 				market.marketIndex
 			);
+			const marketAccount =
+				driftClient.accountSubscriber.getMarketAccountAndSlot(
+					market.marketIndex
+				);
 			dlobSlotGauge.setLatestValue(slot, {
 				marketIndex: market.marketIndex,
 				marketType: 'perp',
@@ -568,6 +579,13 @@ const main = async () => {
 				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
 			});
 			oracleSlotGauge.setLatestValue(oracleDataAndSlot.slot.toNumber(), {
+				marketIndex: market.marketIndex,
+				marketType: 'perp',
+				marketName: market.marketName,
+				redisClient: REDIS_CLIENT,
+				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+			});
+			marketSlotGauge.setLatestValue(marketAccount.slot, {
 				marketIndex: market.marketIndex,
 				marketType: 'perp',
 				marketName: market.marketName,
@@ -579,6 +597,10 @@ const main = async () => {
 			const oracleDataAndSlot = driftClient.getOracleDataForSpotMarket(
 				market.marketIndex
 			);
+			const marketAccount =
+				driftClient.accountSubscriber.getSpotMarketAccountAndSlot(
+					market.marketIndex
+				);
 			dlobSlotGauge.setLatestValue(slot, {
 				marketIndex: market.marketIndex,
 				marketType: 'spot',
@@ -587,6 +609,13 @@ const main = async () => {
 				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
 			});
 			oracleSlotGauge.setLatestValue(oracleDataAndSlot.slot.toNumber(), {
+				marketIndex: market.marketIndex,
+				marketType: 'spot',
+				marketName: market.marketName,
+				redisClient: REDIS_CLIENT,
+				redisPrefix: RedisClientPrefix[REDIS_CLIENT],
+			});
+			marketSlotGauge.setLatestValue(marketAccount.slot, {
 				marketIndex: market.marketIndex,
 				marketType: 'spot',
 				marketName: market.marketName,
