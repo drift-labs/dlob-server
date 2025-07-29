@@ -9,7 +9,6 @@ import {
 	UserMap,
 	Wallet,
 	BulkAccountLoader,
-	OrderSubscriber,
 	SlotSource,
 	DriftClientSubscriptionConfig,
 	SlotSubscriber,
@@ -18,10 +17,9 @@ import {
 	PerpMarketConfig,
 	SpotMarketConfig,
 	PhoenixSubscriber,
-	MarketType,
-	OraclePriceData,
-	ONE,
 	decodeName,
+	WebSocketAccountSubscriberV2,
+	ONE,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -29,7 +27,6 @@ import { logger, setLogLevel } from '../utils/logger';
 import {
 	SubscriberLookup,
 	getOpenbookSubscriber,
-	l2WithBNToStrings,
 	parsePositiveIntArray,
 	sleep,
 } from '../utils/utils';
@@ -391,6 +388,7 @@ const main = async () => {
 			commitment: stateCommitment,
 			resubTimeoutMs: 30_000,
 			logResubMessages: true,
+			accountSubscriber: WebSocketAccountSubscriberV2,
 		};
 		slotSubscriber = new SlotSubscriber(connection, {
 			resubTimeoutMs: 10_000,
