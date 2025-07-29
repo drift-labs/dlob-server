@@ -13,7 +13,7 @@ import {
 	PerpOperation,
 	PositionDirection,
 	ZERO,
-	calculateBidAskPrice,
+	calculateAMMBidAskPrice,
 	getLimitPrice,
 	isOperationPaused,
 	isVariant,
@@ -177,9 +177,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					let bestBid = bestDlobBid;
 					let bestAsk = bestDlobAsk;
 					if (marketType === 'perp') {
-						const [bestVammBid, bestVammAsk] = calculateBidAskPrice(
+						const [bestVammBid, bestVammAsk] = calculateAMMBidAskPrice(
 							this.driftClient.getPerpMarketAccount(marketArgs.marketIndex).amm,
-							oraclePriceData,
+							this.driftClient.getMMOracleDataForPerpMarket(
+								marketArgs.marketIndex
+							),
 							true
 						);
 
