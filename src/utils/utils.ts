@@ -1,7 +1,7 @@
 import {
 	BN,
 	BigNum,
-	DriftClient,
+	IDriftClient,
 	DriftEnv,
 	L2OrderBook,
 	L3OrderBook,
@@ -92,7 +92,7 @@ export function parsePositiveIntArray(
 }
 
 export const getOracleForMarket = (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketType: MarketType,
 	marketIndex: number
 ): number => {
@@ -129,7 +129,7 @@ const getSerializableOraclePriceData = (
 };
 
 export const getOracleDataForMarket = (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketType: MarketType,
 	marketIndex: number
 ): SerializableOraclePriceData => {
@@ -146,7 +146,7 @@ export const getOracleDataForMarket = (
 
 export const addOracletoResponse = (
 	response: L2OrderBook | L3OrderBook,
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketType: MarketType,
 	marketIndex: number
 ): void => {
@@ -177,7 +177,7 @@ export const addOracletoResponse = (
 
 export const addMarketSlotToResponse = (
 	response: L2OrderBook | L3OrderBook,
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketType: MarketType,
 	marketIndex: number
 ): void => {
@@ -418,7 +418,7 @@ export const validateWsSubscribeMsg = (
 };
 
 export const validateDlobQuery = (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	driftEnv: DriftEnv,
 	marketType?: string,
 	marketIndex?: string,
@@ -571,7 +571,7 @@ export function errorHandler(
  */
 
 export const getPhoenixSubscriber = (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketConfig: SpotMarketConfig,
 	sdkConfig
 ): PhoenixSubscriber => {
@@ -586,7 +586,7 @@ export const getPhoenixSubscriber = (
 };
 
 export const getSerumSubscriber = (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketConfig: SpotMarketConfig,
 	sdkConfig
 ): SerumSubscriber => {
@@ -601,7 +601,7 @@ export const getSerumSubscriber = (
 };
 
 export const getOpenbookSubscriber = (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketConfig: SpotMarketConfig,
 	sdkConfig
 ): OpenbookV2Subscriber => {
@@ -748,7 +748,7 @@ export const convertRawL2ToBN = (rawL2: any): L2OrderBook => {
 
 /**
  * Get L2 orderbook data and calculate estimated prices
- * @param driftClient - DriftClient instance
+ * @param driftClient - IDriftClient instance
  * @param marketType - MarketType enum
  * @param marketIndex - Market index number
  * @param direction - Position direction
@@ -759,7 +759,7 @@ export const convertRawL2ToBN = (rawL2: any): L2OrderBook => {
  * @returns Price data object with oracle, best, entry, worst, and mark prices
  */
 export const getEstimatedPrices = async (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketType: MarketType,
 	marketIndex: number,
 	direction: PositionDirection,
@@ -857,14 +857,14 @@ export const getEstimatedPrices = async (
 /**
  * Maps AuctionParamArgs to the format expected by deriveMarketOrderParams
  * @param params - AuctionParamArgs from the API request
- * @param driftClient - DriftClient instance (optional, for price calculation)
+ * @param driftClient - IDriftClient instance (optional, for price calculation)
  * @param fetchFromRedis - Redis fetch function (optional, for price calculation)
  * @param selectMostRecentBySlot - Slot selection function (optional, for price calculation)
  * @returns Object formatted for deriveMarketOrderParams function or error response
  */
 export const mapToMarketOrderParams = async (
 	params: AuctionParamArgs,
-	driftClient?: DriftClient,
+	driftClient?: IDriftClient,
 	fetchFromRedis?: (
 		key: string,
 		selectionCriteria: (responses: any) => any
@@ -1064,14 +1064,14 @@ export const fetchL2FromRedis = async (
  * @param direction - Position direction ('long' or 'short')
  * @param marketIndex - Market index number
  * @param marketType - Market type ('spot' or 'perp')
- * @param driftClient - DriftClient instance for oracle data
+ * @param driftClient - IDriftClient instance for oracle data
  * @param l2Formatted - Already formatted L2OrderBook data
  * @returns Dynamic slippage tolerance as a number
  */
 export const calculateDynamicSlippage = (
 	marketIndex: number,
 	marketType: string,
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	l2Formatted: L2OrderBook
 ): number => {
 	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
@@ -1128,7 +1128,7 @@ export const calculateDynamicSlippage = (
 
 /**
  * Get L2 orderbook data and calculate estimated prices using pre-fetched L2 data
- * @param driftClient - DriftClient instance
+ * @param driftClient - IDriftClient instance
  * @param marketType - MarketType enum
  * @param marketIndex - Market index number
  * @param direction - Position direction
@@ -1138,7 +1138,7 @@ export const calculateDynamicSlippage = (
  * @returns Price data object with oracle, best, entry, worst, and mark prices
  */
 export const getEstimatedPricesWithL2 = async (
-	driftClient: DriftClient,
+	driftClient: IDriftClient,
 	marketType: MarketType,
 	marketIndex: number,
 	direction: PositionDirection,
