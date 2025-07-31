@@ -79,7 +79,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 
 const stateCommitment: Commitment = 'confirmed';
 const serverPort = process.env.PORT || 6969;
-export const ORDERBOOK_UPDATE_INTERVAL = 400;
+export const ORDERBOOK_UPDATE_INTERVAL = parseInt(process.env.ORDERBOOK_UPDATE_INTERVAL) || 400;
 const WS_FALLBACK_FETCH_INTERVAL = ORDERBOOK_UPDATE_INTERVAL * 60;
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
 const hermesUrl = process.env.HERMES_ENDPOINT;
