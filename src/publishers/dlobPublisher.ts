@@ -388,7 +388,7 @@ const main = async () => {
 			commitment: stateCommitment,
 			resubTimeoutMs: 30_000,
 			logResubMessages: true,
-			accountSubscriber: WebSocketAccountSubscriberV2,
+			perpMarketAccountSubscriber: WebSocketAccountSubscriberV2,
 		};
 		slotSubscriber = new SlotSubscriber(connection, {
 			resubTimeoutMs: 10_000,
