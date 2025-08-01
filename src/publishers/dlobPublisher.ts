@@ -665,14 +665,17 @@ const main = async () => {
 		useOrderSubscriber &&
 		tobMonitoringMarketsInThisNode.length > 0;
 
-	// Track last TOB update times and values for each TOB monitoring market
+	// Track last TOB update times and order IDs for each TOB monitoring market
 	const lastTobUpdateTimes = new Map<number, number>();
-	const lastTobValues = new Map<number, { bid: string; ask: string }>();
+	const lastTobOrderIds = new Map<
+		number,
+		{ bidOrderId: string; askOrderId: string }
+	>();
 
 	// Initialize TOB tracking for TOB monitoring markets in this node
 	tobMonitoringMarketsInThisNode.forEach((marketIndex) => {
 		lastTobUpdateTimes.set(marketIndex, Date.now());
-		lastTobValues.set(marketIndex, { bid: '', ask: '' });
+		lastTobOrderIds.set(marketIndex, { bidOrderId: '', askOrderId: '' });
 	});
 
 	// Log TOB monitoring status
@@ -706,38 +709,45 @@ const main = async () => {
 				// Get oracle data for the market
 				const oracleData = driftClient.getOracleDataForPerpMarket(marketIndex);
 
-				// Get L2 orderbook to check TOB
-				const l2OrderBook = dlob.getL2({
+				// Get L3 orderbook to check TOB
+				const l3OrderBook = dlob.getL3({
 					marketIndex,
 					marketType: { perp: {} },
 					slot,
 					oraclePriceData: oracleData,
-					depth: 1, // Only need top level
 				});
 
-				const bestBid = l2OrderBook.bids[0]?.price;
-				const bestAsk = l2OrderBook.asks[0]?.price;
+				const bestBidOrder = l3OrderBook.bids[0];
+				const bestAskOrder = l3OrderBook.asks[0];
 
-				if (bestBid && bestAsk) {
-					const currentTobValues = {
-						bid: bestBid.toString(),
-						ask: bestAsk.toString(),
+				if (bestBidOrder && bestAskOrder) {
+					// Create order ID strings using maker (user account) and orderId
+					const currentBidOrderId = `${bestBidOrder.maker.toBase58()}-${
+						bestBidOrder.orderId
+					}`;
+					const currentAskOrderId = `${bestAskOrder.maker.toBase58()}-${
+						bestAskOrder.orderId
+					}`;
+
+					const currentTobOrderIds = {
+						bidOrderId: currentBidOrderId,
+						askOrderId: currentAskOrderId,
 					};
-					const lastTobValue = lastTobValues.get(marketIndex);
+					const lastTobOrderId = lastTobOrderIds.get(marketIndex);
 					const lastUpdate = lastTobUpdateTimes.get(marketIndex);
 
-					// Check if TOB has changed
+					// Check if TOB orders have changed (not just prices)
 					const tobChanged =
-						!lastTobValue ||
-						lastTobValue.bid !== currentTobValues.bid ||
-						lastTobValue.ask !== currentTobValues.ask;
+						!lastTobOrderId ||
+						lastTobOrderId.bidOrderId !== currentTobOrderIds.bidOrderId ||
+						lastTobOrderId.askOrderId !== currentTobOrderIds.askOrderId;
 
 					if (tobChanged) {
-						// TOB changed, update tracking
-						lastTobValues.set(marketIndex, currentTobValues);
+						// TOB orders changed, update tracking
+						lastTobOrderIds.set(marketIndex, currentTobOrderIds);
 						lastTobUpdateTimes.set(marketIndex, currentTime);
 						logger.debug(
-							`TOB updated for market ${marketIndex}: bid=${currentTobValues.bid}, ask=${currentTobValues.ask}`
+							`TOB orders updated for market ${marketIndex}: bidOrderId=${currentTobOrderIds.bidOrderId}, askOrderId=${currentTobOrderIds.askOrderId}`
 						);
 					} else if (
 						lastUpdate &&
