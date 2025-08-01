@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Pre-commit hook to check for potential secrets
+echo "🔍 Running secret check..."
+
+# Run the secret checking script
+if [ -f "scripts/check-secrets.sh" ]; then
+    ./scripts/check-secrets.sh
+    if [ $? -ne 0 ]; then
+        echo "❌ Pre-commit hook failed. Please fix the issues above before committing."
+        echo "💡 If these are false positives, you can:"
+        echo "   1. Add the file to .gitignore"
+        echo "   2. Use placeholder values instead of real secrets"
+        echo "   3. Bypass the hook with: git commit --no-verify"
+        exit 1
+    fi
+else
+    echo "⚠️  Warning: check-secrets.sh not found"
+fi
+
+echo "✅ Pre-commit checks passed" 
