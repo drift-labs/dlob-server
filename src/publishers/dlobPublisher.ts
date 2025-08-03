@@ -720,90 +720,90 @@ const main = async () => {
 				const bestBidOrder = l3OrderBook.bids[0];
 				const bestAskOrder = l3OrderBook.asks[0];
 
-				if (bestBidOrder && bestAskOrder) {
-					// Create order ID strings using maker (user account) and orderId
-					const currentBidOrderId = `${bestBidOrder.maker.toBase58()}-${
-						bestBidOrder.orderId
-					}`;
-					const currentAskOrderId = `${bestAskOrder.maker.toBase58()}-${
-						bestAskOrder.orderId
-					}`;
+				// Track each side independently, even if one side is empty
+				const currentBidOrderId = bestBidOrder
+					? `${bestBidOrder.maker.toBase58()}-${bestBidOrder.orderId}`
+					: '';
+				const currentAskOrderId = bestAskOrder
+					? `${bestAskOrder.maker.toBase58()}-${bestAskOrder.orderId}`
+					: '';
 
-					const currentTobOrderIds = {
-						bidOrderId: currentBidOrderId,
-						askOrderId: currentAskOrderId,
-					};
-					const lastTobOrderId = lastTobOrderIds.get(marketIndex);
-					const lastUpdate = lastTobUpdateTimes.get(marketIndex);
+				const currentTobOrderIds = {
+					bidOrderId: currentBidOrderId,
+					askOrderId: currentAskOrderId,
+				};
+				const lastTobOrderId = lastTobOrderIds.get(marketIndex);
+				const lastUpdate = lastTobUpdateTimes.get(marketIndex);
 
-					// Check if TOB orders have changed (not just prices)
-					const tobChanged =
-						!lastTobOrderId ||
-						lastTobOrderId.bidOrderId !== currentTobOrderIds.bidOrderId ||
-						lastTobOrderId.askOrderId !== currentTobOrderIds.askOrderId;
+				// Check if TOB orders have changed on either side
+				const tobChanged =
+					!lastTobOrderId ||
+					lastTobOrderId.bidOrderId !== currentTobOrderIds.bidOrderId ||
+					lastTobOrderId.askOrderId !== currentTobOrderIds.askOrderId;
 
-					if (tobChanged) {
-						// TOB orders changed, update tracking
-						lastTobOrderIds.set(marketIndex, currentTobOrderIds);
-						lastTobUpdateTimes.set(marketIndex, currentTime);
-						logger.debug(
-							`TOB orders updated for market ${marketIndex}: bidOrderId=${currentTobOrderIds.bidOrderId}, askOrderId=${currentTobOrderIds.askOrderId}`
-						);
-					} else if (
-						lastUpdate &&
-						currentTime - lastUpdate > TOB_STUCK_THRESHOLD
-					) {
-						// TOB has been stuck for too long, trigger resubscribe
-						const stuckDuration = (currentTime - lastUpdate) / 1000;
-						logger.warn(
-							`TOB stuck for market ${marketIndex} for ${stuckDuration}s, triggering resubscribe`
-						);
+				if (tobChanged) {
+					// TOB orders changed, update tracking
+					lastTobOrderIds.set(marketIndex, currentTobOrderIds);
+					lastTobUpdateTimes.set(marketIndex, currentTime);
+					logger.debug(
+						`TOB orders updated for market ${marketIndex}: bidOrderId=${
+							currentTobOrderIds.bidOrderId || 'none'
+						}, askOrderId=${currentTobOrderIds.askOrderId || 'none'}`
+					);
+				} else if (
+					lastUpdate &&
+					currentTime - lastUpdate > TOB_STUCK_THRESHOLD
+				) {
+					// TOB has been stuck for too long, trigger resubscribe
+					const stuckDuration = (currentTime - lastUpdate) / 1000;
+					logger.warn(
+						`TOB stuck for market ${marketIndex} for ${stuckDuration}s, triggering resubscribe`
+					);
 
-						// Update metrics
-						tobStuckGauge.setLatestValue(stuckDuration, {
-							marketIndex: marketIndex.toString(),
-							marketType: 'perp',
-						});
+					// Update metrics
+					tobStuckGauge.setLatestValue(stuckDuration, {
+						marketIndex: marketIndex.toString(),
+						marketType: 'perp',
+					});
 
-						// Get the OrderSubscriber instance for resubscribe
-						if (orderSubscriber) {
-							try {
-								// Resubscribe and fetch to clear stuck state
-								await orderSubscriber.unsubscribe();
-								await orderSubscriber.subscribe();
-								await orderSubscriber.fetch();
+					// Get the OrderSubscriber instance for resubscribe
+					if (orderSubscriber) {
+						try {
+							// Resubscribe and fetch to clear stuck state
+							await orderSubscriber.unsubscribe();
+							await orderSubscriber.subscribe();
+							await orderSubscriber.fetch();
 
-								logger.info(
-									`Successfully resubscribed OrderSubscriber for market ${marketIndex}`
-								);
-
-								// Update metrics
-								tobResubscribeCounter.add(1, {
-									marketIndex: marketIndex.toString(),
-									marketType: 'perp',
-									success: 'true',
-								});
-
-								// Reset the timer after successful resubscribe
-								lastTobUpdateTimes.set(marketIndex, currentTime);
-							} catch (error) {
-								logger.error(
-									`Failed to resubscribe OrderSubscriber for market ${marketIndex}:`,
-									error
-								);
-
-								// Update metrics for failed resubscribe
-								tobResubscribeCounter.add(1, {
-									marketIndex: marketIndex.toString(),
-									marketType: 'perp',
-									success: 'false',
-								});
-							}
-						} else {
-							logger.error(
-								`OrderSubscriber not available for market ${marketIndex}`
+							logger.info(
+								`Successfully resubscribed OrderSubscriber for market ${marketIndex}`
 							);
+
+							// Update metrics
+							tobResubscribeCounter.add(1, {
+								marketIndex: marketIndex.toString(),
+								marketType: 'perp',
+								success: 'true',
+							});
+
+							// Reset the timer after successful resubscribe
+							lastTobUpdateTimes.set(marketIndex, currentTime);
+						} catch (error) {
+							logger.error(
+								`Failed to resubscribe OrderSubscriber for market ${marketIndex}:`,
+								error
+							);
+
+							// Update metrics for failed resubscribe
+							tobResubscribeCounter.add(1, {
+								marketIndex: marketIndex.toString(),
+								marketType: 'perp',
+								success: 'false',
+							});
 						}
+					} else {
+						logger.error(
+							`OrderSubscriber not available for market ${marketIndex}`
+						);
 					}
 				}
 			} catch (error) {
