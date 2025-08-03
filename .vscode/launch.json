@@ -11,6 +11,34 @@
 			"port": 2230,
 			"timeout": 3000,
 			"restart": true
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Launch DLOB Publisher",
+			"runtimeExecutable": "ts-node",
+			"program": "${workspaceFolder}/src/publishers/dlobPublisher.ts",
+			"args": ["--D"],
+			"env": {
+				"KILLSWITCH_SLOT_DIFF_THRESHOLD": "2500",
+				"PERP_MARKETS_TO_LOAD": "1,2",
+				"LOCAL_CACHE": "true",
+				"RUNNING_LOCAL": "true",
+				"USE_REDIS": "true",
+				"ENDPOINT": "",
+				"WS_ENDPOINT": "",
+				"USE_WEBSOCKET": "true",
+				"USE_GRPC": "true",
+				"GRPC_ENDPOINT": "",
+				"TOKEN": "",
+				"USE_ORDER_SUBSCRIBER": "true",
+				"STATE_COMMITMENT": "confirmed",
+				"DRIFT_ENV": "mainnet-beta",
+				"ENV": "mainnet-beta",
+				"ENABLE_TOB_MONITORING": "true",
+				"TOB_MONITORING_ENABLED_PERP_MARKETS": "1,2"
+			},
+			"console": "integratedTerminal"
 		}
 	]
 }
