@@ -87,6 +87,14 @@ const kinesisRecordsSentCounter = metricsV2.addCounter(
 	'kinesis_records_sent',
 	'Number of records sent to Kinesis'
 );
+const tobResubscribeCounter = metricsV2.addCounter(
+	'tob_resubscribe',
+	'Number of TOB resubscribes triggered'
+);
+const tobStuckGauge = metricsV2.addGauge(
+	'tob_stuck_duration',
+	'Duration TOB has been stuck for each market'
+);
 metricsV2.finalizeObservables();
 
 //@ts-ignore
@@ -94,7 +102,7 @@ const sdkConfig = initialize({ env: process.env.ENV });
 let driftClient: DriftClient;
 
 const opts = program.opts();
-setLogLevel(opts.debug ? 'debug' : 'info');
+setLogLevel('debug');
 
 const useGrpc = process.env.USE_GRPC?.toLowerCase() === 'true';
 const useWebsocket = process.env.USE_WEBSOCKET?.toLowerCase() === 'true';
@@ -115,6 +123,16 @@ const WS_FALLBACK_FETCH_INTERVAL = 60_000;
 
 const KILLSWITCH_SLOT_DIFF_THRESHOLD =
 	parseInt(process.env.KILLSWITCH_SLOT_DIFF_THRESHOLD) || 200;
+
+// TOB monitoring configuration
+const ENABLE_TOB_MONITORING =
+	process.env.ENABLE_TOB_MONITORING?.toLowerCase() === 'true';
+const TOB_CHECK_INTERVAL = parseInt(process.env.TOB_CHECK_INTERVAL) || 60_000; // 1 minute
+const TOB_STUCK_THRESHOLD = parseInt(process.env.TOB_STUCK_THRESHOLD) || 60_000; // 1 minute without change
+const TOB_MONITORING_ENABLED_PERP_MARKETS = process.env
+	.TOB_MONITORING_ENABLED_PERP_MARKETS
+	? parsePositiveIntArray(process.env.TOB_MONITORING_ENABLED_PERP_MARKETS)
+	: [0, 1, 2]; // Default to SOL-PERP, BTC-PERP, ETH-PERP
 
 // comma separated list of perp market indexes to load: i.e. 0,1,2,3
 const PERP_MARKETS_TO_LOAD =
@@ -142,6 +160,16 @@ logger.info(
 );
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
+logger.info(
+	`TOB Monitoring: ${ENABLE_TOB_MONITORING ? 'enabled' : 'disabled'}`
+);
+if (ENABLE_TOB_MONITORING) {
+	logger.info(`TOB Check Interval: ${TOB_CHECK_INTERVAL}ms`);
+	logger.info(`TOB Stuck Threshold: ${TOB_STUCK_THRESHOLD}ms`);
+	logger.info(
+		`TOB Monitoring Markets: ${TOB_MONITORING_ENABLED_PERP_MARKETS.join(', ')}`
+	);
+}
 
 let MARKET_SUBSCRIBERS: SubscriberLookup = {};
 
@@ -437,6 +465,8 @@ const main = async () => {
 	);
 
 	let dlobProvider: DLOBProvider;
+	let orderSubscriber: OrderSubscriberFiltered | undefined;
+
 	if (useOrderSubscriber) {
 		let subscriptionConfig: any = {
 			type: 'polling',
@@ -480,7 +510,7 @@ const main = async () => {
 			};
 		}
 
-		const orderSubscriber = new OrderSubscriberFiltered({
+		orderSubscriber = new OrderSubscriberFiltered({
 			driftClient,
 			subscriptionConfig,
 			ignoreList,
@@ -622,6 +652,168 @@ const main = async () => {
 			});
 		});
 	}, 10_000);
+
+	// TOB monitoring for configured perp markets to detect stuck orders
+	// Check if this node has any TOB monitoring markets configured
+	const tobMonitoringMarketsInThisNode =
+		TOB_MONITORING_ENABLED_PERP_MARKETS.filter((marketIndex) =>
+			perpMarketInfos.some((market) => market.marketIndex === marketIndex)
+		);
+
+	const shouldEnableTobMonitoring =
+		ENABLE_TOB_MONITORING &&
+		useOrderSubscriber &&
+		tobMonitoringMarketsInThisNode.length > 0;
+
+	// Track last TOB update times and order IDs for each TOB monitoring market
+	const lastTobUpdateTimes = new Map<number, number>();
+	const lastTobOrderIds = new Map<
+		number,
+		{ bidOrderId: string; askOrderId: string }
+	>();
+
+	// Initialize TOB tracking for TOB monitoring markets in this node
+	tobMonitoringMarketsInThisNode.forEach((marketIndex) => {
+		lastTobUpdateTimes.set(marketIndex, Date.now());
+		lastTobOrderIds.set(marketIndex, { bidOrderId: '', askOrderId: '' });
+	});
+
+	// Log TOB monitoring status
+	if (ENABLE_TOB_MONITORING) {
+		logger.info(
+			`TOB Monitoring Markets in this node: ${tobMonitoringMarketsInThisNode.join(
+				', '
+			)}`
+		);
+		logger.info(
+			`TOB Monitoring active: ${shouldEnableTobMonitoring ? 'yes' : 'no'}`
+		);
+	}
+
+	// TOB monitoring function
+	const checkTobForStuckOrders = async () => {
+		if (!shouldEnableTobMonitoring) {
+			return; // Only monitor when using OrderSubscriber, TOB monitoring is enabled, and node has major markets
+		}
+
+		logger.debug('Starting TOB monitoring check');
+
+		const currentTime = Date.now();
+
+		for (const marketIndex of tobMonitoringMarketsInThisNode) {
+			try {
+				// Get current TOB from DLOB
+				const slot = slotSource.getSlot();
+				const dlob = await dlobProvider.getDLOB(slot);
+
+				// Get oracle data for the market
+				const oracleData = driftClient.getOracleDataForPerpMarket(marketIndex);
+
+				// Get L3 orderbook to check TOB
+				const l3OrderBook = dlob.getL3({
+					marketIndex,
+					marketType: { perp: {} },
+					slot,
+					oraclePriceData: oracleData,
+				});
+
+				const bestBidOrder = l3OrderBook.bids[0];
+				const bestAskOrder = l3OrderBook.asks[0];
+
+				// Track each side independently, even if one side is empty
+				const currentBidOrderId = bestBidOrder
+					? `${bestBidOrder.maker.toBase58()}-${bestBidOrder.orderId}`
+					: '';
+				const currentAskOrderId = bestAskOrder
+					? `${bestAskOrder.maker.toBase58()}-${bestAskOrder.orderId}`
+					: '';
+
+				const currentTobOrderIds = {
+					bidOrderId: currentBidOrderId,
+					askOrderId: currentAskOrderId,
+				};
+				const lastTobOrderId = lastTobOrderIds.get(marketIndex);
+				const lastUpdate = lastTobUpdateTimes.get(marketIndex);
+
+				// Check if TOB orders have changed on either side
+				const tobChanged =
+					!lastTobOrderId ||
+					lastTobOrderId.bidOrderId !== currentTobOrderIds.bidOrderId ||
+					lastTobOrderId.askOrderId !== currentTobOrderIds.askOrderId;
+
+				if (tobChanged) {
+					// TOB orders changed, update tracking
+					lastTobOrderIds.set(marketIndex, currentTobOrderIds);
+					lastTobUpdateTimes.set(marketIndex, currentTime);
+					logger.debug(
+						`TOB orders updated for market ${marketIndex}: bidOrderId=${
+							currentTobOrderIds.bidOrderId || 'none'
+						}, askOrderId=${currentTobOrderIds.askOrderId || 'none'}`
+					);
+				} else if (
+					lastUpdate &&
+					currentTime - lastUpdate > TOB_STUCK_THRESHOLD
+				) {
+					// TOB has been stuck for too long, trigger resubscribe
+					const stuckDuration = (currentTime - lastUpdate) / 1000;
+					logger.warn(
+						`TOB stuck for market ${marketIndex} for ${stuckDuration}s, triggering resubscribe`
+					);
+
+					// Update metrics
+					tobStuckGauge.setLatestValue(stuckDuration, {
+						marketIndex: marketIndex.toString(),
+						marketType: 'perp',
+					});
+
+					// Get the OrderSubscriber instance for resubscribe
+					if (orderSubscriber) {
+						try {
+							// Resubscribe and fetch to clear stuck state
+							await orderSubscriber.unsubscribe();
+							await orderSubscriber.subscribe();
+							await orderSubscriber.fetch();
+
+							logger.info(
+								`Successfully resubscribed OrderSubscriber for market ${marketIndex}`
+							);
+
+							// Update metrics
+							tobResubscribeCounter.add(1, {
+								marketIndex: marketIndex.toString(),
+								marketType: 'perp',
+								success: 'true',
+							});
+
+							// Reset the timer after successful resubscribe
+							lastTobUpdateTimes.set(marketIndex, currentTime);
+						} catch (error) {
+							logger.error(
+								`Failed to resubscribe OrderSubscriber for market ${marketIndex}:`,
+								error
+							);
+
+							// Update metrics for failed resubscribe
+							tobResubscribeCounter.add(1, {
+								marketIndex: marketIndex.toString(),
+								marketType: 'perp',
+								success: 'false',
+							});
+						}
+					} else {
+						logger.error(
+							`OrderSubscriber not available for market ${marketIndex}`
+						);
+					}
+				}
+			} catch (error) {
+				logger.error(`Error checking TOB for market ${marketIndex}:`, error);
+			}
+		}
+	};
+
+	// Start TOB monitoring
+	setInterval(checkTobForStuckOrders, TOB_CHECK_INTERVAL);
 
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
