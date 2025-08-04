@@ -25,6 +25,7 @@ import {
 	PERCENTAGE_PRECISION_EXP,
 } from '@drift-labs/sdk';
 import { RedisClient } from '@drift/common/clients';
+import { TradeOffsetPrice } from '@drift/common';
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
@@ -747,6 +748,37 @@ export const convertRawL2ToBN = (rawL2: any): L2OrderBook => {
 };
 
 /**
+ * Maps TradeOffsetPrice values to corresponding property names in estimatedPrices object
+ * @param offsetFrom - TradeOffsetPrice type or 'marketBased' or undefined
+ * @returns Property name string for accessing estimatedPrices
+ */
+export const mapTradeOffsetPriceToProperty = (
+	offsetFrom: TradeOffsetPrice | 'marketBased' | undefined
+): string => {
+	switch (offsetFrom) {
+		case 'best':
+			return 'bestPrice';
+		case 'worst':
+			return 'worstPrice';
+		case 'oracle':
+			return 'oraclePrice';
+		case 'mark':
+			return 'markPrice';
+		case 'entry':
+			return 'entryPrice';
+		case 'bestOffer':
+			// For bestOffer, we'll use the best price (could be refined based on direction)
+			return 'bestPrice';
+		case 'marketBased':
+			// Default to mark price for market-based pricing
+			return 'markPrice';
+		default:
+			// Default fallback to mark price
+			return 'markPrice';
+	}
+};
+
+/**
  * Get L2 orderbook data and calculate estimated prices
  * @param driftClient - DriftClient instance
  * @param marketType - MarketType enum
@@ -935,11 +967,18 @@ export const mapToMarketOrderParams = async (
 				};
 			}
 
+			const startPriceProperty = mapTradeOffsetPriceToProperty(
+				params.auctionStartPriceOffsetFrom
+			);
+			const startPrice = estimatedPrices[startPriceProperty];
+
 			processedSlippageTolerance = calculateDynamicSlippage(
 				params.marketIndex,
 				params.marketType,
 				driftClient,
-				l2Formatted
+				l2Formatted,
+				startPrice,
+				estimatedPrices.worstPrice
 			);
 		}
 	} else {
@@ -1072,7 +1111,9 @@ export const calculateDynamicSlippage = (
 	marketIndex: number,
 	marketType: string,
 	driftClient: DriftClient,
-	l2Formatted: L2OrderBook
+	l2Formatted: L2OrderBook,
+	startPrice: BN,
+	worstPrice: BN
 ): number => {
 	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
 	const isPerp = marketType.toLowerCase() === 'perp';
@@ -1113,6 +1154,17 @@ export const calculateDynamicSlippage = (
 
 	let dynamicSlippage = baseSlippage + spreadBaseSlippage;
 
+	// use halfway to worst price as size adjusted slippage
+	if (startPrice && worstPrice) {
+		const sizeAdjustedSlippage =
+			(startPrice.sub(worstPrice).abs().toNumber() /
+				BN.max(startPrice, worstPrice).toNumber() /
+				2) *
+			100;
+
+		dynamicSlippage = Math.max(dynamicSlippage, sizeAdjustedSlippage);
+	}
+
 	// Apply multiplier from env var
 	const multiplier = isMajor
 		? parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR || '1.02')
@@ -1123,7 +1175,7 @@ export const calculateDynamicSlippage = (
 	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.05'); // 0.05% minimum
 	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
 
-	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage) / 100;
 };
 
 /**
