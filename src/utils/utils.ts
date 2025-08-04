@@ -1175,7 +1175,7 @@ export const calculateDynamicSlippage = (
 	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.05'); // 0.05% minimum
 	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
 
-	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage) / 100;
+	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
 };
 
 /**

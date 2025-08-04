@@ -1043,7 +1043,7 @@ const main = async (): Promise<void> => {
 						result.data.estimatedPrices.priceImpact,
 						PRICE_PRECISION_EXP
 					).toNum(),
-					slippageTolerance: result.data.marketOrderParams.slippageTolerance,
+					slippageTolerance: (result.data.marketOrderParams.slippageTolerance / 100).toString(),
 					baseFilled: result.data.estimatedPrices.baseFilled,
 				},
 			};
