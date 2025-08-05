@@ -100,7 +100,9 @@ export const getOracleForMarket = (
 	if (isVariant(marketType, 'spot')) {
 		return driftClient.getOracleDataForSpotMarket(marketIndex).price.toNumber();
 	} else if (isVariant(marketType, 'perp')) {
-		return driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
+		return driftClient
+			.getMMOracleDataForPerpMarket(marketIndex)
+			.price.toNumber();
 	}
 };
 
@@ -140,7 +142,7 @@ export const getOracleDataForMarket = (
 		);
 	} else if (isVariant(marketType, 'perp')) {
 		return getSerializableOraclePriceData(
-			driftClient.getOracleDataForPerpMarket(marketIndex)
+			driftClient.getMMOracleDataForPerpMarket(marketIndex)
 		);
 	}
 };
