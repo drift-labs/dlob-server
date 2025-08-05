@@ -100,9 +100,7 @@ export const getOracleForMarket = (
 	if (isVariant(marketType, 'spot')) {
 		return driftClient.getOracleDataForSpotMarket(marketIndex).price.toNumber();
 	} else if (isVariant(marketType, 'perp')) {
-		return driftClient
-			.getMMOracleDataForPerpMarket(marketIndex)
-			.price.toNumber();
+		return driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
 	}
 };
 
@@ -134,7 +132,8 @@ const getSerializableOraclePriceData = (
 export const getOracleDataForMarket = (
 	driftClient: DriftClient,
 	marketType: MarketType,
-	marketIndex: number
+	marketIndex: number,
+	useMMOracleData = false
 ): SerializableOraclePriceData => {
 	if (isVariant(marketType, 'spot')) {
 		return getSerializableOraclePriceData(
@@ -142,7 +141,9 @@ export const getOracleDataForMarket = (
 		);
 	} else if (isVariant(marketType, 'perp')) {
 		return getSerializableOraclePriceData(
-			driftClient.getMMOracleDataForPerpMarket(marketIndex)
+			useMMOracleData
+				? driftClient.getMMOracleDataForPerpMarket(marketIndex)
+				: driftClient.getOracleDataForPerpMarket(marketIndex)
 		);
 	}
 };
@@ -170,10 +171,20 @@ export const addOracletoResponse = (
 			marketIndex
 		);
 		if (!response['oracleData'].price) {
-			logger.info(`oracle price is undefined for ${marketType}-${marketIndex}`);
+			logger.info(
+				`oracle price is undefined or 0 for ${marketType}-${marketIndex}`
+			);
 		}
-		if (Number(response['oracleData'].price) == 0) {
-			logger.info(`oracle price is 0 for ${marketType}-${marketIndex}`);
+		response['mmOracleData'] = getOracleDataForMarket(
+			driftClient,
+			marketType,
+			marketIndex,
+			true
+		);
+		if (!response['mmOracleData'].price && response['mmOracleData'].isActive) {
+			logger.info(
+				`mm oracle price is undefined or 0 for ${marketType}-${marketIndex}`
+			);
 		}
 	}
 };
