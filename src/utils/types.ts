@@ -22,4 +22,6 @@ export type AuctionParamArgs = {
 	additionalEndPriceBuffer?: string;
 	userOrderId?: number;
 	forceUpToSlippage?: boolean;
+	maxLeverageSelected?: boolean;
+	maxLeverageOrderSize?: string;
 };
