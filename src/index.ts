@@ -939,6 +939,8 @@ const main = async (): Promise<void> => {
 				additionalEndPriceBuffer,
 				userOrderId,
 				forceUpToSlippage,
+				maxLeverageSelected,
+				maxLeverageOrderSize,
 			} = req.query;
 
 			// Validate required parameters
@@ -1004,6 +1006,8 @@ const main = async (): Promise<void> => {
 				additionalEndPriceBuffer: additionalEndPriceBuffer as string,
 				userOrderId: parseNumber(userOrderId as string),
 				forceUpToSlippage: parseBoolean(forceUpToSlippage as string),
+				maxLeverageSelected: parseBoolean(maxLeverageSelected as string),
+				maxLeverageOrderSize: maxLeverageOrderSize as string,
 			};
 
 			// Only add non-undefined values
