@@ -919,7 +919,14 @@ export const mapToMarketOrderParams = async (
 	success: boolean;
 	data?: {
 		marketOrderParams: any;
-		estimatedPrices: any;
+		estimatedPrices: {
+			oraclePrice: BN;
+			bestPrice: BN;
+			entryPrice: BN;
+			worstPrice: BN;
+			markPrice: BN;
+			priceImpact: BN;
+		};
 	};
 	error?: string;
 }> => {
