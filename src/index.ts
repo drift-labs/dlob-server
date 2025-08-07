@@ -1044,6 +1044,7 @@ const main = async (): Promise<void> => {
 					bestPrice: result.data.estimatedPrices.bestPrice.toString(),
 					worstPrice: result.data.estimatedPrices.worstPrice.toString(),
 					oraclePrice: result.data.estimatedPrices.oraclePrice.toString(),
+					markPrice: result.data.estimatedPrices.markPrice.toString(),
 					priceImpact: BigNum.from(
 						result.data.estimatedPrices.priceImpact,
 						PRICE_PRECISION_EXP
@@ -1051,7 +1052,6 @@ const main = async (): Promise<void> => {
 					slippageTolerance: (
 						result.data.marketOrderParams.slippageTolerance / 100
 					).toString(),
-					baseFilled: result.data.estimatedPrices.baseFilled,
 				},
 			};
 
