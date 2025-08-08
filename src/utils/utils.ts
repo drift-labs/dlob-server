@@ -919,7 +919,14 @@ export const mapToMarketOrderParams = async (
 	success: boolean;
 	data?: {
 		marketOrderParams: any;
-		estimatedPrices: any;
+		estimatedPrices: {
+			oraclePrice: BN;
+			bestPrice: BN;
+			entryPrice: BN;
+			worstPrice: BN;
+			markPrice: BN;
+			priceImpact: BN;
+		};
 	};
 	error?: string;
 }> => {
@@ -1001,9 +1008,12 @@ export const mapToMarketOrderParams = async (
 		};
 	}
 
-	// Calculate baseAmount based on assetType
+	// Calculate baseAmount based on maxLeverageSelected or assetType
 	let baseAmount: BN;
-	if (params.assetType === 'base') {
+	if (params.maxLeverageSelected && params.maxLeverageOrderSize) {
+		// If maxLeverageSelected is true, use maxLeverageOrderSize directly without any conversion
+		baseAmount = stringToBN(params.maxLeverageOrderSize);
+	} else if (params.assetType === 'base') {
 		// If assetType is base, use the amount directly
 		baseAmount = amount;
 	} else {
@@ -1019,8 +1029,10 @@ export const mapToMarketOrderParams = async (
 				marketType,
 				marketIndex: params.marketIndex,
 				direction,
-				maxLeverageSelected: false,
-				maxLeverageOrderSize: ZERO,
+				maxLeverageSelected: params.maxLeverageSelected ?? false,
+				maxLeverageOrderSize: params.maxLeverageOrderSize
+					? stringToBN(params.maxLeverageOrderSize)
+					: ZERO,
 				baseAmount,
 				reduceOnly: params.reduceOnly ?? false,
 				allowInfSlippage: params.allowInfSlippage ?? false,
