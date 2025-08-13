@@ -124,8 +124,9 @@ const WS_FALLBACK_FETCH_INTERVAL = 60_000;
 const KILLSWITCH_SLOT_DIFF_THRESHOLD =
 	parseInt(process.env.KILLSWITCH_SLOT_DIFF_THRESHOLD) || 200;
 
-// TOB monitoring configuration
+// TOB monitoring configuration - defaults to true if not set
 const ENABLE_TOB_MONITORING =
+	!process.env.ENABLE_TOB_MONITORING ||
 	process.env.ENABLE_TOB_MONITORING?.toLowerCase() === 'true';
 const TOB_CHECK_INTERVAL = parseInt(process.env.TOB_CHECK_INTERVAL) || 60_000; // 1 minute
 const TOB_STUCK_THRESHOLD = parseInt(process.env.TOB_STUCK_THRESHOLD) || 60_000; // 1 minute without change
@@ -417,6 +418,7 @@ const main = async () => {
 			resubTimeoutMs: 30_000,
 			logResubMessages: true,
 			perpMarketAccountSubscriber: WebSocketAccountSubscriberV2,
+			oracleAccountSubscriber: WebSocketAccountSubscriberV2,
 		};
 		slotSubscriber = new SlotSubscriber(connection, {
 			resubTimeoutMs: 10_000,
