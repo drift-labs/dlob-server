@@ -1,5 +1,3 @@
-import { program } from 'commander';
-
 import { Connection, Commitment, PublicKey, Keypair } from '@solana/web3.js';
 
 import {
@@ -101,7 +99,6 @@ metricsV2.finalizeObservables();
 const sdkConfig = initialize({ env: process.env.ENV });
 let driftClient: DriftClient;
 
-const opts = program.opts();
 setLogLevel('debug');
 
 const useGrpc = process.env.USE_GRPC?.toLowerCase() === 'true';
@@ -709,7 +706,8 @@ const main = async () => {
 				const dlob = await dlobProvider.getDLOB(slot);
 
 				// Get oracle data for the market
-				const oracleData = driftClient.getOracleDataForPerpMarket(marketIndex);
+				const oracleData =
+					driftClient.getMMOracleDataForPerpMarket(marketIndex);
 
 				// Get L3 orderbook to check TOB
 				const l3OrderBook = dlob.getL3({
