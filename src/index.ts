@@ -22,6 +22,7 @@ import {
 	PRICE_PRECISION_EXP,
 	MarketTypeStr,
 	AssetType,
+	MarketType,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -384,7 +385,8 @@ const main = async (): Promise<void> => {
 				return;
 			}
 			const normedSide = (side as string).toLowerCase();
-			const oracle = driftClient.getOracleDataForPerpMarket(normedMarketIndex);
+			const oracle =
+				driftClient.getMMOracleDataForPerpMarket(normedMarketIndex);
 
 			let normedLimit = undefined;
 			if (limit) {
@@ -469,7 +471,9 @@ const main = async (): Promise<void> => {
 						.getRestingLimitBids(
 							normedMarketIndex,
 							dlobProvider.getSlot(),
-							normedMarketType,
+							isVariant(normedMarketType, 'perp')
+								? MarketType.PERP
+								: MarketType.SPOT,
 							oracle
 						)
 				);
@@ -480,7 +484,9 @@ const main = async (): Promise<void> => {
 						.getRestingLimitAsks(
 							normedMarketIndex,
 							dlobProvider.getSlot(),
-							normedMarketType,
+							isVariant(normedMarketType, 'perp')
+								? MarketType.PERP
+								: MarketType.SPOT,
 							oracle
 						)
 				);

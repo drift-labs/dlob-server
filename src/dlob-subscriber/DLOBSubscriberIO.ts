@@ -13,7 +13,7 @@ import {
 	PerpOperation,
 	PositionDirection,
 	ZERO,
-	calculateAMMBidAskPrice,
+	calculateBidAskPrice,
 	getLimitPrice,
 	isOperationPaused,
 	isVariant,
@@ -151,7 +151,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			try {
 				if (this.indicativeQuotesRedisClient) {
 					const oraclePriceData = isVariant(marketArgs.marketType, 'perp')
-						? this.driftClient.getOracleDataForPerpMarket(
+						? this.driftClient.getMMOracleDataForPerpMarket(
 								marketArgs.marketIndex
 						  )
 						: this.driftClient.getOracleDataForSpotMarket(
@@ -160,13 +160,17 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					const bestDlobBid = dlob.getBestBid(
 						marketArgs.marketIndex,
 						this.slotSource.getSlot(),
-						marketArgs.marketType,
+						isVariant(marketArgs.marketType, 'perp')
+							? MarketType.PERP
+							: MarketType.SPOT,
 						oraclePriceData
 					);
 					const bestDlobAsk = dlob.getBestAsk(
 						marketArgs.marketIndex,
 						this.slotSource.getSlot(),
-						marketArgs.marketType,
+						isVariant(marketArgs.marketType, 'perp')
+							? MarketType.PERP
+							: MarketType.SPOT,
 						oraclePriceData
 					);
 
@@ -177,7 +181,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					let bestBid = bestDlobBid;
 					let bestAsk = bestDlobAsk;
 					if (marketType === 'perp') {
-						const [bestVammBid, bestVammAsk] = calculateAMMBidAskPrice(
+						const [bestVammBid, bestVammAsk] = calculateBidAskPrice(
 							this.driftClient.getPerpMarketAccount(marketArgs.marketIndex).amm,
 							this.driftClient.getMMOracleDataForPerpMarket(
 								marketArgs.marketIndex
@@ -269,7 +273,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											indicativeBid,
 											INDICATIVE_QUOTES_PUBKEY,
 											this.slotSource.getSlot(),
-											false
+											false,
+											indicativeBid.baseAssetAmount
 										);
 										indicativeOrderId += 1;
 									}
@@ -304,7 +309,8 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 											indicativeAsk,
 											INDICATIVE_QUOTES_PUBKEY,
 											this.slotSource.getSlot(),
-											false
+											false,
+											indicativeAsk.baseAssetAmount
 										);
 										indicativeOrderId += 1;
 									}
@@ -471,7 +477,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			const bids = this.dlob
 				.getBestMakers({
 					marketIndex: marketArgs.marketIndex,
-					marketType: marketArgs.marketType,
+					marketType: isVariant(marketArgs.marketType, 'perp')
+						? MarketType.PERP
+						: MarketType.SPOT,
 					direction: PositionDirection.LONG,
 					slot: slot,
 					oraclePriceData: oracleData,
@@ -481,7 +489,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			const asks = this.dlob
 				.getBestMakers({
 					marketIndex: marketArgs.marketIndex,
-					marketType: marketArgs.marketType,
+					marketType: isVariant(marketArgs.marketType, 'perp')
+						? MarketType.PERP
+						: MarketType.SPOT,
 					direction: PositionDirection.SHORT,
 					slot,
 					oraclePriceData: oracleData,
