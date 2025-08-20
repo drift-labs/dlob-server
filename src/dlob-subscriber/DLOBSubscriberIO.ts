@@ -13,8 +13,10 @@ import {
 	PerpOperation,
 	PositionDirection,
 	ZERO,
-	calculateBidAskPrice,
+	calculateAMMBidAskPrice,
 	getLimitPrice,
+	getVariant,
+	isOneOfVariant,
 	isOperationPaused,
 	isVariant,
 } from '@drift-labs/sdk';
@@ -108,6 +110,15 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			const perpMarket = this.driftClient.getPerpMarketAccount(
 				market.marketIndex
 			);
+
+			if (isOneOfVariant(perpMarket.status, ['settlement', 'delisted'])) {
+				logger.info(
+					`Skipping perp ${
+						market.marketIndex
+					} because it has market status ${getVariant(perpMarket.status)}`
+				);
+				continue;
+			}
 			const includeVamm = !isOperationPaused(
 				perpMarket.pausedOperations,
 				PerpOperation.AMM_FILL
@@ -126,6 +137,19 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			});
 		}
 		for (const market of config.spotMarketInfos) {
+			const spotMarket = this.driftClient.getSpotMarketAccount(
+				market.marketIndex
+			);
+
+			if (isOneOfVariant(spotMarket.status, ['settlement', 'delisted'])) {
+				logger.info(
+					`Skipping spot ${
+						market.marketIndex
+					} because it has market status ${getVariant(spotMarket.status)}`
+				);
+				continue;
+			}
+
 			this.marketArgs.push({
 				marketIndex: market.marketIndex,
 				marketType: MarketType.SPOT,
@@ -181,7 +205,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 					let bestBid = bestDlobBid;
 					let bestAsk = bestDlobAsk;
 					if (marketType === 'perp') {
-						const [bestVammBid, bestVammAsk] = calculateBidAskPrice(
+						const [bestVammBid, bestVammAsk] = calculateAMMBidAskPrice(
 							this.driftClient.getPerpMarketAccount(marketArgs.marketIndex).amm,
 							this.driftClient.getMMOracleDataForPerpMarket(
 								marketArgs.marketIndex
