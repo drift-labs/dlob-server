@@ -186,7 +186,9 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 							this.driftClient.getMMOracleDataForPerpMarket(
 								marketArgs.marketIndex
 							),
-							true
+							true,
+							undefined,
+							new BN(this.slotSource.getSlot())
 						);
 
 						bestBid =
@@ -362,7 +364,11 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			includeVamm = false;
 		}
 
-		const l2 = this.getL2({ ...l2FuncArgs, includeVamm });
+		const l2 = this.getL2({
+			...l2FuncArgs,
+			includeVamm,
+			latestSlot: new BN(this.slotSource.getSlot()),
+		});
 		const { markPrice, bestBidPrice, bestAskPrice, spreadPct, spreadQuote } =
 			COMMON_MATH.calculateSpreadBidAskMark(l2);
 		const slot = l2.slot;
