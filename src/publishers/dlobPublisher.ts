@@ -18,6 +18,8 @@ import {
 	decodeName,
 	WebSocketAccountSubscriberV2,
 	ONE,
+	isOneOfVariant,
+	getVariant,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -264,6 +266,14 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 	const markets: SubscriberLookup = {};
 
 	for (const market of driftClient.getSpotMarketAccounts()) {
+		if (isOneOfVariant(market.status, ['settlement', 'delisted'])) {
+			logger.info(
+				`Skipping ${
+					market.marketIndex
+				} because it has market status ${getVariant(market.status)}`
+			);
+			continue;
+		}
 		markets[market.marketIndex] = {
 			phoenix: undefined,
 		};
