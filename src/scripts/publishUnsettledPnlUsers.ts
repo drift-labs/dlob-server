@@ -218,10 +218,9 @@ const buildUserMarketLists = (
 					)
 						return [];
 
-					const perpPositionWithLpSettle =
-						redisUser.user.getPerpPosition(
-							perpPosition.marketIndex,
-						)[0];
+					const perpPositionWithLpSettle = redisUser.user.getPerpPosition(
+						perpPosition.marketIndex
+					)[0];
 
 					const marketPnl = calculateClaimablePnl(
 						perpMarketAccount,

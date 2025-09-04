@@ -17,7 +17,7 @@ import {
 	PhoenixSubscriber,
 	decodeName,
 	ONE,
-	WebSocketDriftClientAccountSubscriberV2,
+	WebSocketAccountSubscriberV2,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -414,7 +414,7 @@ const main = async () => {
 			commitment: stateCommitment,
 			resubTimeoutMs: 30_000,
 			logResubMessages: true,
-			driftClientAccountSubscriber: WebSocketDriftClientAccountSubscriberV2,
+			perpMarketAccountSubscriber: WebSocketAccountSubscriberV2,
 		};
 		slotSubscriber = new SlotSubscriber(connection, {
 			resubTimeoutMs: 10_000,
