@@ -1197,7 +1197,7 @@ export const calculateDynamicSlippage = (
 	dynamicSlippage = dynamicSlippage * multiplier;
 
 	// Enforce minimum and maximum limits from env vars
-	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.025'); // 0.025% minimum
+	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.035'); // 0.035% minimum
 	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
 
 	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
