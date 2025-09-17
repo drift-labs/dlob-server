@@ -16,7 +16,7 @@ RUN yarn && yarn build
 
 FROM public.ecr.aws/docker/library/node:20.18.1-alpine
 RUN apk add python3 make g++ --virtual .build &&\
-    npm install -C /lib bigint-buffer @triton-one/yellowstone-grpc@1.3.0 &&\
+    npm install -C /lib bigint-buffer @triton-one/yellowstone-grpc@1.3.0 helius-laserstream &&\
     apk del .build
     
 COPY --from=builder /app/lib/ ./lib/
