@@ -109,6 +109,7 @@ const endpoint = process.env.ENDPOINT;
 const grpcEndpoint = useGrpc
 	? process.env.GRPC_ENDPOINT ?? endpoint + `/${token}`
 	: '';
+const grpcClient = process.env.GRPC_CLIENT ?? 'yellowstone'
 
 const wsEndpoint = process.env.WS_ENDPOINT;
 const useOrderSubscriber =
@@ -503,6 +504,8 @@ const main = async () => {
 						'grpc.keepalive_timeout_ms': 1_000,
 						'grpc.keepalive_permit_without_calls': 1,
 					},
+					client: grpcClient
+					
 				},
 				commitment: stateCommitment,
 			};
