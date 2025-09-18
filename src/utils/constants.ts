@@ -23,3 +23,5 @@ export const DEFAULT_AUCTION_PARAMS: Partial<AuctionParamArgs> = {
 	auctionStartPriceOffsetFrom: 'marketBased',
 	auctionEndPriceOffsetFrom: DEFAULT_AUCTION_END_PRICE_FROM,
 };
+
+export const MID_MAJOR_MARKETS = [13, 23, 4, 59, 9]; // XRP, WIF, BONK, HYPE, SUI
