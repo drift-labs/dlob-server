@@ -31,7 +31,7 @@ import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
 import { Connection } from '@solana/web3.js';
 import { wsMarketArgs } from 'src/dlob-subscriber/DLOBSubscriberIO';
-import { DEFAULT_AUCTION_PARAMS } from './constants';
+import { DEFAULT_AUCTION_PARAMS, MID_MAJOR_MARKETS } from './constants';
 import { AuctionParamArgs } from './types';
 import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
 
@@ -1143,9 +1143,12 @@ export const calculateDynamicSlippage = (
 	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
 	const isPerp = marketType.toLowerCase() === 'perp';
 	const isMajor = isPerp && marketIndex < 3;
+	const isMidMajor = isPerp && MID_MAJOR_MARKETS.includes(marketIndex);
 
 	const baseSlippage = isMajor
 		? parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_MAJOR || '0') // 0% default
+		: isMidMajor
+		? parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_MID_MAJOR || '0.25') // 0.25% default
 		: parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_NON_MAJOR || '0.5'); // 0.5% default
 
 	// Calculate spread using L2 data
@@ -1193,6 +1196,8 @@ export const calculateDynamicSlippage = (
 	// Apply multiplier from env var
 	const multiplier = isMajor
 		? parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR || '1.01')
+		: isMidMajor
+		? parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MID_MAJOR || '1.2')
 		: parseFloat(process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_NON_MAJOR || '1.4');
 	dynamicSlippage = dynamicSlippage * multiplier;
 
