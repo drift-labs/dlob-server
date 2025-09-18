@@ -1148,7 +1148,7 @@ export const calculateDynamicSlippage = (
 	const baseSlippage = isMajor
 		? parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_MAJOR || '0') // 0% default
 		: isMidMajor
-		? parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_MID_MAJOR || '0.025') // 0.025% default
+		? parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_MID_MAJOR || '0.25') // 0.25% default
 		: parseFloat(process.env.DYNAMIC_BASE_SLIPPAGE_NON_MAJOR || '0.5'); // 0.5% default
 
 	// Calculate spread using L2 data
