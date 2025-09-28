@@ -98,6 +98,12 @@ const getRedisChannelFromMessage = (message: any): string => {
 		case 'trades':
 			return `trades_${marketType}_${marketIndex}`;
 		case 'orderbook':
+			if (
+				message.grouping &&
+				GROUPING_OPTIONS.includes(parseInt(message.grouping))
+			) {
+				return `orderbook_${marketType}_${marketIndex}_grouped_${message.grouping}`;
+			}
 			return `orderbook_${marketType}_${marketIndex}`;
 		case 'orderbook_indicative': {
 			if (
