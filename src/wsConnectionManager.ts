@@ -104,7 +104,7 @@ const getRedisChannelFromMessage = (message: any): string => {
 			) {
 				return `orderbook_${marketType}_${marketIndex}_grouped_${message.grouping}`;
 			}
-			return `orderbook_${marketType}_${marketIndex}`;
+			return `orderbook_${marketType}_${marketIndex}_grouped_1`;
 		case 'orderbook_indicative': {
 			if (
 				message.grouping &&
@@ -112,7 +112,7 @@ const getRedisChannelFromMessage = (message: any): string => {
 			) {
 				return `orderbook_${marketType}_${marketIndex}_grouped_${message.grouping}_indicative`;
 			}
-			return `orderbook_${marketType}_${marketIndex}_indicative`;
+			return `orderbook_${marketType}_${marketIndex}_grouped_1_indicative`;
 		}
 		case 'priorityfees':
 			return `priorityFees_${marketType}_${marketIndex}`;
