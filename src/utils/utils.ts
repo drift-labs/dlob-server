@@ -312,6 +312,11 @@ export function publishGroupings(
 			asks: aggregatedAsks,
 		});
 
+		if(aggregatedBids.length == 20 || aggregatedAsks.length == 20) {
+			logger.error(`Error aggregating dlob levels: group=${group}, bids=${fullAggregatedBids.length}, asks=${fullAggregatedAsks.length}`)
+			logger.error(`Response: ${JSON.stringify(l2Formatted_grouped20)}`)
+		}
+
 		redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${
 				marketArgs.marketIndex
