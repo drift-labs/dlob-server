@@ -12,6 +12,7 @@ import {
 	createMarketBasedAuctionParams,
 	mapToMarketOrderParams,
 	formatAuctionParamsForResponse,
+	calculateDynamicSlippage,
 } from '../utils';
 
 describe('Auction Parameters Functions', () => {
@@ -690,5 +691,99 @@ describe('Auction Parameters Functions', () => {
 			expect(formattedResponse.userOrderId).toBe(123); // Preserved as number
 			expect(formattedResponse.isOracleOrder).toBe(true); // Preserved as boolean
 		});
+	});
+});
+
+describe('calculateDynamicSlippage - crossed book handling', () => {
+	const mockDriftClient = {
+		getOracleDataForPerpMarket: jest.fn(),
+		getOracleDataForSpotMarket: jest.fn(),
+	} as any;
+
+	beforeEach(() => {
+		jest.clearAllMocks();
+	});
+
+	it('caps spread contribution when crossed (default cap mode)', () => {
+		// Set env to deterministic values
+		process.env.DYNAMIC_BASE_SLIPPAGE_MAJOR = '0';
+		process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR = '1';
+		process.env.DYNAMIC_SLIPPAGE_MIN = '0';
+		process.env.DYNAMIC_SLIPPAGE_MAX = '100';
+		delete process.env.DYNAMIC_CROSS_SPREAD_MODE; // default 'cap'
+		process.env.DYNAMIC_CROSS_SPREAD_CAP = '0.1'; // 0.1%
+
+		// Oracle 100
+		mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+			price: new BN(100).mul(PRICE_PRECISION),
+		});
+
+		const l2Crossed = {
+			bids: [{ price: new BN(101).mul(PRICE_PRECISION), size: new BN(1) }],
+			asks: [{ price: new BN(99).mul(PRICE_PRECISION), size: new BN(1) }],
+		} as any;
+
+		const startPrice = new BN(100).mul(PRICE_PRECISION);
+		const worstPrice = new BN(100).mul(PRICE_PRECISION);
+
+		const slip = calculateDynamicSlippage(
+			0, // major perp
+			'perp',
+			mockDriftClient,
+			l2Crossed,
+			startPrice,
+			worstPrice
+		);
+
+		// Should be capped at 0.1% given our env
+		expect(slip).toBeLessThanOrEqual(0.1);
+		expect(slip).toBeGreaterThanOrEqual(0);
+	});
+
+	it('normal (non-crossed) book produces spread-based slippage > crossed-capped', () => {
+		process.env.DYNAMIC_BASE_SLIPPAGE_MAJOR = '0';
+		process.env.DYNAMIC_SLIPPAGE_MULTIPLIER_MAJOR = '1';
+		process.env.DYNAMIC_SLIPPAGE_MIN = '0';
+		process.env.DYNAMIC_SLIPPAGE_MAX = '100';
+		delete process.env.DYNAMIC_CROSS_SPREAD_MODE; // default cap
+		process.env.DYNAMIC_CROSS_SPREAD_CAP = '0.1';
+
+		mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+			price: new BN(100).mul(PRICE_PRECISION),
+		});
+
+		const l2Normal = {
+			bids: [{ price: new BN(99).mul(PRICE_PRECISION), size: new BN(1) }],
+			asks: [{ price: new BN(101).mul(PRICE_PRECISION), size: new BN(1) }],
+		} as any;
+
+		const startPrice = new BN(100).mul(PRICE_PRECISION);
+		const worstPrice = new BN(100).mul(PRICE_PRECISION);
+
+		const slipNormal = calculateDynamicSlippage(
+			0,
+			'perp',
+			mockDriftClient,
+			l2Normal,
+			startPrice,
+			worstPrice
+		);
+
+		const l2Crossed = {
+			bids: [{ price: new BN(101).mul(PRICE_PRECISION), size: new BN(1) }],
+			asks: [{ price: new BN(99).mul(PRICE_PRECISION), size: new BN(1) }],
+		} as any;
+
+		const slipCrossed = calculateDynamicSlippage(
+			0,
+			'perp',
+			mockDriftClient,
+			l2Crossed,
+			startPrice,
+			worstPrice
+		);
+
+		// Non-crossed spread should be >= crossed (which is capped)
+		expect(slipNormal).toBeGreaterThanOrEqual(slipCrossed);
 	});
 });
