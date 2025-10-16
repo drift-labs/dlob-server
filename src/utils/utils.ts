@@ -311,6 +311,12 @@ export function publishGroupings(
 			bids: aggregatedBids,
 			asks: aggregatedAsks,
 		});
+		
+
+		if(['SOL-PERP', 'BTC-PERP', 'ETH-PERP'].includes(l2Formatted_grouped20.marketName) && aggregatedBids.length !== 20 || aggregatedAsks.length !== 20) {
+			logger.error(`Error aggregating dlob levels: group=${group}, bids=${fullAggregatedBids.length}, asks=${fullAggregatedAsks.length}`)
+			logger.error(`Response: ${JSON.stringify(l2Formatted_grouped20)}`)
+		}
 
 		redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${
