@@ -73,7 +73,6 @@
 		"trades-publish": "ts-node src/publishers/tradesPublisher.ts",
 		"fees-publish": "ts-node src/publishers/priorityFeesPublisher.ts",
 		"pnl-publish": "ts-node src/scripts/publishUnsettledPnlUsers.ts",
-		"poll-auction-params": "ts-node src/scripts/pollAuctionParams.ts",
 		"ws-manager": "ts-node src/wsConnectionManager.ts",
 		"ws-manager:inspect": "yarn build && node --inspect ./lib/wsConnectionManager.js",
 		"dev:inspect": "yarn build && node --inspect ./lib/index.js",
