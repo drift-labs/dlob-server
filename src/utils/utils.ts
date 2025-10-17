@@ -311,7 +311,7 @@ export function publishGroupings(
 			bids: aggregatedBids,
 			asks: aggregatedAsks,
 		});
-		
+
 
 		if(['SOL-PERP', 'BTC-PERP', 'ETH-PERP'].includes(l2Formatted_grouped20.marketName) && aggregatedBids.length !== 20 || aggregatedAsks.length !== 20) {
 			logger.error(`Error aggregating dlob levels: group=${group}, bids=${fullAggregatedBids.length}, asks=${fullAggregatedAsks.length}`)
@@ -1181,6 +1181,21 @@ export const calculateDynamicSlippage = (
 
 		if (spreadInfo?.spreadPct) {
 			spreadBaseSlippage = spreadPctNum / 2;
+
+			// If the L2 is crossed (best bid > best ask), cap the spread contribution
+			const bestBid = spreadInfo.bestBidPrice;
+			const bestAsk = spreadInfo.bestAskPrice;
+			const isCrossed = !!(bestBid && bestAsk && bestBid.gt(bestAsk));
+
+			if (isCrossed) {
+				// Always cap the spread component tightly when crossed, default to 0.1%
+				const defaultCrossCap = 0.1;
+				const crossCap =
+					parseFloat(
+						process.env.DYNAMIC_CROSS_SPREAD_CAP || defaultCrossCap.toString()
+					) ?? defaultCrossCap;
+				spreadBaseSlippage = Math.min(spreadBaseSlippage, crossCap);
+			}
 		}
 	} catch (error) {
 		console.warn('Failed to calculate spread, using fallback:', error);
