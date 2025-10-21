@@ -42,16 +42,24 @@ const parseRow = (row: Row, columnInfo: ColumnInfo[]): QueryResult => {
 
 const athena = new AthenaClient({
 	region: process.env.AWS_REGION,
-	retryStrategy: new ConfiguredRetryStrategy(3, (attempt: number) => 100 + attempt * 1000),
+	retryStrategy: new ConfiguredRetryStrategy(
+		3,
+		(attempt: number) => 100 + attempt * 1000
+	),
 });
 
 export const Athena = ({
 	overrideDatabaseName,
 	overrideBucketName,
 }: { overrideDatabaseName?: string; overrideBucketName?: string } = {}) => {
-	const database = overrideDatabaseName ?? process.env.ATHENA_DATABASE ?? DEFAULT_ATHENA_DATABASE;
+	const database =
+		overrideDatabaseName ??
+		process.env.ATHENA_DATABASE ??
+		DEFAULT_ATHENA_DATABASE;
 	const outputLocation = `s3://${
-		overrideBucketName ?? process.env.ATHENA_OUTPUT_BUCKET ?? DEFAULT_ATHENA_OUTPUT_BUCKET
+		overrideBucketName ??
+		process.env.ATHENA_OUTPUT_BUCKET ??
+		DEFAULT_ATHENA_OUTPUT_BUCKET
 	}/athena`;
 
 	const startQuery = async (query: string, params?: Record<string, string>) => {
@@ -104,7 +112,9 @@ export const Athena = ({
 		while (Date.now() - startTime < timeout) {
 			const execution = await getQueryExecution(queryExecutionId);
 			logger.info(
-				`Total bytes scanned: ${(execution?.Statistics?.DataScannedInBytes ?? 0) / 1024}kb`
+				`Total bytes scanned: ${
+					(execution?.Statistics?.DataScannedInBytes ?? 0) / 1024
+				}kb`
 			);
 			const state = execution?.Status?.State;
 
@@ -112,7 +122,9 @@ export const Athena = ({
 				case QueryExecutionState.SUCCEEDED:
 					return;
 				case QueryExecutionState.FAILED:
-					throw new Error(`Query failed: ${execution?.Status?.StateChangeReason}`);
+					throw new Error(
+						`Query failed: ${execution?.Status?.StateChangeReason}`
+					);
 				case QueryExecutionState.CANCELLED:
 					throw new Error('Query was cancelled');
 				default:
@@ -135,15 +147,22 @@ export const Athena = ({
 		);
 	};
 
-	const getAllQueryResults = async (queryExecutionId: string): Promise<QueryResult[]> => {
+	const getAllQueryResults = async (
+		queryExecutionId: string
+	): Promise<QueryResult[]> => {
 		let nextToken: string | undefined;
 		const allResults: QueryResult[] = [];
 
 		do {
 			const results = await getQueryResults(queryExecutionId, nextToken);
-			if (results.ResultSet?.Rows && results.ResultSet.ResultSetMetadata?.ColumnInfo) {
+			if (
+				results.ResultSet?.Rows &&
+				results.ResultSet.ResultSetMetadata?.ColumnInfo
+			) {
 				const columnInfo = results.ResultSet.ResultSetMetadata.ColumnInfo;
-				const rows = nextToken ? results.ResultSet.Rows : results.ResultSet.Rows.slice(1);
+				const rows = nextToken
+					? results.ResultSet.Rows
+					: results.ResultSet.Rows.slice(1);
 				const parsedRows = rows.map((row) => parseRow(row, columnInfo));
 				allResults.push(...parsedRows);
 			}
@@ -183,10 +202,14 @@ export const Athena = ({
 		await Promise.all(
 			queries.map(async ({ query: queryString, params }, index) => {
 				try {
-					const result = await limiter.schedule(() => query(queryString, params));
+					const result = await limiter.schedule(() =>
+						query(queryString, params)
+					);
 					results[index] = result;
 				} catch (error) {
-					logger.error(`Error in batch query ${index}: ${queryString}, Error: ${error}`);
+					logger.error(
+						`Error in batch query ${index}: ${queryString}, Error: ${error}`
+					);
 					errors[index] = error as Error;
 				}
 			})
@@ -212,4 +235,3 @@ export const Athena = ({
 		waitForQueryCompletion,
 	};
 };
-

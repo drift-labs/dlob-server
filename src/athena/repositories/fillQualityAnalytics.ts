@@ -1,7 +1,6 @@
 import { Athena } from '../client';
 
 export interface TakerFillVsOracleBpsResult {
-	Time: string;
 	MarketIndex: string;
 	TakerBuyBpsFromOracle_ALL: string | null;
 	TakerSellBpsFromOracle_ALL: string | null;
@@ -17,6 +16,27 @@ export interface TakerFillVsOracleBpsResult {
 	TakerSellBpsFromOracle_1e6: string | null;
 	Zero: string;
 }
+
+export type TakerFillVsOracleBpsRedisResult = {
+	marketIndex: string;
+	takerBuyBpsFromOracle: {
+		all: string | null;
+		'1e0': string | null;
+		'1e3': string | null;
+		'1e4': string | null;
+		'1e5': string | null;
+		'1e6': string | null;
+	};
+	takerSellBpsFromOracle: {
+		all: string | null;
+		'1e0': string | null;
+		'1e3': string | null;
+		'1e4': string | null;
+		'1e5': string | null;
+		'1e6': string | null;
+	};
+	updatedAtTs: number;
+};
 
 export const FillQualityAnalyticsRepository = () => {
 	const { query } = Athena();
@@ -255,7 +275,6 @@ ORDER BY MarketIndex;
 		const results = await query(queryString);
 
 		return results.map((result) => ({
-			Time: result.Time || '',
 			MarketIndex: result.MarketIndex || '',
 			TakerBuyBpsFromOracle_ALL: result.TakerBuyBpsFromOracle_ALL,
 			TakerSellBpsFromOracle_ALL: result.TakerSellBpsFromOracle_ALL,
@@ -277,4 +296,3 @@ ORDER BY MarketIndex;
 		getTakerFillVsOracleBps,
 	};
 };
-

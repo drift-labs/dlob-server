@@ -37,4 +37,3 @@ export const getTimeRangeAndPartitions = (
 		) AS ${valid_partitions_label}(year, month, day)
 	)`;
 };
-
