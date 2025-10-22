@@ -343,7 +343,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		const dlobSlot = this.slotSource.getSlot();
 		const oracleData =
 			marketType === 'perp'
-				? this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex)
+				? this.driftClient.getMMOracleDataForPerpMarket(marketArgs.marketIndex)
 				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex);
 		const oracleSlot = oracleData.slot;
 		const isPerpMarketAndPrelaunchMarket =
