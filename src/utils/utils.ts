@@ -973,7 +973,7 @@ export const mapToMarketOrderParams = async (
 	let processedSlippageTolerance = params.slippageTolerance;
 
 	// Track debug info for logging
-	let debugInfo = {
+	const debugInfo = {
 		originalOraclePrice: null as string | null,
 		adjustedOraclePrice: null as string | null,
 		isCrossed: false,
@@ -1043,7 +1043,7 @@ export const mapToMarketOrderParams = async (
 					) {
 						const fillQualityBps = Math.round(
 							parseFloat(fillQualityBpsStr) * 100
-						); // mul 100 to maintain 2 sigfigs (1.23 bps = 0.000123)
+						);
 						debugInfo.fillQualityBps = fillQualityBps;
 
 						if (!isNaN(fillQualityBps)) {
