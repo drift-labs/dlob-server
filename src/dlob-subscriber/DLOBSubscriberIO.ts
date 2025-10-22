@@ -343,7 +343,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 		const dlobSlot = this.slotSource.getSlot();
 		const oracleData =
 			marketType === 'perp'
-				? this.driftClient.getOracleDataForPerpMarket(marketArgs.marketIndex)
+				? this.driftClient.getMMOracleDataForPerpMarket(marketArgs.marketIndex)
 				: this.driftClient.getOracleDataForSpotMarket(marketArgs.marketIndex);
 		const oracleSlot = oracleData.slot;
 		const isPerpMarketAndPrelaunchMarket =
@@ -370,7 +370,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			latestSlot: new BN(this.slotSource.getSlot()),
 		});
 		const { markPrice, bestBidPrice, bestAskPrice, spreadPct, spreadQuote } =
-			COMMON_MATH.calculateSpreadBidAskMark(l2);
+			COMMON_MATH.calculateSpreadBidAskMark(l2, oracleData?.price);
 		const slot = l2.slot;
 
 		if (slot) {
