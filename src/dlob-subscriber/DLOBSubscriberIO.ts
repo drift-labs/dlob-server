@@ -370,7 +370,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 			latestSlot: new BN(this.slotSource.getSlot()),
 		});
 		const { markPrice, bestBidPrice, bestAskPrice, spreadPct, spreadQuote } =
-			COMMON_MATH.calculateSpreadBidAskMark(l2);
+			COMMON_MATH.calculateSpreadBidAskMark(l2, oracleData?.price);
 		const slot = l2.slot;
 
 		if (slot) {
