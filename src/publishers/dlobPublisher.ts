@@ -43,6 +43,10 @@ import { handleHealthCheck } from '../core/middleware';
 import { setGlobalDispatcher, Agent } from 'undici';
 import { Metrics } from '../core/metricsV2';
 import { OrderSubscriberFiltered } from '../dlob-subscriber/OrderSubscriberFiltered';
+import {
+	FillQualityAnalyticsRepository,
+	TakerFillVsOracleBpsRedisResult,
+} from '../athena/repositories/fillQualityAnalytics';
 
 setGlobalDispatcher(
 	new Agent({
@@ -93,6 +97,10 @@ const tobStuckGauge = metricsV2.addGauge(
 	'tob_stuck_duration',
 	'Duration TOB has been stuck for each market'
 );
+const takerFillBpsFromOracleGauge = metricsV2.addGauge(
+	'taker_fill_bps_from_oracle',
+	'Taker fill BPS from oracle by market, side, and cohort'
+);
 metricsV2.finalizeObservables();
 
 //@ts-ignore
@@ -109,7 +117,7 @@ const endpoint = process.env.ENDPOINT;
 const grpcEndpoint = useGrpc
 	? process.env.GRPC_ENDPOINT ?? endpoint + `/${token}`
 	: '';
-const grpcClient = process.env.GRPC_CLIENT ?? 'yellowstone'
+const grpcClient = process.env.GRPC_CLIENT ?? 'yellowstone';
 
 const wsEndpoint = process.env.WS_ENDPOINT;
 const useOrderSubscriber =
@@ -121,6 +129,16 @@ const WS_FALLBACK_FETCH_INTERVAL = 60_000;
 
 const KILLSWITCH_SLOT_DIFF_THRESHOLD =
 	parseInt(process.env.KILLSWITCH_SLOT_DIFF_THRESHOLD) || 200;
+
+// Fill Quality Analytics configuration
+const ENABLE_FILL_QUALITY_ANALYTICS =
+	process.env.ENABLE_FILL_QUALITY_ANALYTICS?.toLowerCase() === 'true';
+const FILL_QUALITY_ANALYTICS_INTERVAL =
+	parseInt(process.env.FILL_QUALITY_ANALYTICS_INTERVAL) || 300_000; // 5 minutes default
+const FILL_QUALITY_ANALYTICS_LOOKBACK_MS =
+	parseInt(process.env.FILL_QUALITY_ANALYTICS_LOOKBACK_MS) || 86_400_000; // 24 hours default
+const FILL_QUALITY_ANALYTICS_SMOOTHING_MINUTES =
+	parseInt(process.env.FILL_QUALITY_ANALYTICS_SMOOTHING_MINUTES) || 60;
 
 // TOB monitoring configuration - defaults to true if not set
 const ENABLE_TOB_MONITORING =
@@ -167,6 +185,22 @@ if (ENABLE_TOB_MONITORING) {
 	logger.info(`TOB Stuck Threshold: ${TOB_STUCK_THRESHOLD}ms`);
 	logger.info(
 		`TOB Monitoring Markets: ${TOB_MONITORING_ENABLED_PERP_MARKETS.join(', ')}`
+	);
+}
+logger.info(
+	`Fill Quality Analytics: ${
+		ENABLE_FILL_QUALITY_ANALYTICS ? 'enabled' : 'disabled'
+	}`
+);
+if (ENABLE_FILL_QUALITY_ANALYTICS) {
+	logger.info(
+		`Fill Quality Analytics Interval: ${FILL_QUALITY_ANALYTICS_INTERVAL}ms`
+	);
+	logger.info(
+		`Fill Quality Analytics Lookback: ${FILL_QUALITY_ANALYTICS_LOOKBACK_MS}ms`
+	);
+	logger.info(
+		`Fill Quality Analytics Smoothing: ${FILL_QUALITY_ANALYTICS_SMOOTHING_MINUTES} minutes`
 	);
 }
 
@@ -504,8 +538,7 @@ const main = async () => {
 						'grpc.keepalive_timeout_ms': 1_000,
 						'grpc.keepalive_permit_without_calls': 1,
 					},
-					client: grpcClient
-					
+					client: grpcClient,
 				},
 				commitment: stateCommitment,
 			};
@@ -816,6 +849,196 @@ const main = async () => {
 
 	// Start TOB monitoring
 	setInterval(checkTobForStuckOrders, TOB_CHECK_INTERVAL);
+
+	// Track last known values for fill quality metrics (per market/side/cohort)
+	const lastFillQualityValues = new Map<string, number>();
+
+	// Helper function to update fill quality metric with null tracking
+	const updateFillQualityMetric = (
+		value: string | number | null | undefined,
+		marketIndex: string | number,
+		side: string,
+		cohort: string
+	) => {
+		const marketIndexStr = marketIndex.toString();
+		const key = `${marketIndexStr}:${side}:${cohort}`;
+		const isNull = value === null || value === undefined;
+
+		let valueToUse: number;
+		if (isNull) {
+			// Use last known value, or 0 if no previous value exists
+			valueToUse = lastFillQualityValues.get(key) || 0;
+			logger.debug(
+				`Null value for market ${marketIndexStr} ${side} ${cohort}, using last known value: ${valueToUse}`
+			);
+		} else {
+			// Use current value and update the last known value
+			valueToUse = Number(value);
+			lastFillQualityValues.set(key, valueToUse);
+		}
+
+		takerFillBpsFromOracleGauge.setLatestValue(valueToUse, {
+			marketIndex: marketIndexStr,
+			side,
+			cohort,
+			null: isNull ? 'true' : 'false',
+		});
+	};
+
+	// Fill Quality Analytics function - fetch and store in Redis
+	const fetchAndStoreFillQualityAnalytics = async () => {
+		if (!ENABLE_FILL_QUALITY_ANALYTICS) {
+			return;
+		}
+
+		try {
+			logger.info('Starting fill quality analytics fetch');
+			const startTime = Date.now();
+
+			const fillQualityRepo = FillQualityAnalyticsRepository();
+			const toMs = Date.now();
+			const fromMs = toMs - FILL_QUALITY_ANALYTICS_LOOKBACK_MS;
+
+			const results = await fillQualityRepo.getTakerFillVsOracleBps(
+				fromMs,
+				toMs,
+				9, // baseDecimals
+				FILL_QUALITY_ANALYTICS_SMOOTHING_MINUTES
+			);
+
+			logger.info(
+				`Fetched fill quality analytics for ${results.length} markets in ${
+					Date.now() - startTime
+				}ms`
+			);
+
+			// Store results in Redis - one key per market
+			const startRedisSet = Date.now();
+			for (const result of results) {
+				const redisKey = `taker_fill_vs_oracle_bps:market:${result.MarketIndex}`;
+				const redisValue = JSON.stringify({
+					marketIndex: result.MarketIndex,
+					takerBuyBpsFromOracle: {
+						all: result.TakerBuyBpsFromOracle_ALL,
+						'1e0': result.TakerBuyBpsFromOracle_1e0,
+						'1e3': result.TakerBuyBpsFromOracle_1e3,
+						'1e4': result.TakerBuyBpsFromOracle_1e4,
+						'1e5': result.TakerBuyBpsFromOracle_1e5,
+						'1e6': result.TakerBuyBpsFromOracle_1e6,
+					},
+					takerSellBpsFromOracle: {
+						all: result.TakerSellBpsFromOracle_ALL,
+						'1e0': result.TakerSellBpsFromOracle_1e0,
+						'1e3': result.TakerSellBpsFromOracle_1e3,
+						'1e4': result.TakerSellBpsFromOracle_1e4,
+						'1e5': result.TakerSellBpsFromOracle_1e5,
+						'1e6': result.TakerSellBpsFromOracle_1e6,
+					},
+					updatedAtTs: Date.now(),
+				} as TakerFillVsOracleBpsRedisResult);
+
+				await redisClient.set(redisKey, redisValue);
+
+				updateFillQualityMetric(
+					result.TakerBuyBpsFromOracle_ALL,
+					result.MarketIndex,
+					'buy',
+					'all'
+				);
+				updateFillQualityMetric(
+					result.TakerBuyBpsFromOracle_1e0,
+					result.MarketIndex,
+					'buy',
+					'1e0'
+				);
+				updateFillQualityMetric(
+					result.TakerBuyBpsFromOracle_1e3,
+					result.MarketIndex,
+					'buy',
+					'1e3'
+				);
+				updateFillQualityMetric(
+					result.TakerBuyBpsFromOracle_1e4,
+					result.MarketIndex,
+					'buy',
+					'1e4'
+				);
+				updateFillQualityMetric(
+					result.TakerBuyBpsFromOracle_1e5,
+					result.MarketIndex,
+					'buy',
+					'1e5'
+				);
+				updateFillQualityMetric(
+					result.TakerBuyBpsFromOracle_1e6,
+					result.MarketIndex,
+					'buy',
+					'1e6'
+				);
+				updateFillQualityMetric(
+					result.TakerSellBpsFromOracle_ALL,
+					result.MarketIndex,
+					'sell',
+					'all'
+				);
+				updateFillQualityMetric(
+					result.TakerSellBpsFromOracle_1e0,
+					result.MarketIndex,
+					'sell',
+					'1e0'
+				);
+				updateFillQualityMetric(
+					result.TakerSellBpsFromOracle_1e3,
+					result.MarketIndex,
+					'sell',
+					'1e3'
+				);
+				updateFillQualityMetric(
+					result.TakerSellBpsFromOracle_1e4,
+					result.MarketIndex,
+					'sell',
+					'1e4'
+				);
+				updateFillQualityMetric(
+					result.TakerSellBpsFromOracle_1e5,
+					result.MarketIndex,
+					'sell',
+					'1e5'
+				);
+				updateFillQualityMetric(
+					result.TakerSellBpsFromOracle_1e6,
+					result.MarketIndex,
+					'sell',
+					'1e6'
+				);
+
+				logger.debug(
+					`Stored fill quality analytics for market ${result.MarketIndex}`
+				);
+			}
+			logger.info(
+				`Successfully stored fill quality analytics for ${
+					results.length
+				} markets in Redis in ${Date.now() - startRedisSet}ms`
+			);
+		} catch (error) {
+			logger.error('Error fetching/storing fill quality analytics:', error);
+		}
+	};
+
+	// Run fill quality analytics fetch immediately on startup, then on interval
+	if (ENABLE_FILL_QUALITY_ANALYTICS) {
+		fetchAndStoreFillQualityAnalytics().catch((error) => {
+			logger.error('Initial fill quality analytics fetch failed:', error);
+		});
+		setInterval(
+			fetchAndStoreFillQualityAnalytics,
+			FILL_QUALITY_ANALYTICS_INTERVAL
+		);
+		logger.info(
+			`Fill quality analytics will run every ${FILL_QUALITY_ANALYTICS_INTERVAL}ms`
+		);
+	}
 
 	const handleStartup = async (_req, res, _next) => {
 		if (driftClient.isSubscribed && dlobProvider.size() > 0) {
