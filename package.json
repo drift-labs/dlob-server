@@ -5,6 +5,7 @@
 	"main": "lib/index.js",
 	"license": "Apache-2.0",
 	"dependencies": {
+		"@aws-sdk/client-athena": "^3.830.0",
 		"@aws-sdk/client-kinesis": "^3.830.0",
 		"@aws-sdk/util-retry": "^3.374.0",
 		"@coral-xyz/anchor": "^0.29.0",

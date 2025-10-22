@@ -50,8 +50,9 @@ import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { setGlobalDispatcher, Agent } from 'undici';
 import { HermesClient } from '@pythnetwork/hermes-client';
-import { COMMON_UI_UTILS } from '@drift/common';
+import { COMMON_UI_UTILS, ENUM_UTILS } from '@drift/common';
 import { AuctionParamArgs } from './utils/types';
+import { TakerFillVsOracleBpsRedisResult } from './athena/repositories/fillQualityAnalytics';
 
 setGlobalDispatcher(
 	new Agent({
@@ -947,6 +948,7 @@ const main = async (): Promise<void> => {
 				forceUpToSlippage,
 				maxLeverageSelected,
 				maxLeverageOrderSize,
+				version,
 			} = req.query;
 
 			// Validate required parameters
@@ -957,6 +959,31 @@ const main = async (): Promise<void> => {
 						'Bad Request: marketIndex, marketType, direction, amount, and assetType are required'
 					);
 				return;
+			}
+
+			const apiVersion = version ? parseInt(version as string) : 1;
+
+			let redisFillQualityInfo: TakerFillVsOracleBpsRedisResult | undefined;
+			if (apiVersion === 2) {
+				const redisKey = `taker_fill_vs_oracle_bps:market:${marketIndex}`;
+				try {
+					const redisValue = await fetchFromRedis(
+						redisKey,
+						(responses) => responses[0] as any
+					);
+					if (redisValue) {
+						const parsed = JSON.parse(redisValue);
+						redisFillQualityInfo =
+							typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+					}
+					// Fall through to existing logic below
+				} catch (err) {
+					logger.error(
+						`Version 2: Error fetching redis stats for market ${marketIndex}:`,
+						err
+					);
+					// Fall through to existing logic below
+				}
 			}
 
 			// Parse and validate values
@@ -1029,7 +1056,9 @@ const main = async (): Promise<void> => {
 				inputParams,
 				driftClient,
 				fetchFromRedis,
-				selectMostRecentBySlot
+				selectMostRecentBySlot,
+				redisFillQualityInfo,
+				apiVersion
 			);
 
 			if (!result.success) {
@@ -1041,6 +1070,24 @@ const main = async (): Promise<void> => {
 
 			const auctionParams = COMMON_UI_UTILS.deriveMarketOrderParams(
 				result.data.marketOrderParams
+			);
+
+			// Log final auction prices for debugging
+			logger.info(
+				JSON.stringify({
+					event: 'auction_params_derived',
+					marketIndex: parsedMarketIndex,
+					direction: direction,
+					apiVersion,
+					finalAuctionParams: {
+						auctionStartPrice: auctionParams.auctionStartPrice?.toString(),
+						auctionEndPrice: auctionParams.auctionEndPrice?.toString(),
+						price: auctionParams.price?.toString(),
+						oraclePriceOffset: auctionParams.oraclePriceOffset?.toString(),
+						auctionDuration: auctionParams.auctionDuration?.toString(),
+						orderType: ENUM_UTILS.toStr(auctionParams.orderType),
+					},
+				})
 			);
 
 			const response = {
