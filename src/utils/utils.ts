@@ -976,6 +976,7 @@ export const mapToMarketOrderParams = async (
 	const debugInfo = {
 		originalOraclePrice: null as string | null,
 		adjustedOraclePrice: null as string | null,
+		adjustedMarkPrice: null as string | null,
 		isCrossed: false,
 		fillQualityBps: null as number | null,
 		appliedV2Adjustment: false,
@@ -1052,9 +1053,22 @@ export const mapToMarketOrderParams = async (
 								.divn(10000 * 100); // adjustmentFactor is in bps
 							const adjustedOraclePrice = oraclePrice.add(adjustment);
 
-							// Update the oracle price in estimatedPrices
+							// Update ALL relevant prices in estimatedPrices to maintain consistency
+							// This ensures auction parameters calculated from any price reference (oracle, mark, best, worst)
+							// will reflect the fill quality adjustment
 							estimatedPrices.oraclePrice = adjustedOraclePrice;
+							estimatedPrices.bestPrice =
+								estimatedPrices.bestPrice.add(adjustment);
+							estimatedPrices.entryPrice =
+								estimatedPrices.entryPrice.add(adjustment);
+							estimatedPrices.worstPrice =
+								estimatedPrices.worstPrice.add(adjustment);
+							estimatedPrices.markPrice =
+								estimatedPrices.markPrice.add(adjustment);
+
 							debugInfo.adjustedOraclePrice = adjustedOraclePrice.toString();
+							debugInfo.adjustedMarkPrice =
+								estimatedPrices.markPrice.toString();
 							debugInfo.appliedV2Adjustment = true;
 						}
 					}
@@ -1144,6 +1158,7 @@ export const mapToMarketOrderParams = async (
 							isCrossed: debugInfo.isCrossed,
 							fillQualityBps: debugInfo.fillQualityBps,
 							adjustedOraclePrice: debugInfo.adjustedOraclePrice,
+							adjustedMarkPrice: debugInfo.adjustedMarkPrice,
 							appliedAdjustment: debugInfo.appliedV2Adjustment,
 							fillQualityData: fillQualityInfo
 								? {
