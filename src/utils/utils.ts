@@ -36,6 +36,7 @@ import { AuctionParamArgs } from './types';
 import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
 import { TakerFillVsOracleBpsRedisResult } from '../athena/repositories/fillQualityAnalytics';
 
+const MAX_FILL_QUALITY_AGE_MS = 10 * 60 * 1000; // 10 minutes
 export const GROUPING_OPTIONS = [1, 10, 100, 500, 1000];
 export const GROUPING_DEPENDENCIES = {
 	1: null,
@@ -979,6 +980,12 @@ export const mapToMarketOrderParams = async (
 		adjustedMarkPrice: null as string | null,
 		isCrossed: false,
 		fillQualityBps: null as number | null,
+		fillQualityDataStale: false,
+		priceReferenceUsed: null as string | null,
+		priceReferenceDistance: null as string | null,
+		reason: null as string | null,
+		markVsOracle: null as string | null,
+		isMarkFavorableForDirection: null as boolean | null,
 		appliedV2Adjustment: false,
 	};
 
@@ -1031,45 +1038,106 @@ export const mapToMarketOrderParams = async (
 				debugInfo.isCrossed = isCrossed;
 
 				if (isCrossed) {
-					// Get fill quality metric based on direction
-					const fillQualityBpsStr =
-						direction === PositionDirection.LONG
-							? fillQualityInfo.takerBuyBpsFromOracle?.all
-							: fillQualityInfo.takerSellBpsFromOracle?.all;
+					// Check data staleness - ignore if older than 10 minutes
+					const dataAge = Date.now() - (fillQualityInfo.updatedAtTs || 0);
 
-					if (
-						fillQualityBpsStr &&
-						fillQualityBpsStr !== 'null' &&
-						fillQualityBpsStr !== null
-					) {
-						const fillQualityBps = Math.round(
-							parseFloat(fillQualityBpsStr) * 100
+					if (dataAge > MAX_FILL_QUALITY_AGE_MS) {
+						logger.warn(
+							`Version 2: Fill quality data is stale (${Math.round(
+								dataAge / 1000
+							)}s old), skipping adjustment for market ${params.marketIndex}`
 						);
-						debugInfo.fillQualityBps = fillQualityBps;
+						debugInfo.fillQualityDataStale = true;
+					} else {
+						// Get fill quality metric based on direction
+						const fillQualityBpsStr =
+							direction === PositionDirection.LONG
+								? fillQualityInfo.takerBuyBpsFromOracle?.all
+								: fillQualityInfo.takerSellBpsFromOracle?.all;
 
-						if (!isNaN(fillQualityBps)) {
-							const adjustment = oraclePrice
-								.muln(fillQualityBps)
-								.divn(10000 * 100); // adjustmentFactor is in bps
-							const adjustedOraclePrice = oraclePrice.add(adjustment);
+						if (
+							fillQualityBpsStr &&
+							fillQualityBpsStr !== 'null' &&
+							fillQualityBpsStr !== null
+						) {
+							const fillQualityBps = Math.round(
+								parseFloat(fillQualityBpsStr) * 100
+							);
+							debugInfo.fillQualityBps = fillQualityBps;
 
-							// Update ALL relevant prices in estimatedPrices to maintain consistency
-							// This ensures auction parameters calculated from any price reference (oracle, mark, best, worst)
-							// will reflect the fill quality adjustment
-							estimatedPrices.oraclePrice = adjustedOraclePrice;
-							estimatedPrices.bestPrice =
-								estimatedPrices.bestPrice.add(adjustment);
-							estimatedPrices.entryPrice =
-								estimatedPrices.entryPrice.add(adjustment);
-							estimatedPrices.worstPrice =
-								estimatedPrices.worstPrice.add(adjustment);
-							estimatedPrices.markPrice =
-								estimatedPrices.markPrice.add(adjustment);
+							if (!isNaN(fillQualityBps)) {
+								const adjustment = oraclePrice
+									.muln(fillQualityBps)
+									.divn(10000 * 100);
+								const fillQualityAdjustedPrice = oraclePrice.add(adjustment);
 
-							debugInfo.adjustedOraclePrice = adjustedOraclePrice.toString();
-							debugInfo.adjustedMarkPrice =
-								estimatedPrices.markPrice.toString();
-							debugInfo.appliedV2Adjustment = true;
+								// Compare fill quality adjusted price vs mark price to determine which is better for takers
+								// We want to use the price that gets takers closer to where makers have been filling
+								// AND consider whether the mark price is favorable for the taker's direction
+								const markPrice = estimatedPrices.markPrice;
+								const originalOraclePrice = oraclePrice;
+
+								// Determine if mark price favors this direction
+								const markVsOracle = markPrice.sub(originalOraclePrice);
+								const isMarkFavorableForDirection =
+									direction === PositionDirection.LONG
+										? markVsOracle.lt(ZERO) // Mark below oracle is good for longs
+										: markVsOracle.gt(ZERO); // Mark above oracle is good for shorts
+
+								// Calculate distances from each price to the fill quality adjusted price
+								// The fill quality adjusted price represents where makers have been filling
+								const distanceFromMark = markPrice
+									.sub(fillQualityAdjustedPrice)
+									.abs();
+								const distanceFromOracle = originalOraclePrice
+									.sub(fillQualityAdjustedPrice)
+									.abs();
+
+								// Decision logic: prefer fill quality adjusted price when:
+								// 1. It's closer to the target, OR
+								// 2. Mark price is unfavorable for this direction
+								if (
+									distanceFromOracle.lt(distanceFromMark) ||
+									!isMarkFavorableForDirection
+								) {
+									// Use fill quality adjusted price
+									estimatedPrices.markPrice = fillQualityAdjustedPrice;
+									debugInfo.priceReferenceUsed = 'oracleAdjusted';
+									debugInfo.priceReferenceDistance =
+										distanceFromOracle.toString();
+									debugInfo.reason = isMarkFavorableForDirection
+										? 'closerToTarget'
+										: 'markUnfavorable';
+								} else {
+									// Use mark price
+									debugInfo.priceReferenceUsed = 'mark';
+									debugInfo.priceReferenceDistance =
+										distanceFromMark.toString();
+									debugInfo.reason = 'markFavorableAndCloser';
+								}
+
+								// Store additional debug info
+								debugInfo.markVsOracle = markVsOracle.toString();
+								debugInfo.isMarkFavorableForDirection =
+									isMarkFavorableForDirection;
+
+								// Always update oracle price with fill quality adjustment for consistency
+								estimatedPrices.oraclePrice = fillQualityAdjustedPrice;
+
+								// Update other prices to maintain consistency
+								estimatedPrices.bestPrice =
+									estimatedPrices.bestPrice.add(adjustment);
+								estimatedPrices.entryPrice =
+									estimatedPrices.entryPrice.add(adjustment);
+								estimatedPrices.worstPrice =
+									estimatedPrices.worstPrice.add(adjustment);
+
+								debugInfo.adjustedOraclePrice =
+									fillQualityAdjustedPrice.toString();
+								debugInfo.adjustedMarkPrice =
+									estimatedPrices.markPrice.toString();
+								debugInfo.appliedV2Adjustment = true;
+							}
 						}
 					}
 				}
@@ -1160,11 +1228,19 @@ export const mapToMarketOrderParams = async (
 							adjustedOraclePrice: debugInfo.adjustedOraclePrice,
 							adjustedMarkPrice: debugInfo.adjustedMarkPrice,
 							appliedAdjustment: debugInfo.appliedV2Adjustment,
+							fillQualityDataStale: debugInfo.fillQualityDataStale,
+							priceReferenceUsed: debugInfo.priceReferenceUsed,
+							priceReferenceDistance: debugInfo.priceReferenceDistance,
+							reason: debugInfo.reason,
+							markVsOracle: debugInfo.markVsOracle,
+							isMarkFavorableForDirection:
+								debugInfo.isMarkFavorableForDirection,
 							fillQualityData: fillQualityInfo
 								? {
 										takerBuyBpsAll: fillQualityInfo.takerBuyBpsFromOracle?.all,
 										takerSellBpsAll:
 											fillQualityInfo.takerSellBpsFromOracle?.all,
+										updatedAtTs: fillQualityInfo.updatedAtTs,
 								  }
 								: null,
 					  }
