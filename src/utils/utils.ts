@@ -1415,7 +1415,7 @@ export const calculateDynamicSlippage = (
 		)?.toNum();
 
 		if (spreadInfo?.spreadPct) {
-			spreadBaseSlippage = spreadPctNum / 2;
+			spreadBaseSlippage = spreadPctNum * .9;
 
 			// If the L2 is crossed (best bid > best ask), cap the spread contribution
 			const bestBid = spreadInfo.bestBidPrice;
