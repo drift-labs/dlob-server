@@ -1440,7 +1440,7 @@ export const calculateDynamicSlippage = (
 
 	// use halfway to worst price as size adjusted slippage
 	if (startPrice && worstPrice) {
-		const sizeAdjustedSlippage =
+		let sizeAdjustedSlippage =
 			(startPrice.sub(worstPrice).abs().toNumber() /
 				BN.max(startPrice, worstPrice).toNumber() /
 				2) *
