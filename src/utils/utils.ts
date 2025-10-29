@@ -1415,7 +1415,7 @@ export const calculateDynamicSlippage = (
 		)?.toNum();
 
 		if (spreadInfo?.spreadPct) {
-			spreadBaseSlippage = spreadPctNum / 2;
+			spreadBaseSlippage = spreadPctNum * .9;
 
 			// If the L2 is crossed (best bid > best ask), cap the spread contribution
 			const bestBid = spreadInfo.bestBidPrice;
@@ -1445,11 +1445,6 @@ export const calculateDynamicSlippage = (
 				BN.max(startPrice, worstPrice).toNumber() /
 				2) *
 			100;
-
-		if (isMajor) {
-			// add additional size adjusted multiplier for majors
-			sizeAdjustedSlippage = sizeAdjustedSlippage * 1.2;
-		}
 
 		dynamicSlippage = Math.max(dynamicSlippage, sizeAdjustedSlippage);
 	}
