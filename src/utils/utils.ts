@@ -1397,7 +1397,7 @@ export const calculateDynamicSlippage = (
 	try {
 		// Get oracle data
 		const oracleData = isPerp
-			? driftClient.getOracleDataForPerpMarket(marketIndex)
+			? driftClient.getMMOracleDataForPerpMarket(marketIndex)
 			: driftClient.getOracleDataForSpotMarket(marketIndex);
 
 		// Get oracle price
@@ -1505,7 +1505,7 @@ export const getEstimatedPricesWithL2 = async (
 
 	const oracleData = isSpot
 		? driftClient.getOracleDataForSpotMarket(marketIndex)
-		: driftClient.getOracleDataForPerpMarket(marketIndex);
+		: driftClient.getMMOracleDataForPerpMarket(marketIndex);
 
 	// Get oracle price
 	const oraclePrice = oracleData.price ?? ZERO;
