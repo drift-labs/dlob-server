@@ -860,7 +860,7 @@ export const getEstimatedPrices = async (
 
 	const oracleData = isSpot
 		? driftClient.getOracleDataForSpotMarket(marketIndex)
-		: driftClient.getOracleDataForPerpMarket(marketIndex);
+		: driftClient.getMMOracleDataForPerpMarket(marketIndex);
 
 	// Get oracle price
 	const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
