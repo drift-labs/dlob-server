@@ -97,12 +97,15 @@ export function parsePositiveIntArray(
 export const getOracleForMarket = (
 	driftClient: DriftClient,
 	marketType: MarketType,
-	marketIndex: number
+	marketIndex: number,
+	useMMOracleData = false
 ): number => {
 	if (isVariant(marketType, 'spot')) {
 		return driftClient.getOracleDataForSpotMarket(marketIndex).price.toNumber();
 	} else if (isVariant(marketType, 'perp')) {
-		return driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
+		return useMMOracleData
+			? driftClient.getMMOracleDataForPerpMarket(marketIndex).price.toNumber()
+			: driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
 	}
 };
 
@@ -860,7 +863,7 @@ export const getEstimatedPrices = async (
 
 	const oracleData = isSpot
 		? driftClient.getOracleDataForSpotMarket(marketIndex)
-		: driftClient.getOracleDataForPerpMarket(marketIndex);
+		: driftClient.getMMOracleDataForPerpMarket(marketIndex);
 
 	// Get oracle price
 	const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
@@ -1021,7 +1024,7 @@ export const mapToMarketOrderParams = async (
 				const isSpot = isVariant(marketType, 'spot');
 				const oracleData = isSpot
 					? driftClient.getOracleDataForSpotMarket(params.marketIndex)
-					: driftClient.getOracleDataForPerpMarket(params.marketIndex);
+					: driftClient.getMMOracleDataForPerpMarket(params.marketIndex);
 				const oraclePrice = oracleData.price ?? ZERO;
 
 				// Detect if orderbook is crossed
@@ -1397,7 +1400,7 @@ export const calculateDynamicSlippage = (
 	try {
 		// Get oracle data
 		const oracleData = isPerp
-			? driftClient.getOracleDataForPerpMarket(marketIndex)
+			? driftClient.getMMOracleDataForPerpMarket(marketIndex)
 			: driftClient.getOracleDataForSpotMarket(marketIndex);
 
 		// Get oracle price
@@ -1415,7 +1418,7 @@ export const calculateDynamicSlippage = (
 		)?.toNum();
 
 		if (spreadInfo?.spreadPct) {
-			spreadBaseSlippage = spreadPctNum * .9;
+			spreadBaseSlippage = spreadPctNum * 0.9;
 
 			// If the L2 is crossed (best bid > best ask), cap the spread contribution
 			const bestBid = spreadInfo.bestBidPrice;
@@ -1505,7 +1508,7 @@ export const getEstimatedPricesWithL2 = async (
 
 	const oracleData = isSpot
 		? driftClient.getOracleDataForSpotMarket(marketIndex)
-		: driftClient.getOracleDataForPerpMarket(marketIndex);
+		: driftClient.getMMOracleDataForPerpMarket(marketIndex);
 
 	// Get oracle price
 	const oraclePrice = oracleData.price ?? ZERO;
