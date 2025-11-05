@@ -97,12 +97,15 @@ export function parsePositiveIntArray(
 export const getOracleForMarket = (
 	driftClient: DriftClient,
 	marketType: MarketType,
-	marketIndex: number
+	marketIndex: number,
+	useMMOracleData = false
 ): number => {
 	if (isVariant(marketType, 'spot')) {
 		return driftClient.getOracleDataForSpotMarket(marketIndex).price.toNumber();
 	} else if (isVariant(marketType, 'perp')) {
-		return driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
+		return useMMOracleData
+			? driftClient.getMMOracleDataForPerpMarket(marketIndex).price.toNumber()
+			: driftClient.getOracleDataForPerpMarket(marketIndex).price.toNumber();
 	}
 };
 
@@ -860,7 +863,7 @@ export const getEstimatedPrices = async (
 
 	const oracleData = isSpot
 		? driftClient.getOracleDataForSpotMarket(marketIndex)
-		: driftClient.getOracleDataForPerpMarket(marketIndex);
+		: driftClient.getMMOracleDataForPerpMarket(marketIndex);
 
 	// Get oracle price
 	const oraclePrice = new BN(oracleData?.price || 0).mul(PRICE_PRECISION);
@@ -1021,7 +1024,7 @@ export const mapToMarketOrderParams = async (
 				const isSpot = isVariant(marketType, 'spot');
 				const oracleData = isSpot
 					? driftClient.getOracleDataForSpotMarket(params.marketIndex)
-					: driftClient.getOracleDataForPerpMarket(params.marketIndex);
+					: driftClient.getMMOracleDataForPerpMarket(params.marketIndex);
 				const oraclePrice = oracleData.price ?? ZERO;
 
 				// Detect if orderbook is crossed
@@ -1169,6 +1172,7 @@ export const mapToMarketOrderParams = async (
 			const startPrice = estimatedPrices[startPriceProperty];
 
 			processedSlippageTolerance = calculateDynamicSlippage(
+				direction === PositionDirection.LONG ? 'long' : 'short',
 				params.marketIndex,
 				params.marketType,
 				driftClient,
@@ -1374,6 +1378,7 @@ export const fetchL2FromRedis = async (
  * @returns Dynamic slippage tolerance as a number
  */
 export const calculateDynamicSlippage = (
+	direction: 'long' | 'short',
 	marketIndex: number,
 	marketType: string,
 	driftClient: DriftClient,
@@ -1394,10 +1399,9 @@ export const calculateDynamicSlippage = (
 
 	// Calculate spread using L2 data
 	let spreadBaseSlippage = 0.0005; // 0.05% fallback spread
-	try {
 		// Get oracle data
 		const oracleData = isPerp
-			? driftClient.getOracleDataForPerpMarket(marketIndex)
+			? driftClient.getMMOracleDataForPerpMarket(marketIndex)
 			: driftClient.getOracleDataForSpotMarket(marketIndex);
 
 		// Get oracle price
@@ -1409,13 +1413,15 @@ export const calculateDynamicSlippage = (
 			oraclePrice
 		);
 
+
+	try {
 		const spreadPctNum = BigNum.from(
 			spreadInfo.spreadPct,
 			PERCENTAGE_PRECISION_EXP
 		)?.toNum();
 
 		if (spreadInfo?.spreadPct) {
-			spreadBaseSlippage = spreadPctNum * .9;
+			spreadBaseSlippage = spreadPctNum * 0.9;
 
 			// If the L2 is crossed (best bid > best ask), cap the spread contribution
 			const bestBid = spreadInfo.bestBidPrice;
@@ -1461,7 +1467,39 @@ export const calculateDynamicSlippage = (
 	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.035'); // 0.035% minimum
 	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
 
-	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+	let finalSlippage = Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+
+	// make sure the slippage goes at least 1bp past the bestBid/bestAsk
+	const impliedEndPriceNum = direction === 'long' ? (startPrice.toNumber() * (1 + finalSlippage / 100)) : (startPrice.toNumber() * (1 - finalSlippage / 100));
+
+	const impliedEndPrice = new BN(impliedEndPriceNum);
+	
+	// Adjust slippage to ensure it goes 1bp past best bid/ask if needed
+	try {
+		const ONE_BP = 0.0001; // 1 basis point = 0.01%
+
+		if (direction === 'long' && spreadInfo.bestAskPrice) {
+			// For LONG: if impliedEndPrice < bestAskPrice, adjust so startPrice + finalSlippage is 1bp greater than bestAskPrice
+			if (impliedEndPrice.lt(spreadInfo.bestAskPrice)) {
+				// Calculate required slippage: ((bestAskPrice * (1 + 1bp)) / startPrice - 1) * 100
+				const targetPrice = spreadInfo.bestAskPrice.toNumber() * (1 + ONE_BP);
+				const requiredSlippagePct = ((targetPrice / startPrice.toNumber()) - 1) * 100;
+				finalSlippage = Math.max(finalSlippage, requiredSlippagePct);
+			}
+		} else if (direction === 'short' && spreadInfo.bestBidPrice) {
+			// For SHORT: if impliedEndPrice > bestBidPrice, adjust so startPrice - finalSlippage is 1bp less than bestBidPrice
+			if (impliedEndPrice.gt(spreadInfo.bestBidPrice)) {
+				// Calculate required slippage: (1 - (bestBidPrice * (1 - 1bp)) / startPrice) * 100
+				const targetPrice = spreadInfo.bestBidPrice.toNumber() * (1 - ONE_BP);
+				const requiredSlippagePct = (1 - (targetPrice / startPrice.toNumber())) * 100;
+				finalSlippage = Math.max(finalSlippage, requiredSlippagePct);
+			}
+		}
+	} catch (error) {
+		logger.error('Failed to adjust slippage for best bid/ask:', error);
+	}
+
+	return finalSlippage;
 };
 
 /**
@@ -1505,7 +1543,7 @@ export const getEstimatedPricesWithL2 = async (
 
 	const oracleData = isSpot
 		? driftClient.getOracleDataForSpotMarket(marketIndex)
-		: driftClient.getOracleDataForPerpMarket(marketIndex);
+		: driftClient.getMMOracleDataForPerpMarket(marketIndex);
 
 	// Get oracle price
 	const oraclePrice = oracleData.price ?? ZERO;
