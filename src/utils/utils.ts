@@ -1415,8 +1415,6 @@ export const calculateDynamicSlippage = (
 
 
 	try {
-
-
 		const spreadPctNum = BigNum.from(
 			spreadInfo.spreadPct,
 			PERCENTAGE_PRECISION_EXP

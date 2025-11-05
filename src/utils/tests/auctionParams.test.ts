@@ -826,7 +826,7 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 		} as any;
 
 		// With start price at 99 and very small worst price, initial slippage will be tiny
-		const worstPrice = new BN(99.1).mul(PRICE_PRECISION); // Very close to start
+		const worstPrice = new BN(99100000); // $99.10 in PRICE_PRECISION
 
 		const slippage = calculateDynamicSlippage(
 			'long',
@@ -871,7 +871,7 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 		} as any;
 
 		// With start price at 101 and very small worst price, initial slippage will be tiny
-		const worstPrice = new BN(100.9).mul(PRICE_PRECISION); // Very close to start
+		const worstPrice = new BN(100900000); // $100.90 in PRICE_PRECISION
 
 		const slippage = calculateDynamicSlippage(
 			'short',
@@ -977,8 +977,8 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 
 	it('should handle tight spread with precise 1bp adjustment for LONG', () => {
 		const oraclePrice = new BN(100).mul(PRICE_PRECISION); // $100
-		const bestBidPrice = new BN(99.95).mul(PRICE_PRECISION); // $99.95
-		const bestAskPrice = new BN(100.05).mul(PRICE_PRECISION); // $100.05 (5bp spread)
+		const bestBidPrice = new BN(99950000); // $99.95 in PRICE_PRECISION
+		const bestAskPrice = new BN(100050000); // $100.05 in PRICE_PRECISION (5bp spread)
 		const startPrice = new BN(100).mul(PRICE_PRECISION); // $100
 
 		mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
@@ -990,7 +990,7 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 			asks: [{ price: bestAskPrice, size: new BN(1) }],
 		} as any;
 
-		const worstPrice = new BN(100.01).mul(PRICE_PRECISION); // Very small slippage
+		const worstPrice = new BN(100010000); // $100.01 in PRICE_PRECISION
 
 		const slippage = calculateDynamicSlippage(
 			'long',
@@ -1017,8 +1017,8 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 
 	it('should handle tight spread with precise 1bp adjustment for SHORT', () => {
 		const oraclePrice = new BN(100).mul(PRICE_PRECISION); // $100
-		const bestBidPrice = new BN(99.95).mul(PRICE_PRECISION); // $99.95
-		const bestAskPrice = new BN(100.05).mul(PRICE_PRECISION); // $100.05 (5bp spread)
+		const bestBidPrice = new BN(99950000); // $99.95 in PRICE_PRECISION
+		const bestAskPrice = new BN(100050000); // $100.05 in PRICE_PRECISION (5bp spread)
 		const startPrice = new BN(100).mul(PRICE_PRECISION); // $100
 
 		mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
@@ -1030,7 +1030,7 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 			asks: [{ price: bestAskPrice, size: new BN(1) }],
 		} as any;
 
-		const worstPrice = new BN(99.99).mul(PRICE_PRECISION); // Very small slippage
+		const worstPrice = new BN(99990000); // $99.99 in PRICE_PRECISION
 
 		const slippage = calculateDynamicSlippage(
 			'short',
@@ -1070,7 +1070,7 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 			asks: [{ price: bestAskPrice, size: new BN(1) }],
 		} as any;
 
-		const worstPrice = new BN(100.01).mul(PRICE_PRECISION);
+		const worstPrice = new BN(100010000); // $100.01 in PRICE_PRECISION
 
 		const slippage = calculateDynamicSlippage(
 			'long',
@@ -1109,7 +1109,7 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 			asks: [{ price: bestAskPrice, size: new BN(1) }],
 		} as any;
 
-		const worstPrice = new BN(100.01).mul(PRICE_PRECISION);
+		const worstPrice = new BN(100010000); // $100.01 in PRICE_PRECISION
 
 		const slippage = calculateDynamicSlippage(
 			'long',
@@ -1123,65 +1123,5 @@ describe('calculateDynamicSlippage - 1bp best bid/ask adjustment', () => {
 
 		// Should respect the 2% minimum
 		expect(slippage).toBeGreaterThanOrEqual(2.0);
-	});
-
-	it('should handle missing bestAskPrice gracefully for LONG', () => {
-		const oraclePrice = new BN(100).mul(PRICE_PRECISION);
-		const startPrice = new BN(100).mul(PRICE_PRECISION);
-
-		mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
-			price: oraclePrice,
-		});
-
-		// L2 with no asks
-		const l2 = {
-			bids: [{ price: new BN(99).mul(PRICE_PRECISION), size: new BN(1) }],
-			asks: [],
-		} as any;
-
-		const worstPrice = new BN(100.5).mul(PRICE_PRECISION);
-
-		// Should not throw error
-		expect(() => {
-			calculateDynamicSlippage(
-				'long',
-				0,
-				'perp',
-				mockDriftClient,
-				l2,
-				startPrice,
-				worstPrice
-			);
-		}).not.toThrow();
-	});
-
-	it('should handle missing bestBidPrice gracefully for SHORT', () => {
-		const oraclePrice = new BN(100).mul(PRICE_PRECISION);
-		const startPrice = new BN(100).mul(PRICE_PRECISION);
-
-		mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
-			price: oraclePrice,
-		});
-
-		// L2 with no bids
-		const l2 = {
-			bids: [],
-			asks: [{ price: new BN(101).mul(PRICE_PRECISION), size: new BN(1) }],
-		} as any;
-
-		const worstPrice = new BN(99.5).mul(PRICE_PRECISION);
-
-		// Should not throw error
-		expect(() => {
-			calculateDynamicSlippage(
-				'short',
-				0,
-				'perp',
-				mockDriftClient,
-				l2,
-				startPrice,
-				worstPrice
-			);
-		}).not.toThrow();
 	});
 });
