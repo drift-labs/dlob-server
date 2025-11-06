@@ -992,6 +992,8 @@ export const mapToMarketOrderParams = async (
 		appliedV2Adjustment: false,
 	};
 
+	let conditionalParams = {};
+
 	if (driftClient && fetchFromRedis && selectMostRecentBySlot) {
 		// Get L2 orderbook data using the utility function
 		const redisL2 = await fetchL2FromRedis(
@@ -1032,6 +1034,13 @@ export const mapToMarketOrderParams = async (
 					l2Formatted,
 					oraclePrice
 				);
+
+				// TODO - apply this to all apiVersions once testing is complete.
+				conditionalParams = {
+					ensureCrossingEndPrice: true,
+					bestBidPrice: spreadInfo.bestBidPrice,
+					bestAskPrice: spreadInfo.bestAskPrice,
+				};
 
 				const isCrossed =
 					spreadInfo.bestBidPrice &&
@@ -1295,6 +1304,7 @@ export const mapToMarketOrderParams = async (
 				additionalEndPriceBuffer,
 				forceUpToSlippage: params.forceUpToSlippage,
 				userOrderId: params.userOrderId,
+				...conditionalParams,
 			},
 			estimatedPrices,
 		},
