@@ -678,7 +678,8 @@ export const selectMostRecentBySlot = (
 
 export function createMarketBasedAuctionParams(
 	args: AuctionParamArgs,
-	overrideDefaults?: Partial<AuctionParamArgs>
+	overrideDefaults?: Partial<AuctionParamArgs>,
+	version: number = 1
 ): AuctionParamArgs {
 	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
 	const isMajorMarket =
@@ -705,8 +706,8 @@ export function createMarketBasedAuctionParams(
 	// Set market-specific defaults (only used if values are undefined)
 	const marketSpecificDefaults: Partial<AuctionParamArgs> = {
 		...DEFAULT_AUCTION_PARAMS,
-		auctionStartPriceOffsetFrom: isMajorMarket ? 'mark' : 'bestOffer',
-		auctionStartPriceOffset: isMajorMarket ? 0 : -0.1,
+		auctionStartPriceOffsetFrom: isMajorMarket && version === 1 ? 'mark' : 'bestOffer',
+		auctionStartPriceOffset: isMajorMarket && version === 1 ? 0 : -0.1,
 	};
 
 	// Apply custom overrides if provided
@@ -1186,7 +1187,8 @@ export const mapToMarketOrderParams = async (
 				driftClient,
 				l2Formatted,
 				startPrice,
-				estimatedPrices.worstPrice
+				estimatedPrices.worstPrice,
+				apiVersion
 			);
 		}
 	} else {
@@ -1392,7 +1394,8 @@ export const calculateDynamicSlippage = (
 	driftClient: DriftClient,
 	l2Formatted: L2OrderBook,
 	startPrice: BN,
-	worstPrice: BN
+	worstPrice: BN,
+	apiVersion?: number
 ): number => {
 	// Determine if this is a major market (PERP with marketIndex 0, 1, or 2)
 	const isPerp = marketType.toLowerCase() === 'perp';
@@ -1474,7 +1477,14 @@ export const calculateDynamicSlippage = (
 	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.035'); // 0.035% minimum
 	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
 
-	return Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+	let finalSlippage = Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
+	
+	// Apply 10% boost for API v2
+	if (apiVersion === 2) {
+		finalSlippage = finalSlippage * 1.1;
+	}
+
+	return finalSlippage;
 };
 
 /**
