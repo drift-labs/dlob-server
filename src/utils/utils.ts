@@ -310,25 +310,38 @@ export function publishGroupings(
 			asks: fullAggregatedAsks,
 		});
 
-		const aggregatedBids = fullAggregatedBids.slice(0, 20);
-		const aggregatedAsks = fullAggregatedAsks.slice(0, 20);
+		// Count crossed levels at the beginning
+		let crossedBids = 0;
+		const bestAsk = fullAggregatedAsks[0]?.[0];
+		if (bestAsk !== undefined) {
+			for (const bid of fullAggregatedBids) {
+				if (bid[0] >= bestAsk) {
+					crossedBids++;
+				} else {
+					break; // Stop at first uncrossed level
+				}
+			}
+		}
+		
+		let crossedAsks = 0;
+		const bestBid = fullAggregatedBids[0]?.[0];
+		if (bestBid !== undefined) {
+			for (const ask of fullAggregatedAsks) {
+				if (ask[0] <= bestBid) {
+					crossedAsks++;
+				} else {
+					break; // Stop at first uncrossed level
+				}
+			}
+		}
+		
+		const aggregatedBids = fullAggregatedBids.slice(0, 20 + crossedBids);
+		const aggregatedAsks = fullAggregatedAsks.slice(0, 20 + crossedAsks);
+		
 		const l2Formatted_grouped20 = Object.assign({}, l2Formatted, {
 			bids: aggregatedBids,
 			asks: aggregatedAsks,
 		});
-
-		if (
-			(['SOL-PERP', 'BTC-PERP', 'ETH-PERP'].includes(
-				l2Formatted_grouped20.marketName
-			) &&
-				aggregatedBids.length !== 20) ||
-			aggregatedAsks.length !== 20
-		) {
-			logger.error(
-				`Error aggregating dlob levels: group=${group}, bids=${fullAggregatedBids.length}, asks=${fullAggregatedAsks.length}`
-			);
-			logger.error(`Response: ${JSON.stringify(l2Formatted_grouped20)}`);
-		}
 
 		redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${
