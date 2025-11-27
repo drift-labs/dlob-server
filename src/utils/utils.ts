@@ -310,25 +310,41 @@ export function publishGroupings(
 			asks: fullAggregatedAsks,
 		});
 
-		const aggregatedBids = fullAggregatedBids.slice(0, 20);
-		const aggregatedAsks = fullAggregatedAsks.slice(0, 20);
+		// Count crossed levels at the beginning
+		let crossedBids = 0;
+		const bestAsk = fullAggregatedAsks[0]?.price;
+		if (bestAsk !== undefined) {
+			for (const bid of fullAggregatedBids) {
+				if (bid.price >= bestAsk) {
+					crossedBids++;
+				} else {
+					break;
+				}
+			}
+		}
+
+		let crossedAsks = 0;
+		const bestBid = fullAggregatedBids[0]?.price;
+		if (bestBid !== undefined) {
+			for (const ask of fullAggregatedAsks) {
+				if (ask.price <= bestBid) {
+					crossedAsks++;
+				} else {
+					break;
+				}
+			}
+		}
+
+		const maxCrossed = Math.max(crossedBids, crossedAsks);
+		const levelsToTake = 20 + maxCrossed;
+
+		const aggregatedBids = fullAggregatedBids.slice(0, levelsToTake);
+		const aggregatedAsks = fullAggregatedAsks.slice(0, levelsToTake);
+
 		const l2Formatted_grouped20 = Object.assign({}, l2Formatted, {
 			bids: aggregatedBids,
 			asks: aggregatedAsks,
 		});
-
-		if (
-			(['SOL-PERP', 'BTC-PERP', 'ETH-PERP'].includes(
-				l2Formatted_grouped20.marketName
-			) &&
-				aggregatedBids.length !== 20) ||
-			aggregatedAsks.length !== 20
-		) {
-			logger.error(
-				`Error aggregating dlob levels: group=${group}, bids=${fullAggregatedBids.length}, asks=${fullAggregatedAsks.length}`
-			);
-			logger.error(`Response: ${JSON.stringify(l2Formatted_grouped20)}`);
-		}
 
 		redisClient.publish(
 			`${clientPrefix}orderbook_${marketType}_${
@@ -706,7 +722,8 @@ export function createMarketBasedAuctionParams(
 	// Set market-specific defaults (only used if values are undefined)
 	const marketSpecificDefaults: Partial<AuctionParamArgs> = {
 		...DEFAULT_AUCTION_PARAMS,
-		auctionStartPriceOffsetFrom: isMajorMarket && version === 1 ? 'mark' : 'bestOffer',
+		auctionStartPriceOffsetFrom:
+			isMajorMarket && version === 1 ? 'mark' : 'bestOffer',
 		auctionStartPriceOffset: isMajorMarket && version === 1 ? 0 : -0.1,
 	};
 
@@ -1477,8 +1494,11 @@ export const calculateDynamicSlippage = (
 	const minSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MIN || '0.035'); // 0.035% minimum
 	const maxSlippage = parseFloat(process.env.DYNAMIC_SLIPPAGE_MAX || '5'); // 5% maximum
 
-	let finalSlippage = Math.min(Math.max(dynamicSlippage, minSlippage), maxSlippage);
-	
+	let finalSlippage = Math.min(
+		Math.max(dynamicSlippage, minSlippage),
+		maxSlippage
+	);
+
 	// Apply 10% boost for API v2
 	if (apiVersion === 2) {
 		finalSlippage = finalSlippage * 1.1;
