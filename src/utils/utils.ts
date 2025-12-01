@@ -338,10 +338,6 @@ export function publishGroupings(
 		const maxCrossed = Math.max(crossedBids, crossedAsks);
 		const levelsToTake = 20 + maxCrossed;
 
-		if (group === 10) {
-			console.log(bestAsk, bestBid, crossedAsks, crossedBids, levelsToTake);
-		}
-
 		const aggregatedBids = fullAggregatedBids.slice(0, levelsToTake);
 		const aggregatedAsks = fullAggregatedAsks.slice(0, levelsToTake);
 
