@@ -12,11 +12,11 @@ export enum HEALTH_STATUS {
 const HEALTH_CHECK_CONFIG = {
 	CHECK_INTERVAL_MS: 2000,
 	// Maximum time allowed between slot updates
-	MAX_SLOT_STALENESS_MS: 5000,
+	MAX_SLOT_STALENESS_MS: parseInt(process.env.MAX_SLOT_STALENESS_MS || '5000'),
 	// Minimum expected slot advancement rate. Sometimes usermap is used for slot source, so the slot rate
 	// may be much lower than 2 per sec. 0.03 is 1 slot per 33s
-	MIN_SLOT_RATE: 0.03,
-} as const;
+	MIN_SLOT_RATE: parseFloat(process.env.MIN_SLOT_RATE || '0.03'),
+};
 
 /**
  * Tracks the health state of the slot subscriber
