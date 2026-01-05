@@ -14,10 +14,14 @@ const commonConfig = {
     external: [
         'bigint-buffer',
         '@triton-one/yellowstone-grpc',
+<<<<<<< HEAD
         'helius-laserstream',
         'rpc-websockets',
         'rpc-websockets/dist/lib/client',
         'rpc-websockets/dist/lib/client/websocket'
+=======
+        'helius-laserstream'
+>>>>>>> 1c3d167 (try to fix rpc-websockets)
     ]
 };
 
