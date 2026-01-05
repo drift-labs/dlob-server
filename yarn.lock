@@ -1181,13 +1181,49 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
-"@drift-labs/sdk@file:./drift-common/protocol/sdk":
-  version "2.143.0-beta.4"
+"@drift-labs/sdk@^2.136.0":
+  version "2.151.0"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.151.0.tgz#e56f920be8917db83de43afccd506d7933ed4e4b"
+  integrity sha512-ZKwMWxDBngKiwYIgGQoDV3a4zRP3XLR/t6jNQ0m3CYuaQ7goWDMKHWfqoq0qKbTgVwi7pF9PZCut6SkAt1E/jA==
   dependencies:
     "@coral-xyz/anchor" "0.29.0"
     "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
     "@ellipsis-labs/phoenix-sdk" "1.4.5"
     "@grpc/grpc-js" "1.14.0"
+    "@msgpack/msgpack" "^3.1.2"
+    "@openbook-dex/openbook-v2" "0.2.10"
+    "@project-serum/serum" "0.13.65"
+    "@pythnetwork/client" "2.5.3"
+    "@pythnetwork/price-service-sdk" "1.7.1"
+    "@pythnetwork/pyth-solana-receiver" "0.7.0"
+    "@solana/spl-token" "0.4.13"
+    "@solana/web3.js" "1.98.0"
+    "@switchboard-xyz/common" "3.0.14"
+    "@switchboard-xyz/on-demand" "2.4.1"
+    "@triton-one/yellowstone-grpc" "1.4.1"
+    anchor-bankrun "0.3.0"
+    gill "^0.10.2"
+    helius-laserstream "0.1.8"
+    nanoid "3.3.4"
+    node-cache "5.1.2"
+    rpc-websockets "7.5.1"
+    solana-bankrun "0.3.1"
+    strict-event-emitter-types "2.0.0"
+    tweetnacl "1.0.3"
+    tweetnacl-util "0.15.1"
+    uuid "8.3.2"
+    yargs "17.7.2"
+    zod "4.0.17"
+    zstddec "0.1.0"
+
+"@drift-labs/sdk@file:./drift-common/protocol/sdk":
+  version "2.153.0-beta.0"
+  dependencies:
+    "@coral-xyz/anchor" "0.29.0"
+    "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
+    "@ellipsis-labs/phoenix-sdk" "1.4.5"
+    "@grpc/grpc-js" "1.14.0"
+    "@msgpack/msgpack" "^3.1.2"
     "@openbook-dex/openbook-v2" "0.2.10"
     "@project-serum/serum" "0.13.65"
     "@pythnetwork/client" "2.5.3"
@@ -1214,8 +1250,9 @@
     zstddec "0.1.0"
 
 "@drift/common@file:./drift-common/common-ts":
-  version "1.0.13"
+  version "1.0.18"
   dependencies:
+    "@drift-labs/sdk" "^2.136.0"
     "@slack/web-api" "6.4.0"
     "@solana/spl-token" "0.3.8"
     "@solana/web3.js" "1.98.0"
@@ -1911,6 +1948,11 @@
     prettier "^2.5.1"
     snake-case "^3.0.4"
     spok "^1.4.3"
+
+"@msgpack/msgpack@^3.1.2":
+  version "3.1.3"
+  resolved "https://registry.yarnpkg.com/@msgpack/msgpack/-/msgpack-3.1.3.tgz#c4bff2b9539faf0882f3ee03537a7e9a4b3a7864"
+  integrity sha512-47XIizs9XZXvuJgoaJUIE2lFoID8ugvc0jzSHP+Ptfk8nTbnR8g788wv48N03Kx0UkAv559HWRQ3yzOgzlRNUA==
 
 "@noble/curves@^1.4.2":
   version "1.9.2"
