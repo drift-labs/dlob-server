@@ -15,8 +15,8 @@ const commonConfig = {
         'bigint-buffer',
         '@triton-one/yellowstone-grpc',
         'helius-laserstream',
-        'rpc-websockets',
-        'rpc-websockets/*'
+        'rpc-websockets/dist/lib/client',
+        'rpc-websockets/dist/lib/client/websocket'
     ]
 };
 
