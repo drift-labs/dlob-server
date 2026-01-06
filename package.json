@@ -60,7 +60,6 @@
 		"ts-node": "^10.9.1"
 	},
 	"resolutions": {
-		"rpc-websockets": "10.0.0",
 		"@solana/web3.js": "1.98.0"
 	},
 	"scripts": {

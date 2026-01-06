@@ -1050,7 +1050,11 @@ const main = async (): Promise<void> => {
 				}
 			});
 
-			const inputParams = createMarketBasedAuctionParams(auctionParamsInput, undefined, apiVersion);
+			const inputParams = createMarketBasedAuctionParams(
+				auctionParamsInput,
+				undefined,
+				apiVersion
+			);
 
 			const result = await mapToMarketOrderParams(
 				inputParams,
