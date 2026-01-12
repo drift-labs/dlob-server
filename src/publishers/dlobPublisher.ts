@@ -18,8 +18,6 @@ import {
 	decodeName,
 	ONE,
 	WebSocketAccountSubscriberV2,
-	OrderSubscriberConfig,
-	GrpcConfigs,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
 
@@ -49,7 +47,6 @@ import {
 	FillQualityAnalyticsRepository,
 	TakerFillVsOracleBpsRedisResult,
 } from '../athena/repositories/fillQualityAnalytics';
-import { CommitmentLevel } from '@drift-labs/sdk/lib/node/isomorphic/grpc';
 
 setGlobalDispatcher(
 	new Agent({
@@ -120,8 +117,7 @@ const endpoint = process.env.ENDPOINT;
 const grpcEndpoint = useGrpc
 	? process.env.GRPC_ENDPOINT ?? endpoint + `/${token}`
 	: '';
-const grpcClient = (process.env.GRPC_CLIENT ??
-	'yellowstone') as GrpcConfigs['client'];
+const grpcClient = process.env.GRPC_CLIENT ?? 'yellowstone';
 
 const wsEndpoint = process.env.WS_ENDPOINT;
 const useOrderSubscriber =
@@ -505,7 +501,7 @@ const main = async () => {
 	let orderSubscriber: OrderSubscriberFiltered | undefined;
 
 	if (useOrderSubscriber) {
-		let subscriptionConfig: OrderSubscriberConfig['subscriptionConfig'] = {
+		let subscriptionConfig: any = {
 			type: 'polling',
 			commitment: stateCommitment,
 			frequency: ORDERBOOK_UPDATE_INTERVAL,
@@ -536,10 +532,11 @@ const main = async () => {
 				grpcConfigs: {
 					endpoint: grpcEndpoint,
 					token: token,
-					commitmentLevel: CommitmentLevel.CONFIRMED,
+					commitmentLevel: stateCommitment,
 					channelOptions: {
-						grpcKeepAliveTimeout: 1_000,
-						grpcTcpKeepalive: 10_000,
+						'grpc.keepalive_time_ms': 10_000,
+						'grpc.keepalive_timeout_ms': 1_000,
+						'grpc.keepalive_permit_without_calls': 1,
 					},
 					client: grpcClient,
 				},
