@@ -1501,7 +1501,7 @@ export const calculateDynamicSlippage = (
 
 	// Apply 10% boost for API v2
 	if (apiVersion === 2) {
-		finalSlippage = finalSlippage * 1.1;
+		finalSlippage = finalSlippage * 1.2;
 	}
 
 	return finalSlippage;
