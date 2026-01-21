@@ -1,27 +1,68 @@
-name: Deploy on drift-common update
+name: Deploy on sdk update
 on:
+  pull_request:
+    types: [opened, synchronize]
   repository_dispatch:
-    types: [drift-common-update]
+    types: [sdk-update, drift-common-update]
 
 jobs:
-  update-submodules:
+  build-and-test:
     runs-on: ubicloud
+    # Require maintainer approval for PRs (protects secrets), skip for trusted repository_dispatch
+    environment: ${{ github.event_name == 'pull_request' && 'pr-dry-run' || '' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
           persist-credentials: false
 
-      - name: Bump protocol sdk
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
         run: |
-          git submodule update --remote
+          yarn install
+          yarn build
+
+      # Handle sdk-update event (from protocol repo)
+      # Payload: { version: "x.x.x" } - the SDK version
+      - name: Add specific version of sdk (from sdk-update)
+        if: github.event_name == 'repository_dispatch' && github.event.action == 'sdk-update'
+        run: yarn add @drift-labs/sdk@${{ github.event.client_payload.version }}
+
+      # Handle drift-common-update event (from drift-common repo)
+      # Payload: { version: "x.x.x", commit: "...", common-version: "x.x.x" }
+      - name: Add specific version of sdk (from drift-common-update)
+        if: github.event_name == 'repository_dispatch' && github.event.action == 'drift-common-update' && github.event.client_payload.version
+        run: yarn add @drift-labs/sdk@${{ github.event.client_payload.version }}
+
+      - name: Add specific version of common
+        if: github.event_name == 'repository_dispatch' && github.event.client_payload.common-version
+        run: yarn add @drift-labs/common@${{ github.event.client_payload.common-version }}
+
+      - name: Build after new dependency
+        if: github.event_name == 'repository_dispatch'
+        run: yarn run build
+
+      - name: Commit and push changes
+        if: github.event_name == 'repository_dispatch'
+        run: |
           git config user.name "GitHub Actions"
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add drift-common
-          git commit --allow-empty -m "Bumping drift-common to ${{ github.event.client_payload.commit}}"
+          git add -A
+          SDK_VERSION="${{ github.event.client_payload.version }}"
+          COMMON_VERSION="${{ github.event.client_payload.common-version }}"
+          if [ -n "$COMMON_VERSION" ]; then
+            git commit --allow-empty -m "Bumping @drift-labs/sdk to ${SDK_VERSION} and @drift-labs/common to ${COMMON_VERSION}"
+          else
+            git commit --allow-empty -m "Bumping @drift-labs/sdk to ${SDK_VERSION}"
+          fi
 
       - name: Push changes
+        if: github.event_name == 'repository_dispatch'
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GH_PAT }}

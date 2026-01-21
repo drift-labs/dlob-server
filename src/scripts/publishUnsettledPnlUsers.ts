@@ -1,5 +1,5 @@
-import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
-import { sleep } from '@drift/common';
+import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+import { sleep } from '@drift-labs/common';
 import {
 	BigNum,
 	DriftClient,
