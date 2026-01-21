@@ -18,7 +18,7 @@ import {
 	isOperationPaused,
 	isVariant,
 } from '@drift-labs/sdk';
-import { RedisClient } from '@drift/common/clients';
+import { RedisClient } from '@drift-labs/common/clients';
 import { logger } from '../utils/logger';
 import {
 	SubscriberLookup,
@@ -31,7 +31,7 @@ import {
 import { OffloadQueue } from '../utils/offload';
 import { setHealthStatus, HEALTH_STATUS } from '../core/healthCheck';
 import { CounterValue } from '../core/metricsV2';
-import { COMMON_MATH } from '@drift/common';
+import { COMMON_MATH } from '@drift-labs/common';
 
 export type wsMarketArgs = {
 	marketIndex: number;
