@@ -12,10 +12,7 @@
 		"emitDecoratorMetadata": true,
 		"baseUrl": ".",
 		"rootDir": "src",
-		"outDir": "./lib",
-		"paths": {
-			"@drift/common/clients": ["./drift-common/common-ts/lib/clients"],
-		}
+		"outDir": "./lib"
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules"]

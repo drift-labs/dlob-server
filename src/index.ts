@@ -24,7 +24,7 @@ import {
 	AssetType,
 	MarketType,
 } from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
+import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
 
 import { logger, setLogLevel } from './utils/logger';
 
@@ -50,7 +50,7 @@ import FEATURE_FLAGS from './utils/featureFlags';
 import { getDLOBProviderFromOrderSubscriber } from './dlobProvider';
 import { setGlobalDispatcher, Agent } from 'undici';
 import { HermesClient } from '@pythnetwork/hermes-client';
-import { COMMON_UI_UTILS, ENUM_UTILS } from '@drift/common';
+import { COMMON_UI_UTILS, ENUM_UTILS } from '@drift-labs/common';
 import { AuctionParamArgs } from './utils/types';
 import { TakerFillVsOracleBpsRedisResult } from './athena/repositories/fillQualityAnalytics';
 
