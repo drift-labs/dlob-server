@@ -5,12 +5,6 @@ WORKDIR /app
 
 COPY . .
 
-WORKDIR /app/drift-common/protocol/sdk
-RUN yarn && yarn build
-
-WORKDIR /app/drift-common/common-ts
-RUN yarn && yarn build
-
 WORKDIR /app
 RUN yarn && yarn build
 
