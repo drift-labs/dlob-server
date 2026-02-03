@@ -21,7 +21,7 @@ import {
 	OrderSubscriberConfig,
 	GrpcConfigs,
 } from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift/common/clients';
+import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
 
 import { logger, setLogLevel } from '../utils/logger';
 import {

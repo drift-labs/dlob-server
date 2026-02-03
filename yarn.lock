@@ -1063,6 +1063,11 @@
   resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.27.6.tgz#ec4070a04d76bae8ddbb10770ba55714a417b7c6"
   integrity sha512-vbavdySgbTTrmFE+EsiqUTzlOr5bzlnJtUv9PynGCAKvfQqjIXbvFdumPM/GxMDfyuGMJaJAU6TO4zc1Jf1i8Q==
 
+"@babel/runtime@^7.17.2":
+  version "7.28.6"
+  resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.28.6.tgz#d267a43cb1836dc4d182cce93ae75ba954ef6d2b"
+  integrity sha512-05WQkdpL9COIMz4LjTxGpPNCdlpyimKppYNoJ5Di5EUObifl8t4tuLuUBBZEpoLYOmfvIWrsp9fCl0HoPRVTdA==
+
 "@babel/template@^7.27.2", "@babel/template@^7.3.3":
   version "7.27.2"
   resolved "https://registry.yarnpkg.com/@babel/template/-/template-7.27.2.tgz#fa78ceed3c4e7b63ebf6cb39e5852fca45f6809d"
@@ -1238,6 +1243,74 @@
     tweetnacl "1.0.3"
     winston "3.13.0"
     winston-slack-webhook-transport "2.3.5"
+
+"@drift-labs/sdk@2.156.0-beta.0":
+  version "2.156.0-beta.0"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.156.0-beta.0.tgz#685e060f288689c2e6dac5e629f1dff280f3903f"
+  integrity sha512-zUpguPfkMaW76E3/wiFVFJ9VaTIc83XVQ0Tte+iWefo86Ht0/iFOUnn7oFcl9boffxwtD8xH9nWZjkq243EkqA==
+  dependencies:
+    "@coral-xyz/anchor" "0.29.0"
+    "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
+    "@ellipsis-labs/phoenix-sdk" "1.4.5"
+    "@grpc/grpc-js" "1.14.0"
+    "@msgpack/msgpack" "^3.1.2"
+    "@openbook-dex/openbook-v2" "0.2.10"
+    "@project-serum/serum" "0.13.65"
+    "@pythnetwork/client" "2.5.3"
+    "@pythnetwork/price-service-sdk" "1.7.1"
+    "@solana/spl-token" "0.4.13"
+    "@solana/web3.js" "1.98.0"
+    "@switchboard-xyz/common" "3.0.14"
+    "@switchboard-xyz/on-demand" "2.4.1"
+    "@triton-one/yellowstone-grpc" "1.4.1"
+    anchor-bankrun "0.3.0"
+    gill "^0.10.2"
+    helius-laserstream "0.1.8"
+    nanoid "3.3.4"
+    node-cache "5.1.2"
+    rpc-websockets "7.5.1"
+    solana-bankrun "0.3.1"
+    strict-event-emitter-types "2.0.0"
+    tweetnacl "1.0.3"
+    tweetnacl-util "0.15.1"
+    uuid "8.3.2"
+    yargs "17.7.2"
+    zod "4.0.17"
+    zstddec "0.1.0"
+
+"@drift-labs/sdk@^2.155.0-beta.5":
+  version "2.155.0-beta.6"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.155.0-beta.6.tgz#979a2cfeebbed92dbd2cb97f82a3cbda9623571d"
+  integrity sha512-ttxjjIKbDumoSEQo5M4Cb4WJPcHuR8kYHoyOka3uAD5aHl0YXGyX1ckIARsUcL0mnpgExGN3tETY90whv5y+eQ==
+  dependencies:
+    "@coral-xyz/anchor" "0.29.0"
+    "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
+    "@ellipsis-labs/phoenix-sdk" "1.4.5"
+    "@grpc/grpc-js" "1.14.0"
+    "@msgpack/msgpack" "^3.1.2"
+    "@openbook-dex/openbook-v2" "0.2.10"
+    "@project-serum/serum" "0.13.65"
+    "@pythnetwork/client" "2.5.3"
+    "@pythnetwork/price-service-sdk" "1.7.1"
+    "@solana/spl-token" "0.4.13"
+    "@solana/web3.js" "1.98.0"
+    "@switchboard-xyz/common" "3.0.14"
+    "@switchboard-xyz/on-demand" "2.4.1"
+    "@triton-one/yellowstone-grpc" "1.4.1"
+    anchor-bankrun "0.3.0"
+    gill "^0.10.2"
+    helius-laserstream "0.1.8"
+    nanoid "3.3.4"
+    node-cache "5.1.2"
+    rpc-websockets "7.5.1"
+    solana-bankrun "0.3.1"
+    strict-event-emitter-types "2.0.0"
+    tweetnacl "1.0.3"
+    tweetnacl-util "0.15.1"
+    uuid "8.3.2"
+    yargs "17.7.2"
+    zod "4.0.17"
+    zstddec "0.1.0"
 
 "@ellipsis-labs/phoenix-sdk@1.4.5":
   version "1.4.5"
@@ -1429,6 +1502,24 @@
   dependencies:
     "@grpc/proto-loader" "^0.8.0"
     "@js-sdsl/ordered-map" "^4.4.2"
+
+"@grpc/grpc-js@^1.8.0":
+  version "1.13.4"
+  resolved "https://registry.yarnpkg.com/@grpc/grpc-js/-/grpc-js-1.13.4.tgz#922fbc496e229c5fa66802d2369bf181c1df1c5a"
+  integrity sha512-GsFaMXCkMqkKIvwCQjCrwH+GHbPKBjhwo/8ZuUkWHqbI73Kky9I+pQltrlT0+MWpedCoosda53lgjYfyEPgxBg==
+  dependencies:
+    "@grpc/proto-loader" "^0.7.13"
+    "@js-sdsl/ordered-map" "^4.4.2"
+
+"@grpc/proto-loader@^0.7.13":
+  version "0.7.15"
+  resolved "https://registry.yarnpkg.com/@grpc/proto-loader/-/proto-loader-0.7.15.tgz#4cdfbf35a35461fc843abe8b9e2c0770b5095e60"
+  integrity sha512-tMXdRCfYVixjuFK+Hk0Q1s38gV9zDiDJfWL3h1rv4Qc39oILCu1TRTDt7+fGUI8K4G1Fj125Hx/ru3azECWTyQ==
+  dependencies:
+    lodash.camelcase "^4.3.0"
+    long "^5.0.0"
+    protobufjs "^7.2.5"
+    yargs "^17.7.2"
 
 "@grpc/proto-loader@^0.8.0":
   version "0.8.0"
@@ -8494,6 +8585,19 @@ rimraf@^3.0.2:
   dependencies:
     glob "^7.1.3"
 
+rpc-websockets@7.5.1:
+  version "7.5.1"
+  resolved "https://registry.yarnpkg.com/rpc-websockets/-/rpc-websockets-7.5.1.tgz#e0a05d525a97e7efc31a0617f093a13a2e10c401"
+  integrity sha512-kGFkeTsmd37pHPMaHIgN1LVKXMi0JD782v4Ds9ZKtLlwdTKjn+CxM9A9/gLT2LaOuEcEFGL98h1QWQtlOIdW0w==
+  dependencies:
+    "@babel/runtime" "^7.17.2"
+    eventemitter3 "^4.0.7"
+    uuid "^8.3.2"
+    ws "^8.5.0"
+  optionalDependencies:
+    bufferutil "^4.0.1"
+    utf-8-validate "^5.0.2"
+
 rpc-websockets@^9.0.2:
   version "9.3.2"
   resolved "https://registry.yarnpkg.com/rpc-websockets/-/rpc-websockets-9.3.2.tgz#26b4d7ebaf8e53422528619a3c314e83590d85bf"
@@ -9053,11 +9157,6 @@ ts-jest@^29.1.0:
     semver "^7.7.2"
     type-fest "^4.41.0"
     yargs-parser "^21.1.1"
-
-ts-log@^2.2.7:
-  version "2.2.7"
-  resolved "https://registry.yarnpkg.com/ts-log/-/ts-log-2.2.7.tgz#4f4512144898b77c9984e91587076fcb8518688e"
-  integrity sha512-320x5Ggei84AxzlXp91QkIGSw5wgaLT6GeAH0KsqDmRZdVWW2OiSeVvElVoatk3f7nicwXlElXsoFkARiGE2yg==
 
 ts-node@^10.9.1:
   version "10.9.2"
