@@ -1191,45 +1191,14 @@
     enabled "2.0.x"
     kuler "^2.0.0"
 
-"@drift-labs/sdk@^2.157.0-beta.0", "@drift-labs/sdk@file:./drift-common/protocol/sdk":
-  version "2.157.0-beta.2"
+"@drift-labs/common@1.0.20":
+  version "1.0.20"
+  resolved "https://registry.yarnpkg.com/@drift-labs/common/-/common-1.0.20.tgz#9135da5d2dc11adfe7074afda45208e421d61a19"
+  integrity sha512-C1QYUstbOreNI+DHX84hjbwuZvPHDR3fE7P07GlBqsUSZt1bbsfzeZByH6Jhm1Zr7JSbg/jX9LBQ4c8ShxSBEA==
   dependencies:
-    "@coral-xyz/anchor" "0.29.0"
-    "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
-    "@ellipsis-labs/phoenix-sdk" "1.4.5"
-    "@grpc/grpc-js" "1.14.0"
-    "@msgpack/msgpack" "^3.1.2"
-    "@openbook-dex/openbook-v2" "0.2.10"
-    "@project-serum/serum" "0.13.65"
-    "@pythnetwork/client" "2.5.3"
-    "@pythnetwork/price-service-sdk" "1.7.1"
-    "@pythnetwork/pyth-lazer-sdk" "5.2.1"
-    "@solana/spl-token" "0.4.13"
-    "@solana/web3.js" "1.98.0"
-    "@switchboard-xyz/common" "3.0.14"
-    "@switchboard-xyz/on-demand" "2.4.1"
-    "@triton-one/yellowstone-grpc" "5.0.2"
-    anchor-bankrun "0.3.0"
-    gill "^0.10.2"
-    nanoid "3.3.4"
-    node-cache "5.1.2"
-    solana-bankrun "0.3.1"
-    strict-event-emitter-types "2.0.0"
-    tweetnacl "1.0.3"
-    tweetnacl-util "0.15.1"
-    uuid "8.3.2"
-    yargs "17.7.2"
-    zod "4.0.17"
-    zstddec "0.1.0"
-  optionalDependencies:
-    helius-laserstream "0.1.8"
-
-"@drift/common@file:./drift-common/common-ts":
-  version "1.0.28"
-  dependencies:
-    "@drift-labs/sdk" "^2.157.0-beta.0"
+    "@drift-labs/sdk" "^2.155.0-beta.5"
     "@slack/web-api" "6.4.0"
-    "@solana/spl-token" "^0.4.14"
+    "@solana/spl-token" "0.3.8"
     "@solana/web3.js" "1.98.0"
     bcryptjs-react "2.4.6"
     cerializr "3.1.4"
@@ -2662,17 +2631,6 @@
   integrity sha512-xr2boVXTyv1KUt/c6llUTfbv2jpud99pWlMJbFaHGUBoygQsByuy7WbjIJKZ+0Blg1itLZl0Lp/pJGGg8SdJoQ==
   dependencies:
     bn.js "^5.2.1"
-
-"@pythnetwork/pyth-lazer-sdk@5.2.1":
-  version "5.2.1"
-  resolved "https://registry.yarnpkg.com/@pythnetwork/pyth-lazer-sdk/-/pyth-lazer-sdk-5.2.1.tgz#7a35573f30c214c6e3014dcffbdec0053b3f7116"
-  integrity sha512-/0rrPi6sZdVH+cWtW+X/hmQzw+nP2fIF6BlrJRTrqwK2IXWZWW+40sHoj839HrbyUXOJyG9zKyco37eFuTE/nA==
-  dependencies:
-    "@isaacs/ttlcache" "^1.4.1"
-    buffer "^6.0.3"
-    isomorphic-ws "^5.0.0"
-    ts-log "^2.2.7"
-    ws "^8.18.0"
 
 "@redis/bloom@1.2.0":
   version "1.2.0"
@@ -4212,6 +4170,15 @@
   dependencies:
     "@solana/codecs" "2.0.0-rc.1"
 
+"@solana/spl-token@0.3.8":
+  version "0.3.8"
+  resolved "https://registry.yarnpkg.com/@solana/spl-token/-/spl-token-0.3.8.tgz#8e9515ea876e40a4cc1040af865f61fc51d27edf"
+  integrity sha512-ogwGDcunP9Lkj+9CODOWMiVJEdRtqHAtX2rWF62KxnnSWtMZtV9rDhTrZFshiyJmxDnRL/1nKE1yJHg4jjs3gg==
+  dependencies:
+    "@solana/buffer-layout" "^4.0.0"
+    "@solana/buffer-layout-utils" "^0.2.0"
+    buffer "^6.0.3"
+
 "@solana/spl-token@0.4.13", "@solana/spl-token@^0.4.0":
   version "0.4.13"
   resolved "https://registry.yarnpkg.com/@solana/spl-token/-/spl-token-0.4.13.tgz#8f65c3c2b315e1a00a91b8d0f60922c6eb71de62"
@@ -4243,17 +4210,6 @@
     "@solana/buffer-layout" "^4.0.0"
     "@solana/buffer-layout-utils" "^0.2.0"
     "@solana/spl-token-metadata" "^0.1.2"
-    buffer "^6.0.3"
-
-"@solana/spl-token@^0.4.14":
-  version "0.4.14"
-  resolved "https://registry.yarnpkg.com/@solana/spl-token/-/spl-token-0.4.14.tgz#b86bc8a17f50e9680137b585eca5f5eb9d55c025"
-  integrity sha512-u09zr96UBpX4U685MnvQsNzlvw9TiY005hk1vJmJr7gMJldoPG1eYU5/wNEyOA5lkMLiR/gOi9SFD4MefOYEsA==
-  dependencies:
-    "@solana/buffer-layout" "^4.0.0"
-    "@solana/buffer-layout-utils" "^0.2.0"
-    "@solana/spl-token-group" "^0.0.7"
-    "@solana/spl-token-metadata" "^0.1.6"
     buffer "^6.0.3"
 
 "@solana/subscribable@2.3.0":
@@ -4448,6 +4404,13 @@
   version "0.0.6"
   resolved "https://registry.yarnpkg.com/@triton-one/yellowstone-grpc-napi-linux-x64-musl/-/yellowstone-grpc-napi-linux-x64-musl-0.0.6.tgz#32f7d0197e5cb8ab0c8ff0532690a511d4ae9ab1"
   integrity sha512-kORs4rX1aTzReidLLbFhrK8oGj4R3hVP3aDhR8tKFm8modbhaEZPyqY2MPyTS3VNYyFeMQrKTLllOJ5wsUeVkQ==
+
+"@triton-one/yellowstone-grpc@1.4.1":
+  version "1.4.1"
+  resolved "https://registry.yarnpkg.com/@triton-one/yellowstone-grpc/-/yellowstone-grpc-1.4.1.tgz#b50434f68c3d73c6ce3e1f225656064c080f4b25"
+  integrity sha512-ZN49vooxFbOqWttll8u7AOsIVnX+srqX9ddhZ9ttE+OcehUo8c2p2suK8Gr2puab49cgsV0VGjiTn9Gua/ntIw==
+  dependencies:
+    "@grpc/grpc-js" "^1.8.0"
 
 "@triton-one/yellowstone-grpc@5.0.2":
   version "5.0.2"
@@ -8340,7 +8303,7 @@ prompts@^2.0.1:
     kleur "^3.0.3"
     sisteransi "^1.0.5"
 
-protobufjs@*, protobufjs@^7.5.3:
+protobufjs@*, protobufjs@^7.2.5, protobufjs@^7.5.3:
   version "7.5.4"
   resolved "https://registry.yarnpkg.com/protobufjs/-/protobufjs-7.5.4.tgz#885d31fe9c4b37f25d1bb600da30b1c5b37d286a"
   integrity sha512-CvexbZtbov6jW2eXAvLukXjXUW1TzFaivC46BpWc/3BpcCysb5Vffu+B3XHMm8lVEuy2Mm4XGex8hBSg1yapPg==
@@ -9466,11 +9429,6 @@ ws@^8.14.2, ws@^8.5.0:
   version "8.18.3"
   resolved "https://registry.yarnpkg.com/ws/-/ws-8.18.3.tgz#b56b88abffde62791c639170400c93dcb0c95472"
   integrity sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==
-
-ws@^8.18.0:
-  version "8.19.0"
-  resolved "https://registry.yarnpkg.com/ws/-/ws-8.19.0.tgz#ddc2bdfa5b9ad860204f5a72a4863a8895fd8c8b"
-  integrity sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==
 
 xtend@^4.0.0:
   version "4.0.2"
