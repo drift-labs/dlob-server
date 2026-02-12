@@ -24,8 +24,8 @@ import {
 	DevnetSpotMarkets,
 	PERCENTAGE_PRECISION_EXP,
 } from '@drift-labs/sdk';
-import { RedisClient } from '@drift/common/clients';
-import { TradeOffsetPrice } from '@drift/common';
+import { RedisClient } from '@drift-labs/common/clients';
+import { TradeOffsetPrice } from '@drift-labs/common';
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
@@ -33,7 +33,7 @@ import { Connection } from '@solana/web3.js';
 import { wsMarketArgs } from 'src/dlob-subscriber/DLOBSubscriberIO';
 import { DEFAULT_AUCTION_PARAMS, MID_MAJOR_MARKETS } from './constants';
 import { AuctionParamArgs } from './types';
-import { COMMON_MATH, ENUM_UTILS } from '@drift/common';
+import { COMMON_MATH, ENUM_UTILS } from '@drift-labs/common';
 import { TakerFillVsOracleBpsRedisResult } from '../athena/repositories/fillQualityAnalytics';
 
 const MAX_FILL_QUALITY_AGE_MS = 10 * 60 * 1000; // 10 minutes

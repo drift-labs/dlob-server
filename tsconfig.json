@@ -10,11 +10,12 @@
 		"skipLibCheck": true,
 		"experimentalDecorators": true,
 		"emitDecoratorMetadata": true,
+		"moduleResolution": "node",
 		"baseUrl": ".",
 		"rootDir": "src",
 		"outDir": "./lib",
 		"paths": {
-			"@drift/common/clients": ["./drift-common/common-ts/lib/clients"],
+			"@drift-labs/common/clients": ["./node_modules/@drift-labs/common/lib/clients"]
 		}
 	},
 	"include": ["src/**/*"],

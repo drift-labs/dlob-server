@@ -26,14 +26,14 @@ This is the backend server that provides a REST API for the drift [DLOB](https:/
 
 ## Setup
 
-The build dependencies
+Install dependencies and build:
 
 ```
-git submodule update --init
-bash build_all.sh
+yarn install
+yarn build
 ```
 
-First set the necessary environment variables:
+Set the necessary environment variables:
 
 ```
 cp .env.example .env
