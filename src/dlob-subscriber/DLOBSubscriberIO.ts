@@ -256,7 +256,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 													? quote['bid_price']
 													: 0,
 												price: quote['is_oracle_offset']
-													? 0
+													? ZERO
 													: new BN(quote['bid_price']),
 											}
 										);
@@ -290,7 +290,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 													? quote['ask_price']
 													: 0,
 												price: quote['is_oracle_offset']
-													? 0
+													? ZERO
 													: new BN(quote['ask_price']),
 												baseAssetAmount: new BN(quote['ask_size']),
 												direction: PositionDirection.SHORT,
