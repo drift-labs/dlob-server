@@ -182,7 +182,7 @@ describe('Auction Parameters Functions', () => {
 
 	describe('mapToMarketOrderParams with Mock L2 Data', () => {
 		const mockDriftClient = {
-			getOracleDataForPerpMarket: jest.fn(),
+			getMMOracleDataForPerpMarket: jest.fn(),
 			getOracleDataForSpotMarket: jest.fn(),
 		};
 
@@ -209,7 +209,7 @@ describe('Auction Parameters Functions', () => {
 		it('should successfully calculate prices with mock L2 orderbook data', async () => {
 			const solPrice = 160; // $160 SOL price
 
-			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+			mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
 			});
 
@@ -265,7 +265,7 @@ describe('Auction Parameters Functions', () => {
 			const quoteAmount = 1000; // $1,000 worth
 			const quoteAmountInPrecision = new BN(quoteAmount).mul(QUOTE_PRECISION); // Convert to quote precision
 
-			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+			mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
 			});
 
@@ -352,7 +352,7 @@ describe('Auction Parameters Functions', () => {
 		it('should handle different directions correctly', async () => {
 			const solPrice = 160; // $160 SOL price
 
-			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+			mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
 			});
 
@@ -392,7 +392,7 @@ describe('Auction Parameters Functions', () => {
 		it('should handle various order sizes with L2 depth', async () => {
 			const solPrice = 160; // $160 SOL price
 
-			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+			mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
 				price: new BN(solPrice).mul(PRICE_PRECISION),
 			});
 
@@ -456,7 +456,7 @@ describe('Auction Parameters Functions', () => {
 		});
 
 		it('should handle zero oracle price scenario', async () => {
-			mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+			mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
 				price: ZERO,
 			});
 
@@ -696,7 +696,7 @@ describe('Auction Parameters Functions', () => {
 
 describe('calculateDynamicSlippage - crossed book handling', () => {
 	const mockDriftClient = {
-		getOracleDataForPerpMarket: jest.fn(),
+		getMMOracleDataForPerpMarket: jest.fn(),
 		getOracleDataForSpotMarket: jest.fn(),
 	} as any;
 
@@ -714,7 +714,7 @@ describe('calculateDynamicSlippage - crossed book handling', () => {
 		process.env.DYNAMIC_CROSS_SPREAD_CAP = '0.1'; // 0.1%
 
 		// Oracle 100
-		mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+		mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
 			price: new BN(100).mul(PRICE_PRECISION),
 		});
 
@@ -748,7 +748,7 @@ describe('calculateDynamicSlippage - crossed book handling', () => {
 		delete process.env.DYNAMIC_CROSS_SPREAD_MODE; // default cap
 		process.env.DYNAMIC_CROSS_SPREAD_CAP = '0.1';
 
-		mockDriftClient.getOracleDataForPerpMarket.mockReturnValue({
+		mockDriftClient.getMMOracleDataForPerpMarket.mockReturnValue({
 			price: new BN(100).mul(PRICE_PRECISION),
 		});
 
