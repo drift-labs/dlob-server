@@ -1,6 +1,7 @@
 {
 	"name": "@drift-labs/dlob-server",
 	"version": "0.1.0",
+	"packageManager": "yarn@1.22.22",
 	"author": "wphan",
 	"main": "lib/index.js",
 	"license": "Apache-2.0",
@@ -60,7 +61,10 @@
 		"ts-node": "^10.9.1"
 	},
 	"resolutions": {
-		"@solana/web3.js": "1.98.0"
+		"@solana/web3.js": "1.98.0",
+		"@drift-labs/sdk": "2.162.0-beta.0",
+		"@triton-one/yellowstone-grpc": "5.0.5",
+		"rpc-websockets": "9.3.2"
 	},
 	"scripts": {
 		"prepare": "husky install",
@@ -84,6 +88,7 @@
 		"lint": "eslint . --ext ts --quiet",
 		"lint:fix": "eslint . --ext ts --fix",
 		"playground": "ts-node src/playground.ts",
+		"check:grpc-deps": "node scripts/check-unique-yarn-versions.js",
 		"test": "jest src/utils/tests/auctionParams.test.ts",
 		"test:watch": "jest src/utils/tests/auctionParams.test.ts --watch"
 	},
