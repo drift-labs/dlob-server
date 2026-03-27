@@ -201,6 +201,16 @@ export const getAbsoluteBpsDiff = (
 };
 
 /**
+ * Computes signed bps difference between a fill price and a reference quote price.
+ */
+export const getSignedBpsDiff = (
+	fillPrice: number,
+	quotePrice: number
+): number => {
+	return ((fillPrice - quotePrice) / quotePrice) * 10000;
+};
+
+/**
  * Buckets an absolute bps distance into the configured indicative spread bands.
  */
 export const getIndicativeBpsBucket = (bpsDiff: number): string => {
@@ -210,6 +220,20 @@ export const getIndicativeBpsBucket = (bpsDiff: number): string => {
 		}
 	}
 	return INDICATIVE_BPS_BUCKETS[INDICATIVE_BPS_BUCKETS.length - 1].label;
+};
+
+/**
+ * Buckets a signed bps distance into a compact directional classification.
+ */
+export const getIndicativeDirectionBucket = (signedBpsDiff: number): string => {
+	const epsilon = 1e-9;
+	if (signedBpsDiff > epsilon) {
+		return 'better';
+	}
+	if (signedBpsDiff < -epsilon) {
+		return 'worse';
+	}
+	return 'equal';
 };
 
 /**

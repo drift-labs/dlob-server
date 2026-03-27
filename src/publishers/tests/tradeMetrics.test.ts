@@ -3,12 +3,14 @@ import { BASE_PRECISION, PRICE_PRECISION } from '@drift-labs/sdk';
 import {
 	getAbsoluteBpsDiff,
 	getCompetitiveLiquidity,
+	getIndicativeDirectionBucket,
 	getFillPrice,
 	getFillSide,
 	getFillTimestampMs,
 	getIndicativeBpsBucket,
 	getQuoteTimestampMs,
 	getQuoteValueOnBook,
+	getSignedBpsDiff,
 	isCompetitivePrice,
 	rawPriceToNumber,
 } from '../tradeMetrics';
@@ -95,6 +97,11 @@ describe('tradeMetrics', () => {
 			expect(getAbsoluteBpsDiff(99.9, 100)).toBeCloseTo(10, 8);
 		});
 
+		it('computes signed bps distance', () => {
+			expect(getSignedBpsDiff(100.1, 100)).toBeCloseTo(10, 8);
+			expect(getSignedBpsDiff(99.9, 100)).toBeCloseTo(-10, 8);
+		});
+
 		it('maps bps distances into the configured buckets', () => {
 			expect(getIndicativeBpsBucket(0)).toBe('very_tight');
 			expect(getIndicativeBpsBucket(9.99)).toBe('very_tight');
@@ -106,6 +113,12 @@ describe('tradeMetrics', () => {
 			expect(getIndicativeBpsBucket(49.99)).toBe('wide');
 			expect(getIndicativeBpsBucket(50)).toBe('very_wide');
 			expect(getIndicativeBpsBucket(500)).toBe('very_wide');
+		});
+
+		it('maps signed bps distances into directional buckets', () => {
+			expect(getIndicativeDirectionBucket(10)).toBe('better');
+			expect(getIndicativeDirectionBucket(0)).toBe('equal');
+			expect(getIndicativeDirectionBucket(-10)).toBe('worse');
 		});
 	});
 
