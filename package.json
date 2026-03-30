@@ -70,7 +70,6 @@
 		"dev": "ts-node src/index.ts",
 		"server-lite": "ts-node src/serverLite.ts",
 		"dlob-publish": "ts-node src/publishers/dlobPublisher.ts",
-		"dlob-publish:local": "DOTENV_CONFIG_PATH=.env.dlob.local ts-node -r dotenv/config src/publishers/dlobPublisher.ts",
 		"trades-publish": "ts-node src/publishers/tradesPublisher.ts",
 		"trades-publish:local": "DOTENV_CONFIG_PATH=.env.trades.local ts-node -r dotenv/config src/publishers/tradesPublisher.ts",
 		"mock-jit:submit": "DOTENV_CONFIG_PATH=.env.trades.local ts-node -r dotenv/config src/scripts/submitMockJitMetricsData.ts",
