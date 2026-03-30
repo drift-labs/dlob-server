@@ -112,6 +112,14 @@ const wsEndpoint = process.env.WS_ENDPOINT;
 const indicativeQuotesCacheTtlMs = process.env.INDICATIVE_QUOTES_CACHE_TTL_MS
 	? parseInt(process.env.INDICATIVE_QUOTES_CACHE_TTL_MS)
 	: 250;
+const indicativeToMakerAuthorityMap = process.env
+	.INDICATIVE_TO_MAKER_AUTHORITY_MAP
+	? (JSON.parse(process.env.INDICATIVE_TO_MAKER_AUTHORITY_MAP) as Record<
+			string,
+			string
+	  >)
+	: {};
+const subaccountToIndicative = new Map<string, string>();
 const enableMockFillEndpoint =
 	process.env.ENABLE_MOCK_FILL_ENDPOINT?.toLowerCase() === 'true';
 const mockOnlyMode = process.env.MOCK_ONLY_MODE?.toLowerCase() === 'true';
@@ -134,7 +142,13 @@ const startMockFillEndpoint = (
 	app.use(express.json());
 	app.post('/mockFill', async (req, res) => {
 		try {
-			await processFillEvent(req.body as FillEvent);
+			const fillEvent = req.body as FillEvent;
+			await processFillEvent({
+				...fillEvent,
+				makerIndicativeKey: fillEvent.maker
+					? subaccountToIndicative.get(fillEvent.maker)
+					: undefined,
+			} as FillEvent);
 			res.status(200).json({ ok: true });
 		} catch (error) {
 			logger.error('Failed to process mock fill:', error);
@@ -146,6 +160,33 @@ const startMockFillEndpoint = (
 			`Mock fill endpoint listening on http://localhost:${mockFillPort}`
 		);
 	});
+};
+
+const preloadMakerAccountCache = async () => {
+	for (const [indicativeMaker, authority] of Object.entries(
+		indicativeToMakerAuthorityMap
+	)) {
+		try {
+			const userAccounts =
+				await driftClient.getUserAccountsAndAddressesForAuthority(
+					new PublicKey(authority)
+				);
+			for (const userAccount of userAccounts) {
+				subaccountToIndicative.set(
+					userAccount.publicKey.toBase58(),
+					indicativeMaker
+				);
+			}
+			logger.info(
+				`Preloaded ${userAccounts.length} subaccounts for indicative maker ${indicativeMaker}`
+			);
+		} catch (error) {
+			logger.error(
+				`Failed to preload subaccounts for indicative maker ${indicativeMaker}:`,
+				error
+			);
+		}
+	}
 };
 
 const main = async () => {
@@ -173,6 +214,8 @@ const main = async () => {
 	await redisClient.connect();
 	const indicativeQuotesRedisClient = new RedisClient({});
 	await indicativeQuotesRedisClient.connect();
+	await driftClient.subscribe();
+	await preloadMakerAccountCache();
 
 	const { processFillEvent } = createTradeMetricsProcessor({
 		redisClientPrefix,
@@ -216,8 +259,6 @@ const main = async () => {
 	);
 	logger.info(`Wallet pubkey: ${wallet.publicKey.toBase58()}`);
 	logger.info(` . SOL balance: ${lamportsBalance / 10 ** 9}`);
-
-	await driftClient.subscribe();
 	driftClient.eventEmitter.on('error', (e) => {
 		logger.error(e);
 	});
@@ -318,7 +359,12 @@ const main = async () => {
 			})
 		)
 		.subscribe(async (fillEvent: FillEvent) => {
-			await processFillEvent(fillEvent);
+			await processFillEvent({
+				...fillEvent,
+				makerIndicativeKey: fillEvent.maker
+					? subaccountToIndicative.get(fillEvent.maker)
+					: undefined,
+			});
 		});
 
 	console.log('Publishing trades');

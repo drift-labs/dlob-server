@@ -30,6 +30,7 @@ export type FillEvent = {
 	takerOrderCumulativeBaseAssetAmountFilled: number;
 	takerOrderCumulativeQuoteAssetAmountFilled: number;
 	maker?: string;
+	makerIndicativeKey?: string;
 	makerOrderId?: number;
 	makerOrderDirection?: string;
 	makerOrderBaseAssetAmount: number;
@@ -270,7 +271,7 @@ export const createTradeMetricsProcessor = ({
 					result: 'competitive',
 				});
 
-				if (fillEvent.maker === quote.maker) {
+				if (fillEvent.makerIndicativeKey === quote.maker) {
 					metrics.indicativeCompetitiveFillCount.add(1, attrs);
 					metrics.indicativeCompetitiveCapturedNotional.add(
 						Math.min(fillEvent.baseAssetAmountFilled, opportunitySize) *
@@ -300,19 +301,25 @@ export const createTradeMetricsProcessor = ({
 				});
 			}
 
-			const fillMakerEvaluation = fillEvent.maker
+			const fillMakerEvaluation = fillEvent.makerIndicativeKey
 				? marketQuoteEvaluations.find(
-						(evaluation) => evaluation.maker === fillEvent.maker
+						(evaluation) => evaluation.maker === fillEvent.makerIndicativeKey
 				  )
 				: undefined;
 			if (
-				fillEvent.maker &&
+				fillEvent.makerIndicativeKey &&
 				fillMakerEvaluation &&
 				fillMakerEvaluation.totalQuoteValueOnBook > 0 &&
-				!marketQuotes.find((quote) => quote.maker === fillEvent.maker)
+				!marketQuotes.find(
+					(quote) => quote.maker === fillEvent.makerIndicativeKey
+				)
 			) {
 				metrics.indicativeQuoteEvaluationCount.add(1, {
-					...getMakerMetricAttrs(fillEvent, fillEvent.maker, fillSide),
+					...getMakerMetricAttrs(
+						fillEvent,
+						fillMakerEvaluation.maker,
+						fillSide
+					),
 					result: 'maker_not_competitive',
 				});
 			}

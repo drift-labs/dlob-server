@@ -135,7 +135,8 @@ describe('tradeMetricsProcessor', () => {
 			takerOrderBaseAssetAmount: 1,
 			takerOrderCumulativeBaseAssetAmountFilled: 1,
 			takerOrderCumulativeQuoteAssetAmountFilled: 100.1,
-			maker: 'good-maker',
+			maker: 'maker-user-account',
+			makerIndicativeKey: 'good-maker',
 			makerOrderId: 2,
 			makerOrderDirection: 'long',
 			makerOrderBaseAssetAmount: 1,
@@ -367,6 +368,86 @@ describe('tradeMetricsProcessor', () => {
 		);
 	});
 
+	it('emits maker_not_competitive using the indicative maker label when indicative key is provided', async () => {
+		const metrics = createMetricSinks();
+		const quoteState = new Map<string, any>([
+			['market_mms_perp_0', ['quoted-maker']],
+			[
+				'mm_quotes_v2_perp_0_quoted-maker',
+				{
+					ts: 1710000000000,
+					quotes: [{ bid_price: 99900000, bid_size: 1000000000 }],
+				},
+			],
+		]);
+
+		const { processFillEvent } = createTradeMetricsProcessor({
+			redisClientPrefix: 'dlob:',
+			indicativeQuoteMaxAgeMs: 1000,
+			indicativeQuotesCacheTtlMs: 250,
+			spotMarketPrecisionResolver: () => undefined,
+			publisherRedisClient: {
+				publish: async () => 1,
+			},
+			indicativeQuotesRedisClient: {
+				smembers: async (key) => quoteState.get(key) ?? [],
+				get: async (key) => quoteState.get(key),
+			},
+			metrics,
+			nowMsProvider: () => 1710000000000,
+		});
+
+		const fillEvent: FillEvent = {
+			ts: 1710000000000,
+			marketIndex: 0,
+			marketType: 'perp',
+			filler: 'mock-filler',
+			takerFee: 0,
+			makerFee: 0,
+			quoteAssetAmountSurplus: 0,
+			baseAssetAmountFilled: 1,
+			quoteAssetAmountFilled: 100,
+			taker: 'mock-taker',
+			takerOrderId: 1,
+			takerOrderDirection: 'short',
+			takerOrderBaseAssetAmount: 1,
+			takerOrderCumulativeBaseAssetAmountFilled: 1,
+			takerOrderCumulativeQuoteAssetAmountFilled: 100,
+			maker: 'maker-user-account',
+			makerIndicativeKey: 'quoted-maker',
+			makerOrderId: 2,
+			makerOrderDirection: 'long',
+			makerOrderBaseAssetAmount: 1,
+			makerOrderCumulativeBaseAssetAmountFilled: 1,
+			makerOrderCumulativeQuoteAssetAmountFilled: 100,
+			oraclePrice: 100,
+			txSig: 'mock-4',
+			slot: 4,
+			fillRecordId: 4,
+			action: 'fill',
+			actionExplanation: 'none',
+			referrerReward: 0,
+			bitFlags: 0,
+		};
+
+		await processFillEvent(fillEvent);
+
+		expect(metrics.indicativeQuoteEvaluationCount.calls).toEqual(
+			expect.arrayContaining([
+				{
+					value: 1,
+					attributes: {
+						maker: 'quoted-maker',
+						market_index: 0,
+						market_type: 'perp',
+						side: 'long',
+						result: 'maker_not_competitive',
+					},
+				},
+			])
+		);
+	});
+
 	it('treats quotes as fresh based on evaluation time rather than fill timestamp', async () => {
 		const metrics = createMetricSinks();
 		const quoteState = new Map<string, any>([
@@ -455,5 +536,82 @@ describe('tradeMetricsProcessor', () => {
 				},
 			])
 		);
+	});
+
+	it('matches competitive fills using precomputed indicative key', async () => {
+		const metrics = createMetricSinks();
+		const quoteState = new Map<string, any>([
+			['market_mms_perp_0', ['indicative-maker']],
+			[
+				'mm_quotes_v2_perp_0_indicative-maker',
+				{
+					ts: 1710000000000,
+					quotes: [{ bid_price: 100100000, bid_size: 1000000000 }],
+				},
+			],
+		]);
+
+		const { processFillEvent } = createTradeMetricsProcessor({
+			redisClientPrefix: 'dlob:',
+			indicativeQuoteMaxAgeMs: 1000,
+			indicativeQuotesCacheTtlMs: 250,
+			spotMarketPrecisionResolver: () => undefined,
+			publisherRedisClient: {
+				publish: async () => 1,
+			},
+			indicativeQuotesRedisClient: {
+				smembers: async (key) => quoteState.get(key) ?? [],
+				get: async (key) => quoteState.get(key),
+			},
+			metrics,
+			nowMsProvider: () => 1710000000000,
+		});
+
+		const fillEvent: FillEvent = {
+			ts: 1710000000000,
+			marketIndex: 0,
+			marketType: 'perp',
+			filler: 'mock-filler',
+			takerFee: 0,
+			makerFee: 0,
+			quoteAssetAmountSurplus: 0,
+			baseAssetAmountFilled: 1,
+			quoteAssetAmountFilled: 100.1,
+			taker: 'mock-taker',
+			takerOrderId: 1,
+			takerOrderDirection: 'short',
+			takerOrderBaseAssetAmount: 1,
+			takerOrderCumulativeBaseAssetAmountFilled: 1,
+			takerOrderCumulativeQuoteAssetAmountFilled: 100.1,
+			maker: 'maker-user-account',
+			makerIndicativeKey: 'indicative-maker',
+			makerOrderId: 2,
+			makerOrderDirection: 'long',
+			makerOrderBaseAssetAmount: 1,
+			makerOrderCumulativeBaseAssetAmountFilled: 1,
+			makerOrderCumulativeQuoteAssetAmountFilled: 100.1,
+			oraclePrice: 100,
+			txSig: 'mock-5',
+			slot: 5,
+			fillRecordId: 5,
+			action: 'fill',
+			actionExplanation: 'none',
+			referrerReward: 0,
+			bitFlags: 0,
+		};
+
+		await processFillEvent(fillEvent);
+
+		expect(metrics.indicativeCompetitiveFillCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'indicative-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+				},
+			},
+		]);
 	});
 });
