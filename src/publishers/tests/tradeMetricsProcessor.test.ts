@@ -1,0 +1,289 @@
+import { describe, expect, it } from '@jest/globals';
+import {
+	createTradeMetricsProcessor,
+	FillEvent,
+	TradeMetricsSinks,
+} from '../tradeMetricsProcessor';
+
+type CounterTestSink = {
+	calls: Array<{ value: number; attributes: Record<string, string | number> }>;
+	add: (value: number, attributes: Record<string, string | number>) => void;
+};
+
+type GaugeTestSink = {
+	calls: Array<{ value: number; attributes: Record<string, string | number> }>;
+	setLatestValue: (
+		value: number,
+		attributes: Record<string, string | number>
+	) => void;
+};
+
+const createCounterSink = (): CounterTestSink => {
+	const calls: Array<{
+		value: number;
+		attributes: Record<string, string | number>;
+	}> = [];
+	return {
+		calls,
+		add: (value: number, attributes: Record<string, string | number>) => {
+			calls.push({ value, attributes });
+		},
+	};
+};
+
+const createGaugeSink = (): GaugeTestSink => {
+	const calls: Array<{
+		value: number;
+		attributes: Record<string, string | number>;
+	}> = [];
+	return {
+		calls,
+		setLatestValue: (
+			value: number,
+			attributes: Record<string, string | number>
+		) => {
+			calls.push({ value, attributes });
+		},
+	};
+};
+
+type TestTradeMetricsSinks = TradeMetricsSinks & {
+	marketFillCount: CounterTestSink;
+	indicativePresenceCount: CounterTestSink;
+	indicativeCompetitiveOpportunityCount: CounterTestSink;
+	indicativeCompetitiveFillCount: CounterTestSink;
+	indicativeCompetitiveOpportunityNotional: CounterTestSink;
+	indicativeCompetitiveCapturedNotional: CounterTestSink;
+	indicativeFillVsQuoteBucketCount: CounterTestSink;
+	indicativeFillVsQuoteDirectionBucketCount: CounterTestSink;
+	indicativeQuoteEvaluationCount: CounterTestSink;
+	indicativeTotalSizeOnBookGauge: GaugeTestSink;
+	indicativeCompetitiveSizeOnBookGauge: GaugeTestSink;
+};
+
+const createMetricSinks = (): TestTradeMetricsSinks => ({
+	marketFillCount: createCounterSink(),
+	indicativePresenceCount: createCounterSink(),
+	indicativeCompetitiveOpportunityCount: createCounterSink(),
+	indicativeCompetitiveFillCount: createCounterSink(),
+	indicativeCompetitiveOpportunityNotional: createCounterSink(),
+	indicativeCompetitiveCapturedNotional: createCounterSink(),
+	indicativeFillVsQuoteBucketCount: createCounterSink(),
+	indicativeFillVsQuoteDirectionBucketCount: createCounterSink(),
+	indicativeQuoteEvaluationCount: createCounterSink(),
+	indicativeTotalSizeOnBookGauge: createGaugeSink(),
+	indicativeCompetitiveSizeOnBookGauge: createGaugeSink(),
+});
+
+describe('tradeMetricsProcessor', () => {
+	it('processes a fill against multiple makers and records presence, competitiveness, and gauges', async () => {
+		const published: Array<{ key: string; value: unknown }> = [];
+		const metrics = createMetricSinks();
+		const quoteState = new Map<string, any>([
+			['market_mms_perp_0', ['good-maker', 'bad-maker']],
+			[
+				'mm_quotes_v2_perp_0_good-maker',
+				{
+					ts: 1710000000000,
+					quotes: [
+						{ bid_price: 100100000, bid_size: 2000000000 },
+						{ ask_price: 99900000, ask_size: 2000000000 },
+					],
+				},
+			],
+			[
+				'mm_quotes_v2_perp_0_bad-maker',
+				{
+					ts: 1710000000000,
+					quotes: [{ bid_price: 101000000, bid_size: 1000000000 }],
+				},
+			],
+		]);
+
+		const { processFillEvent } = createTradeMetricsProcessor({
+			redisClientPrefix: 'dlob:',
+			indicativeQuoteMaxAgeMs: 1000,
+			indicativeQuotesCacheTtlMs: 250,
+			spotMarketPrecisionResolver: () => undefined,
+			publisherRedisClient: {
+				publish: async (key, value) => {
+					published.push({ key, value });
+					return 1;
+				},
+			},
+			indicativeQuotesRedisClient: {
+				smembers: async (key) => quoteState.get(key) ?? [],
+				get: async (key) => quoteState.get(key),
+			},
+			metrics,
+		});
+
+		const fillEvent: FillEvent = {
+			ts: 1710000000000,
+			marketIndex: 0,
+			marketType: 'perp',
+			filler: 'mock-filler',
+			takerFee: 0,
+			makerFee: 0,
+			quoteAssetAmountSurplus: 0,
+			baseAssetAmountFilled: 1,
+			quoteAssetAmountFilled: 100.1,
+			taker: 'mock-taker',
+			takerOrderId: 1,
+			takerOrderDirection: 'short',
+			takerOrderBaseAssetAmount: 1,
+			takerOrderCumulativeBaseAssetAmountFilled: 1,
+			takerOrderCumulativeQuoteAssetAmountFilled: 100.1,
+			maker: 'good-maker',
+			makerOrderId: 2,
+			makerOrderDirection: 'long',
+			makerOrderBaseAssetAmount: 1,
+			makerOrderCumulativeBaseAssetAmountFilled: 1,
+			makerOrderCumulativeQuoteAssetAmountFilled: 100.1,
+			oraclePrice: 100,
+			txSig: 'mock-1',
+			slot: 1,
+			fillRecordId: 1,
+			action: 'fill',
+			actionExplanation: 'none',
+			referrerReward: 0,
+			bitFlags: 0,
+		};
+
+		await processFillEvent(fillEvent);
+
+		expect(published[0]?.key).toBe('dlob:trades_perp_0');
+		expect(metrics.marketFillCount.calls).toHaveLength(1);
+
+		expect(metrics.indicativePresenceCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'good-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+				},
+			},
+			{
+				value: 1,
+				attributes: {
+					maker: 'bad-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+				},
+			},
+		]);
+
+		expect(metrics.indicativeCompetitiveOpportunityCount.calls).toHaveLength(2);
+		expect(metrics.indicativeCompetitiveFillCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'good-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+				},
+			},
+		]);
+
+		expect(metrics.indicativeQuoteEvaluationCount.calls).toEqual(
+			expect.arrayContaining([
+				{
+					value: 1,
+					attributes: {
+						maker: 'good-maker',
+						market_index: 0,
+						market_type: 'perp',
+						side: 'long',
+						result: 'competitive',
+					},
+				},
+				{
+					value: 1,
+					attributes: {
+						maker: 'bad-maker',
+						market_index: 0,
+						market_type: 'perp',
+						side: 'long',
+						result: 'competitive',
+					},
+				},
+			])
+		);
+
+		expect(metrics.indicativeTotalSizeOnBookGauge.calls).toEqual(
+			expect.arrayContaining([
+				{
+					value: 200.2,
+					attributes: {
+						maker: 'good-maker',
+						market_index: 0,
+						market_type: 'perp',
+						side: 'long',
+					},
+				},
+				{
+					value: 101,
+					attributes: {
+						maker: 'bad-maker',
+						market_index: 0,
+						market_type: 'perp',
+						side: 'long',
+					},
+				},
+			])
+		);
+
+		expect(metrics.indicativeCompetitiveSizeOnBookGauge.calls).toEqual(
+			expect.arrayContaining([
+				{
+					value: 200.2,
+					attributes: {
+						maker: 'good-maker',
+						market_index: 0,
+						market_type: 'perp',
+						side: 'long',
+					},
+				},
+				{
+					value: 101,
+					attributes: {
+						maker: 'bad-maker',
+						market_index: 0,
+						market_type: 'perp',
+						side: 'long',
+					},
+				},
+			])
+		);
+
+		expect(metrics.indicativeFillVsQuoteBucketCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'good-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+					bucket: 'very_tight',
+				},
+			},
+		]);
+
+		expect(metrics.indicativeFillVsQuoteDirectionBucketCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'good-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+					bucket: 'equal',
+				},
+			},
+		]);
+	});
+});

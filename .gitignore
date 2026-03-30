@@ -139,6 +139,7 @@ src/**.js.map
 .idea
 
 .env
+.env.*.local
 lib
 src/playground.ts
 
@@ -146,4 +147,5 @@ src/playground.ts
 *.rdb
 *.log
 *.confg
-
+*.aof*
+*.conf
