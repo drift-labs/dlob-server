@@ -21,9 +21,15 @@ import {
 	Event,
 } from '@drift-labs/sdk';
 import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+import express from 'express';
 
+import { Metrics } from '../core/metricsV2';
 import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
+import {
+	createTradeMetricsProcessor,
+	FillEvent,
+} from './tradeMetricsProcessor';
 import { fromEvent, filter, map } from 'rxjs';
 import { setGlobalDispatcher, Agent } from 'undici';
 
@@ -37,6 +43,12 @@ require('dotenv').config();
 const driftEnv = (process.env.ENV || 'devnet') as DriftEnv;
 const commitHash = process.env.COMMIT;
 const REDIS_CLIENT = process.env.REDIS_CLIENT || 'DLOB';
+const metricsPort = process.env.METRICS_PORT
+	? parseInt(process.env.METRICS_PORT)
+	: 9464;
+const indicativeQuoteMaxAgeMs = process.env.INDICATIVE_QUOTES_MAX_AGE_MS
+	? parseInt(process.env.INDICATIVE_QUOTES_MAX_AGE_MS)
+	: 1000;
 console.log('Redis Clients:', REDIS_CLIENT);
 const redisClientPrefix = RedisClientPrefix[REDIS_CLIENT];
 //@ts-ignore
@@ -45,15 +57,96 @@ const sdkConfig = initialize({ env: process.env.ENV });
 const stateCommitment: Commitment = 'confirmed';
 let driftClient: DriftClient;
 
+const metricsV2 = new Metrics('trades-publisher', undefined, metricsPort);
+const marketFillCount = metricsV2.addCounter(
+	'market_fill_count',
+	'Total market fills considered for JIT competitive opportunity metrics'
+);
+const indicativePresenceCount = metricsV2.addCounter(
+	'indicative_presence_total',
+	'Count of fills where a maker had any fresh indicative quote on the relevant side'
+);
+const indicativeCompetitiveOpportunityCount = metricsV2.addCounter(
+	'indicative_competitive_opportunity_total',
+	'Count of market fills where a maker had a fresh competitive indicative quote'
+);
+const indicativeCompetitiveFillCount = metricsV2.addCounter(
+	'indicative_competitive_fill_total',
+	'Count of competitive opportunities where the maker captured the fill'
+);
+const indicativeCompetitiveOpportunityNotional = metricsV2.addCounter(
+	'indicative_competitive_opportunity_notional_total',
+	'Total competitive opportunity notional in quote units for each maker'
+);
+const indicativeCompetitiveCapturedNotional = metricsV2.addCounter(
+	'indicative_competitive_captured_notional_total',
+	'Total captured notional in quote units on competitive opportunities for each maker'
+);
+const indicativeFillVsQuoteBucketCount = metricsV2.addCounter(
+	'indicative_fill_vs_quote_bucket_total',
+	'Count of maker fills bucketed by absolute bps distance from the best competitive indicative quote'
+);
+const indicativeFillVsQuoteDirectionBucketCount = metricsV2.addCounter(
+	'indicative_fill_vs_quote_direction_bucket_total',
+	'Count of maker fills bucketed as better, equal, or worse than the best competitive indicative quote'
+);
+const indicativeQuoteEvaluationCount = metricsV2.addCounter(
+	'indicative_quote_evaluation_total',
+	'Count of quote evaluation outcomes by maker and market'
+);
+const indicativeTotalSizeOnBookGauge = metricsV2.addGauge(
+	'indicative_total_size_on_book',
+	'Latest fresh total quoted value on book by maker, market, and side'
+);
+const indicativeCompetitiveSizeOnBookGauge = metricsV2.addGauge(
+	'indicative_competitive_size_on_book',
+	'Latest fresh competitive quoted value on book by maker, market, and side'
+);
+metricsV2.finalizeObservables();
+
 const opts = program.opts();
 setLogLevel(opts.debug ? 'debug' : 'info');
 
 const endpoint = process.env.ENDPOINT;
 const wsEndpoint = process.env.WS_ENDPOINT;
+const indicativeQuotesCacheTtlMs = process.env.INDICATIVE_QUOTES_CACHE_TTL_MS
+	? parseInt(process.env.INDICATIVE_QUOTES_CACHE_TTL_MS)
+	: 250;
+const enableMockFillEndpoint =
+	process.env.ENABLE_MOCK_FILL_ENDPOINT?.toLowerCase() === 'true';
+const mockOnlyMode = process.env.MOCK_ONLY_MODE?.toLowerCase() === 'true';
+const mockFillPort = process.env.MOCK_FILL_PORT
+	? parseInt(process.env.MOCK_FILL_PORT)
+	: 9470;
 logger.info(`RPC endpoint: ${endpoint}`);
 logger.info(`WS endpoint:  ${wsEndpoint}`);
 logger.info(`DriftEnv:     ${driftEnv}`);
 logger.info(`Commit:       ${commitHash}`);
+
+const startMockFillEndpoint = (
+	processFillEvent: (fillEvent: FillEvent) => Promise<void>
+) => {
+	if (!enableMockFillEndpoint) {
+		return;
+	}
+
+	const app = express();
+	app.use(express.json());
+	app.post('/mockFill', async (req, res) => {
+		try {
+			await processFillEvent(req.body as FillEvent);
+			res.status(200).json({ ok: true });
+		} catch (error) {
+			logger.error('Failed to process mock fill:', error);
+			res.status(500).json({ ok: false });
+		}
+	});
+	app.listen(mockFillPort, () => {
+		logger.info(
+			`Mock fill endpoint listening on http://localhost:${mockFillPort}`
+		);
+	});
+};
 
 const main = async () => {
 	const wallet = new Wallet(new Keypair());
@@ -78,6 +171,40 @@ const main = async () => {
 
 	const redisClient = new RedisClient({ prefix: redisClientPrefix });
 	await redisClient.connect();
+	const indicativeQuotesRedisClient = new RedisClient({});
+	await indicativeQuotesRedisClient.connect();
+
+	const { processFillEvent } = createTradeMetricsProcessor({
+		redisClientPrefix,
+		indicativeQuoteMaxAgeMs,
+		indicativeQuotesCacheTtlMs,
+		spotMarketPrecisionResolver: (marketIndex) =>
+			sdkConfig.SPOT_MARKETS[marketIndex]?.precision,
+		publisherRedisClient: redisClient,
+		indicativeQuotesRedisClient,
+		metrics: {
+			marketFillCount,
+			indicativePresenceCount,
+			indicativeCompetitiveOpportunityCount,
+			indicativeCompetitiveFillCount,
+			indicativeCompetitiveOpportunityNotional,
+			indicativeCompetitiveCapturedNotional,
+			indicativeFillVsQuoteBucketCount,
+			indicativeFillVsQuoteDirectionBucketCount,
+			indicativeQuoteEvaluationCount,
+			indicativeTotalSizeOnBookGauge,
+			indicativeCompetitiveSizeOnBookGauge,
+		},
+		onError: (error) =>
+			logger.error('Error evaluating competitive indicative quotes:', error),
+	});
+
+	startMockFillEndpoint(processFillEvent);
+
+	if (mockOnlyMode) {
+		logger.info('Running in MOCK_ONLY_MODE; skipping chain subscriptions');
+		return;
+	}
 
 	const slotSubscriber = new SlotSubscriber(connection, {
 		resubTimeoutMs: 10_000,
@@ -187,14 +314,11 @@ const main = async () => {
 						QUOTE_PRECISION
 					),
 					bitFlags: fill.bitFlags,
-				};
+				} as FillEvent;
 			})
 		)
-		.subscribe((fillEvent) => {
-			redisClient.publish(
-				`${redisClientPrefix}trades_${fillEvent.marketType}_${fillEvent.marketIndex}`,
-				fillEvent
-			);
+		.subscribe(async (fillEvent: FillEvent) => {
+			await processFillEvent(fillEvent);
 		});
 
 	console.log('Publishing trades');
