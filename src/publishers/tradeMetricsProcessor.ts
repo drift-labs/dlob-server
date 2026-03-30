@@ -298,8 +298,15 @@ export const createTradeMetricsProcessor = ({
 				});
 			}
 
+			const fillMakerEvaluation = fillEvent.maker
+				? marketQuoteEvaluations.find(
+						(evaluation) => evaluation.maker === fillEvent.maker
+				  )
+				: undefined;
 			if (
 				fillEvent.maker &&
+				fillMakerEvaluation &&
+				fillMakerEvaluation.totalQuoteValueOnBook > 0 &&
 				!marketQuotes.find((quote) => quote.maker === fillEvent.maker)
 			) {
 				metrics.indicativeQuoteEvaluationCount.add(1, {
