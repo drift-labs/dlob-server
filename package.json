@@ -10,7 +10,7 @@
 		"@aws-sdk/util-retry": "^3.374.0",
 		"@coral-xyz/anchor": "^0.29.0",
 		"@drift-labs/common": "1.0.20",
-		"@drift-labs/sdk": "2.161.0-beta.4",
+		"@drift-labs/sdk": "2.162.0-beta.1",
 		"@opentelemetry/api": "^1.1.0",
 		"@opentelemetry/auto-instrumentations-node": "^0.31.1",
 		"@opentelemetry/exporter-prometheus": "^0.31.0",
@@ -71,6 +71,8 @@
 		"server-lite": "ts-node src/serverLite.ts",
 		"dlob-publish": "ts-node src/publishers/dlobPublisher.ts",
 		"trades-publish": "ts-node src/publishers/tradesPublisher.ts",
+		"trades-publish:local": "DOTENV_CONFIG_PATH=.env.trades.local ts-node -r dotenv/config src/publishers/tradesPublisher.ts",
+		"mock-jit:submit": "DOTENV_CONFIG_PATH=.env.trades.local ts-node -r dotenv/config src/scripts/submitMockJitMetricsData.ts",
 		"fees-publish": "ts-node src/publishers/priorityFeesPublisher.ts",
 		"pnl-publish": "ts-node src/scripts/publishUnsettledPnlUsers.ts",
 		"ws-manager": "ts-node src/wsConnectionManager.ts",
@@ -84,8 +86,8 @@
 		"lint": "eslint . --ext ts --quiet",
 		"lint:fix": "eslint . --ext ts --fix",
 		"playground": "ts-node src/playground.ts",
-		"test": "jest src/utils/tests/auctionParams.test.ts",
-		"test:watch": "jest src/utils/tests/auctionParams.test.ts --watch"
+		"test": "jest",
+		"test:watch": "jest --watch"
 	},
 	"jest": {
 		"preset": "ts-jest",

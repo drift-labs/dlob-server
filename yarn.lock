@@ -1213,10 +1213,10 @@
     winston "3.13.0"
     winston-slack-webhook-transport "2.3.5"
 
-"@drift-labs/sdk@2.161.0-beta.4":
-  version "2.161.0-beta.4"
-  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.161.0-beta.4.tgz#d2590b9e81520382ff320c1a5c0d0d71ddabb44a"
-  integrity sha512-rgeg+Yrs4HgZ7MXMk8VJLESSGSvrRGK8+TvtweAia4hnpE/CxZMwwISwYLSxoWGu9X2n8jUmCYna2iKzHX81RQ==
+"@drift-labs/sdk@2.162.0-beta.1":
+  version "2.162.0-beta.1"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.162.0-beta.1.tgz#01c339c56c7d2ccb73742d07e1b758a78374d249"
+  integrity sha512-F8QSmBbv2xfCn/rCG8Qv9N961iN9SAmKDDJQMvqUxYdChNacXMbZBtoLUwRwh2S6tz2mZVcKs/7bIX//G5kZ8g==
   dependencies:
     "@coral-xyz/anchor" "0.29.0"
     "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
