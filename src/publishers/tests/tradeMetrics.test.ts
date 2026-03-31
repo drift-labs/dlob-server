@@ -8,6 +8,7 @@ import {
 	getFillSide,
 	getFillTimestampMs,
 	getIndicativeBpsBucket,
+	getQuotedFillReferencePrice,
 	getQuoteTimestampMs,
 	getQuoteValueOnBook,
 	getSignedBpsDiff,
@@ -272,6 +273,62 @@ describe('tradeMetrics', () => {
 					}
 				)
 			).toBeUndefined();
+		});
+	});
+
+	describe('getQuotedFillReferencePrice', () => {
+		it('uses a size-weighted price capped by the fill size for long-side quotes', () => {
+			const referencePrice = getQuotedFillReferencePrice(
+				{
+					marketIndex: 0,
+					marketType: 'perp',
+					oraclePrice: 100,
+				},
+				'long',
+				1.5,
+				{
+					ts: 1710000000000,
+					quotes: [
+						{
+							bid_price: 101 * PRICE_PRECISION.toNumber(),
+							bid_size: BASE_PRECISION.toNumber(),
+						},
+						{
+							bid_price: 100 * PRICE_PRECISION.toNumber(),
+							bid_size: 2 * BASE_PRECISION.toNumber(),
+						},
+					],
+				}
+			);
+
+			expect(referencePrice).toBeCloseTo(100.6666666667, 8);
+		});
+
+		it('uses the full quoted ladder when the fill is larger than the top level', () => {
+			const referencePrice = getQuotedFillReferencePrice(
+				{
+					marketIndex: 0,
+					marketType: 'perp',
+					oraclePrice: 100,
+				},
+				'short',
+				1.5,
+				{
+					ts: 1710000000000,
+					quotes: [
+						{
+							ask_price: 99 * PRICE_PRECISION.toNumber(),
+							ask_size: 1 * BASE_PRECISION.toNumber(),
+						},
+						{
+							ask_price: 100 * PRICE_PRECISION.toNumber(),
+							ask_size: 1 * BASE_PRECISION.toNumber(),
+						},
+					],
+				}
+			);
+
+			expect(referencePrice).toBeCloseTo(99.3333333333, 8);
 		});
 	});
 

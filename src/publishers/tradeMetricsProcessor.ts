@@ -4,9 +4,11 @@ import {
 	getCompetitiveLiquidity,
 	getIndicativeBpsBucket,
 	getIndicativeDirectionBucket,
+	getFillTimestampMs,
 	getFillPrice,
 	getFillSide,
 	getMakerMetricAttrs,
+	getQuotedFillReferencePrice,
 	getQuoteTimestampMs,
 	getQuoteValueOnBook,
 	getSignedBpsDiff,
@@ -47,17 +49,15 @@ export type FillEvent = {
 };
 
 type MarketQuoteCacheEntry = {
-	fetchedAtMs: number;
-	quoteBlobs: Array<{
-		maker: string;
-		quoteBlob: IndicativeQuoteBlob | null;
-	}>;
+	poller?: ReturnType<typeof setInterval>;
+	historyByMaker: Map<string, IndicativeQuoteBlob[]>;
 };
 
 type MarketQuoteEvaluation = {
 	maker: string;
 	totalQuoteValueOnBook: number;
 	competitiveQuoteValueOnBook: number;
+	quotedFillReferencePrice?: number;
 	competitiveLiquidity?: CompetitiveLiquidity;
 };
 
@@ -79,9 +79,7 @@ export type TradeMetricsSinks = {
 	indicativeCompetitiveFillCount: CounterSink;
 	indicativeCompetitiveOpportunityNotional: CounterSink;
 	indicativeCompetitiveCapturedNotional: CounterSink;
-	indicativeFillVsQuoteBucketCount: CounterSink;
-	indicativeFillVsQuoteDirectionBucketCount: CounterSink;
-	indicativeQuoteEvaluationCount: CounterSink;
+	indicativeFillVsQuoteOutcomeCount: CounterSink;
 	indicativeTotalSizeOnBookGauge: GaugeSink;
 	indicativeCompetitiveSizeOnBookGauge: GaugeSink;
 };
@@ -99,6 +97,7 @@ export const createTradeMetricsProcessor = ({
 	redisClientPrefix,
 	indicativeQuoteMaxAgeMs,
 	indicativeQuotesCacheTtlMs,
+	indicativeQuoteHistoryWindowMs = 5000,
 	spotMarketPrecisionResolver,
 	publisherRedisClient,
 	indicativeQuotesRedisClient,
@@ -109,6 +108,7 @@ export const createTradeMetricsProcessor = ({
 	redisClientPrefix: string;
 	indicativeQuoteMaxAgeMs: number;
 	indicativeQuotesCacheTtlMs: number;
+	indicativeQuoteHistoryWindowMs?: number;
 	spotMarketPrecisionResolver: (marketIndex: number) => number | undefined;
 	publisherRedisClient: PublisherRedisClient;
 	indicativeQuotesRedisClient: IndicativeQuotesRedisClient;
@@ -118,13 +118,121 @@ export const createTradeMetricsProcessor = ({
 }) => {
 	const marketQuoteCache = new Map<string, MarketQuoteCacheEntry>();
 
+	const getMarketKey = (
+		fillEvent: Pick<FillEvent, 'marketType' | 'marketIndex'>
+	) => `${fillEvent.marketType}_${fillEvent.marketIndex}`;
+
+	const fetchLatestQuoteBlobs = async (
+		fillEvent: Pick<FillEvent, 'marketType' | 'marketIndex'>
+	) => {
+		const mmSetKey = `market_mms_${fillEvent.marketType}_${fillEvent.marketIndex}`;
+		const makers = await indicativeQuotesRedisClient.smembers(mmSetKey);
+		if (!makers.length) {
+			return [];
+		}
+
+		const quoteBlobs = (await Promise.all(
+			makers.map((maker) =>
+				indicativeQuotesRedisClient.get<IndicativeQuoteBlob | null>(
+					`mm_quotes_v2_${fillEvent.marketType}_${fillEvent.marketIndex}_${maker}`
+				)
+			)
+		)) as (IndicativeQuoteBlob | null)[];
+
+		return makers.map((maker, idx) => ({
+			maker,
+			quoteBlob: quoteBlobs[idx],
+		}));
+	};
+
+	const pruneQuoteHistory = (
+		historyByMaker: Map<string, IndicativeQuoteBlob[]>,
+		nowMs: number
+	) => {
+		for (const [maker, history] of historyByMaker.entries()) {
+			const pruned = history.filter((quoteBlob) => {
+				const quoteTsMs = getQuoteTimestampMs(quoteBlob);
+				return (
+					quoteTsMs !== undefined &&
+					nowMs - quoteTsMs <= indicativeQuoteHistoryWindowMs
+				);
+			});
+			if (pruned.length) {
+				historyByMaker.set(maker, pruned);
+			} else {
+				historyByMaker.delete(maker);
+			}
+		}
+	};
+
+	const upsertQuoteHistory = (
+		historyByMaker: Map<string, IndicativeQuoteBlob[]>,
+		quoteBlobs: Array<{ maker: string; quoteBlob: IndicativeQuoteBlob | null }>,
+		nowMs: number
+	) => {
+		for (const { maker, quoteBlob } of quoteBlobs) {
+			if (!quoteBlob) {
+				continue;
+			}
+			const quoteTsMs = getQuoteTimestampMs(quoteBlob);
+			if (quoteTsMs === undefined) {
+				continue;
+			}
+			const history = historyByMaker.get(maker) ?? [];
+			const lastQuoteTsMs = history.length
+				? getQuoteTimestampMs(history[history.length - 1])
+				: undefined;
+			if (lastQuoteTsMs !== quoteTsMs) {
+				history.push(quoteBlob);
+				historyByMaker.set(maker, history);
+			}
+		}
+		pruneQuoteHistory(historyByMaker, nowMs);
+	};
+
+	const ensureMarketPolling = (
+		fillEvent: Pick<FillEvent, 'marketType' | 'marketIndex'>
+	) => {
+		const marketKey = getMarketKey(fillEvent);
+		const existing = marketQuoteCache.get(marketKey);
+		if (existing?.poller) {
+			return;
+		}
+
+		const historyByMaker =
+			existing?.historyByMaker ?? new Map<string, IndicativeQuoteBlob[]>();
+		const pollQuotes = async () => {
+			try {
+				const quoteBlobs = await fetchLatestQuoteBlobs(fillEvent);
+				upsertQuoteHistory(historyByMaker, quoteBlobs, nowMsProvider());
+			} catch (error) {
+				onError?.(error);
+			}
+		};
+
+		void pollQuotes();
+		const poller = setInterval(() => {
+			void pollQuotes();
+		}, indicativeQuotesCacheTtlMs);
+		poller.unref?.();
+		marketQuoteCache.set(marketKey, { historyByMaker, poller });
+	};
+
 	const getMarketQuotes = async (
 		fillEvent: FillEvent,
 		side: 'long' | 'short',
 		fillPrice: number,
-		evaluationTsMs: number
+		fillTsMs: number
 	): Promise<MarketQuoteEvaluation[]> => {
-		const marketKey = `${fillEvent.marketType}_${fillEvent.marketIndex}_${side}`;
+		const marketKey = getMarketKey(fillEvent);
+		ensureMarketPolling(fillEvent);
+		const marketQuoteEntry = marketQuoteCache.get(marketKey);
+		const historyByMaker = marketQuoteEntry?.historyByMaker ?? new Map();
+		if (!historyByMaker.size) {
+			const latestQuoteBlobs = await fetchLatestQuoteBlobs(fillEvent);
+			upsertQuoteHistory(historyByMaker, latestQuoteBlobs, nowMsProvider());
+		}
+		pruneQuoteHistory(historyByMaker, nowMsProvider());
 		const mapQuoteBlob = (
 			maker: string,
 			quoteBlob: IndicativeQuoteBlob | null
@@ -143,7 +251,7 @@ export const createTradeMetricsProcessor = ({
 			);
 			const quoteTsMs = getQuoteTimestampMs(quoteBlob);
 			const quoteAgeMs =
-				quoteTsMs !== undefined ? evaluationTsMs - quoteTsMs : Infinity;
+				quoteTsMs !== undefined ? fillTsMs - quoteTsMs : Infinity;
 			const isFresh = quoteAgeMs >= 0 && quoteAgeMs <= indicativeQuoteMaxAgeMs;
 
 			return {
@@ -153,48 +261,27 @@ export const createTradeMetricsProcessor = ({
 					: 0,
 				competitiveQuoteValueOnBook:
 					isFresh && competitiveLiquidity ? competitiveLiquidity.quoteValue : 0,
+				quotedFillReferencePrice: isFresh
+					? getQuotedFillReferencePrice(
+							fillEvent,
+							side,
+							fillEvent.baseAssetAmountFilled,
+							quoteBlob,
+							spotPrecision
+					  )
+					: undefined,
 				competitiveLiquidity: isFresh ? competitiveLiquidity : undefined,
 			};
 		};
-
-		const cached = marketQuoteCache.get(marketKey);
-		if (
-			cached &&
-			nowMsProvider() - cached.fetchedAtMs <= indicativeQuotesCacheTtlMs
-		) {
-			return cached.quoteBlobs.map(({ maker, quoteBlob }) =>
-				mapQuoteBlob(maker, quoteBlob)
-			);
-		}
-
-		const mmSetKey = `market_mms_${fillEvent.marketType}_${fillEvent.marketIndex}`;
-		const makers = await indicativeQuotesRedisClient.smembers(mmSetKey);
-		if (!makers.length) {
-			marketQuoteCache.set(marketKey, {
-				fetchedAtMs: nowMsProvider(),
-				quoteBlobs: [],
-			});
-			return [];
-		}
-
-		const quoteBlobs = (await Promise.all(
-			makers.map((maker) =>
-				indicativeQuotesRedisClient.get<IndicativeQuoteBlob | null>(
-					`mm_quotes_v2_${fillEvent.marketType}_${fillEvent.marketIndex}_${maker}`
-				)
-			)
-		)) as (IndicativeQuoteBlob | null)[];
-
-		const cachedQuoteBlobs = makers.map((maker, idx) => ({
-			maker,
-			quoteBlob: quoteBlobs[idx],
-		}));
-		marketQuoteCache.set(marketKey, {
-			fetchedAtMs: nowMsProvider(),
-			quoteBlobs: cachedQuoteBlobs,
+		const quoteBlobs = [...historyByMaker.entries()].map(([maker, history]) => {
+			const quoteBlob =
+				[...history].reverse().find((candidate) => {
+					const quoteTsMs = getQuoteTimestampMs(candidate);
+					return quoteTsMs !== undefined && quoteTsMs <= fillTsMs;
+				}) ?? null;
+			return { maker, quoteBlob };
 		});
-
-		return cachedQuoteBlobs.map(({ maker, quoteBlob }) =>
+		return quoteBlobs.map(({ maker, quoteBlob }) =>
 			mapQuoteBlob(maker, quoteBlob)
 		);
 	};
@@ -224,12 +311,11 @@ export const createTradeMetricsProcessor = ({
 		metrics.marketFillCount.add(1, marketMetricAttrs);
 
 		try {
-			const evaluationTsMs = nowMsProvider();
 			const marketQuoteEvaluations = await getMarketQuotes(
 				fillEvent,
 				fillSide,
 				fillPrice,
-				evaluationTsMs
+				getFillTimestampMs(fillEvent.ts)
 			);
 			const marketQuotes = marketQuoteEvaluations
 				.map((evaluation) => evaluation.competitiveLiquidity)
@@ -266,10 +352,6 @@ export const createTradeMetricsProcessor = ({
 					opportunityNotional,
 					attrs
 				);
-				metrics.indicativeQuoteEvaluationCount.add(1, {
-					...attrs,
-					result: 'competitive',
-				});
 
 				if (fillEvent.makerIndicativeKey === quote.maker) {
 					metrics.indicativeCompetitiveFillCount.add(1, attrs);
@@ -278,27 +360,7 @@ export const createTradeMetricsProcessor = ({
 							fillPrice,
 						attrs
 					);
-					metrics.indicativeFillVsQuoteBucketCount.add(1, {
-						...attrs,
-						bucket: getIndicativeBpsBucket(
-							getAbsoluteBpsDiff(fillPrice, quote.bestPrice)
-						),
-					});
-					metrics.indicativeFillVsQuoteDirectionBucketCount.add(1, {
-						...attrs,
-						bucket: getIndicativeDirectionBucket(
-							getSignedBpsDiff(fillPrice, quote.bestPrice)
-						),
-					});
 				}
-			}
-
-			if (!marketQuotes.length) {
-				metrics.indicativeQuoteEvaluationCount.add(1, {
-					...marketMetricAttrs,
-					maker: 'all',
-					result: 'no_competitive_quotes',
-				});
 			}
 
 			const fillMakerEvaluation = fillEvent.makerIndicativeKey
@@ -310,26 +372,32 @@ export const createTradeMetricsProcessor = ({
 				fillEvent.makerIndicativeKey &&
 				fillMakerEvaluation &&
 				fillMakerEvaluation.totalQuoteValueOnBook > 0 &&
-				!marketQuotes.find(
-					(quote) => quote.maker === fillEvent.makerIndicativeKey
-				)
+				fillMakerEvaluation.quotedFillReferencePrice &&
+				Number.isFinite(fillMakerEvaluation.quotedFillReferencePrice)
 			) {
-				metrics.indicativeQuoteEvaluationCount.add(1, {
-					...getMakerMetricAttrs(
-						fillEvent,
-						fillMakerEvaluation.maker,
-						fillSide
+				const fillMakerAttrs = getMakerMetricAttrs(
+					fillEvent,
+					fillMakerEvaluation.maker,
+					fillSide
+				);
+				metrics.indicativeFillVsQuoteOutcomeCount.add(1, {
+					...fillMakerAttrs,
+					bucket: getIndicativeBpsBucket(
+						getAbsoluteBpsDiff(
+							fillPrice,
+							fillMakerEvaluation.quotedFillReferencePrice
+						)
 					),
-					result: 'maker_not_competitive',
+					direction: getIndicativeDirectionBucket(
+						getSignedBpsDiff(
+							fillPrice,
+							fillMakerEvaluation.quotedFillReferencePrice
+						)
+					),
 				});
 			}
 		} catch (error) {
 			onError?.(error);
-			metrics.indicativeQuoteEvaluationCount.add(1, {
-				...marketMetricAttrs,
-				maker: 'all',
-				result: 'error',
-			});
 		}
 	};
 
