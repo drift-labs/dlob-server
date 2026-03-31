@@ -448,7 +448,7 @@ describe('tradeMetricsProcessor', () => {
 		);
 	});
 
-	it('treats quotes as fresh based on evaluation time rather than fill timestamp', async () => {
+	it('matches the latest quote at or before the fill timestamp', async () => {
 		const metrics = createMetricSinks();
 		const quoteState = new Map<string, any>([
 			['market_mms_perp_0', ['good-maker']],
@@ -464,7 +464,7 @@ describe('tradeMetricsProcessor', () => {
 		const { processFillEvent } = createTradeMetricsProcessor({
 			redisClientPrefix: 'dlob:',
 			indicativeQuoteMaxAgeMs: 1000,
-			indicativeQuotesCacheTtlMs: 250,
+			indicativeQuotesCacheTtlMs: 1,
 			spotMarketPrecisionResolver: () => undefined,
 			publisherRedisClient: {
 				publish: async () => 1,
@@ -474,11 +474,11 @@ describe('tradeMetricsProcessor', () => {
 				get: async (key) => quoteState.get(key),
 			},
 			metrics,
-			nowMsProvider: () => 1710000000500,
+			nowMsProvider: () => 1710000002500,
 		});
 
-		const fillEvent: FillEvent = {
-			ts: 1709999999,
+		await processFillEvent({
+			ts: 1710000000,
 			marketIndex: 0,
 			marketType: 'perp',
 			filler: 'mock-filler',
@@ -494,6 +494,7 @@ describe('tradeMetricsProcessor', () => {
 			takerOrderCumulativeBaseAssetAmountFilled: 1,
 			takerOrderCumulativeQuoteAssetAmountFilled: 100.1,
 			maker: 'good-maker',
+			makerIndicativeKey: 'good-maker',
 			makerOrderId: 2,
 			makerOrderDirection: 'long',
 			makerOrderBaseAssetAmount: 1,
@@ -507,11 +508,58 @@ describe('tradeMetricsProcessor', () => {
 			actionExplanation: 'none',
 			referrerReward: 0,
 			bitFlags: 0,
-		};
+		});
 
-		await processFillEvent(fillEvent);
+		quoteState.set('mm_quotes_v2_perp_0_good-maker', {
+			ts: 1710000002000,
+			quotes: [{ bid_price: 100500000, bid_size: 1000000000 }],
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		await processFillEvent({
+			ts: 1710000001,
+			marketIndex: 0,
+			marketType: 'perp',
+			filler: 'mock-filler',
+			takerFee: 0,
+			makerFee: 0,
+			quoteAssetAmountSurplus: 0,
+			baseAssetAmountFilled: 1,
+			quoteAssetAmountFilled: 100.1,
+			taker: 'mock-taker',
+			takerOrderId: 2,
+			takerOrderDirection: 'short',
+			takerOrderBaseAssetAmount: 1,
+			takerOrderCumulativeBaseAssetAmountFilled: 1,
+			takerOrderCumulativeQuoteAssetAmountFilled: 100.1,
+			maker: 'good-maker',
+			makerIndicativeKey: 'good-maker',
+			makerOrderId: 3,
+			makerOrderDirection: 'long',
+			makerOrderBaseAssetAmount: 1,
+			makerOrderCumulativeBaseAssetAmountFilled: 1,
+			makerOrderCumulativeQuoteAssetAmountFilled: 100.1,
+			oraclePrice: 100,
+			txSig: 'mock-3b',
+			slot: 4,
+			fillRecordId: 4,
+			action: 'fill',
+			actionExplanation: 'none',
+			referrerReward: 0,
+			bitFlags: 0,
+		});
 
 		expect(metrics.indicativePresenceCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'good-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+				},
+			},
 			{
 				value: 1,
 				attributes: {
@@ -536,6 +584,28 @@ describe('tradeMetricsProcessor', () => {
 				},
 			])
 		);
+		expect(metrics.indicativeFillVsQuoteBucketCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'good-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+					bucket: 'very_tight',
+				},
+			},
+			{
+				value: 1,
+				attributes: {
+					maker: 'good-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+					bucket: 'very_tight',
+				},
+			},
+		]);
 	});
 
 	it('matches competitive fills using precomputed indicative key', async () => {
