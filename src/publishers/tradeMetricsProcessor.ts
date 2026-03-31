@@ -8,6 +8,7 @@ import {
 	getFillPrice,
 	getFillSide,
 	getMakerMetricAttrs,
+	getQuotedFillReferencePrice,
 	getQuoteTimestampMs,
 	getQuoteValueOnBook,
 	getSignedBpsDiff,
@@ -56,6 +57,7 @@ type MarketQuoteEvaluation = {
 	maker: string;
 	totalQuoteValueOnBook: number;
 	competitiveQuoteValueOnBook: number;
+	quotedFillReferencePrice?: number;
 	competitiveLiquidity?: CompetitiveLiquidity;
 };
 
@@ -77,9 +79,7 @@ export type TradeMetricsSinks = {
 	indicativeCompetitiveFillCount: CounterSink;
 	indicativeCompetitiveOpportunityNotional: CounterSink;
 	indicativeCompetitiveCapturedNotional: CounterSink;
-	indicativeFillVsQuoteBucketCount: CounterSink;
-	indicativeFillVsQuoteDirectionBucketCount: CounterSink;
-	indicativeQuoteEvaluationCount: CounterSink;
+	indicativeFillVsQuoteOutcomeCount: CounterSink;
 	indicativeTotalSizeOnBookGauge: GaugeSink;
 	indicativeCompetitiveSizeOnBookGauge: GaugeSink;
 };
@@ -261,6 +261,15 @@ export const createTradeMetricsProcessor = ({
 					: 0,
 				competitiveQuoteValueOnBook:
 					isFresh && competitiveLiquidity ? competitiveLiquidity.quoteValue : 0,
+				quotedFillReferencePrice: isFresh
+					? getQuotedFillReferencePrice(
+							fillEvent,
+							side,
+							fillEvent.baseAssetAmountFilled,
+							quoteBlob,
+							spotPrecision
+					  )
+					: undefined,
 				competitiveLiquidity: isFresh ? competitiveLiquidity : undefined,
 			};
 		};
@@ -343,10 +352,6 @@ export const createTradeMetricsProcessor = ({
 					opportunityNotional,
 					attrs
 				);
-				metrics.indicativeQuoteEvaluationCount.add(1, {
-					...attrs,
-					result: 'competitive',
-				});
 
 				if (fillEvent.makerIndicativeKey === quote.maker) {
 					metrics.indicativeCompetitiveFillCount.add(1, attrs);
@@ -355,27 +360,7 @@ export const createTradeMetricsProcessor = ({
 							fillPrice,
 						attrs
 					);
-					metrics.indicativeFillVsQuoteBucketCount.add(1, {
-						...attrs,
-						bucket: getIndicativeBpsBucket(
-							getAbsoluteBpsDiff(fillPrice, quote.bestPrice)
-						),
-					});
-					metrics.indicativeFillVsQuoteDirectionBucketCount.add(1, {
-						...attrs,
-						bucket: getIndicativeDirectionBucket(
-							getSignedBpsDiff(fillPrice, quote.bestPrice)
-						),
-					});
 				}
-			}
-
-			if (!marketQuotes.length) {
-				metrics.indicativeQuoteEvaluationCount.add(1, {
-					...marketMetricAttrs,
-					maker: 'all',
-					result: 'no_competitive_quotes',
-				});
 			}
 
 			const fillMakerEvaluation = fillEvent.makerIndicativeKey
@@ -387,26 +372,32 @@ export const createTradeMetricsProcessor = ({
 				fillEvent.makerIndicativeKey &&
 				fillMakerEvaluation &&
 				fillMakerEvaluation.totalQuoteValueOnBook > 0 &&
-				!marketQuotes.find(
-					(quote) => quote.maker === fillEvent.makerIndicativeKey
-				)
+				fillMakerEvaluation.quotedFillReferencePrice &&
+				Number.isFinite(fillMakerEvaluation.quotedFillReferencePrice)
 			) {
-				metrics.indicativeQuoteEvaluationCount.add(1, {
-					...getMakerMetricAttrs(
-						fillEvent,
-						fillMakerEvaluation.maker,
-						fillSide
+				const fillMakerAttrs = getMakerMetricAttrs(
+					fillEvent,
+					fillMakerEvaluation.maker,
+					fillSide
+				);
+				metrics.indicativeFillVsQuoteOutcomeCount.add(1, {
+					...fillMakerAttrs,
+					bucket: getIndicativeBpsBucket(
+						getAbsoluteBpsDiff(
+							fillPrice,
+							fillMakerEvaluation.quotedFillReferencePrice
+						)
 					),
-					result: 'maker_not_competitive',
+					direction: getIndicativeDirectionBucket(
+						getSignedBpsDiff(
+							fillPrice,
+							fillMakerEvaluation.quotedFillReferencePrice
+						)
+					),
 				});
 			}
 		} catch (error) {
 			onError?.(error);
-			metrics.indicativeQuoteEvaluationCount.add(1, {
-				...marketMetricAttrs,
-				maker: 'all',
-				result: 'error',
-			});
 		}
 	};
 

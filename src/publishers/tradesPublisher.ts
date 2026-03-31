@@ -60,7 +60,7 @@ let driftClient: DriftClient;
 const metricsV2 = new Metrics('trades-publisher', undefined, metricsPort);
 const marketFillCount = metricsV2.addCounter(
 	'market_fill_count',
-	'Total market fills considered for JIT competitive opportunity metrics'
+	'Total market fills considered for indicative quote metrics'
 );
 const indicativePresenceCount = metricsV2.addCounter(
 	'indicative_presence_total',
@@ -82,17 +82,9 @@ const indicativeCompetitiveCapturedNotional = metricsV2.addCounter(
 	'indicative_competitive_captured_notional_total',
 	'Total captured notional in quote units on competitive opportunities for each maker'
 );
-const indicativeFillVsQuoteBucketCount = metricsV2.addCounter(
-	'indicative_fill_vs_quote_bucket_total',
-	'Count of maker fills bucketed by absolute bps distance from the best competitive indicative quote'
-);
-const indicativeFillVsQuoteDirectionBucketCount = metricsV2.addCounter(
-	'indicative_fill_vs_quote_direction_bucket_total',
-	'Count of maker fills bucketed as better, equal, or worse than the best competitive indicative quote'
-);
-const indicativeQuoteEvaluationCount = metricsV2.addCounter(
-	'indicative_quote_evaluation_total',
-	'Count of quote evaluation outcomes by maker and market'
+const indicativeFillVsQuoteOutcomeCount = metricsV2.addCounter(
+	'indicative_fill_vs_quote_outcome_total',
+	'Count of maker fills by weighted fresh indicative quote bucket and direction'
 );
 const indicativeTotalSizeOnBookGauge = metricsV2.addGauge(
 	'indicative_total_size_on_book',
@@ -232,9 +224,7 @@ const main = async () => {
 			indicativeCompetitiveFillCount,
 			indicativeCompetitiveOpportunityNotional,
 			indicativeCompetitiveCapturedNotional,
-			indicativeFillVsQuoteBucketCount,
-			indicativeFillVsQuoteDirectionBucketCount,
-			indicativeQuoteEvaluationCount,
+			indicativeFillVsQuoteOutcomeCount,
 			indicativeTotalSizeOnBookGauge,
 			indicativeCompetitiveSizeOnBookGauge,
 		},
