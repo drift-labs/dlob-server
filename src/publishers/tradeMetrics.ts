@@ -96,6 +96,75 @@ export const getQuoteValueOnBook = (
 };
 
 /**
+ * Computes the quoted VWAP on the relevant side, capped by the observed fill size.
+ */
+export const getQuotedFillReferencePrice = (
+	fillEvent: Pick<FillEventStub, 'oraclePrice' | 'marketIndex' | 'marketType'>,
+	side: 'long' | 'short',
+	fillSize: number,
+	quoteBlob: IndicativeQuoteBlob | null,
+	spotMarketPrecision?: number
+): number | undefined => {
+	if (
+		!quoteBlob?.quotes?.length ||
+		!Number.isFinite(fillSize) ||
+		fillSize <= 0
+	) {
+		return undefined;
+	}
+
+	const basePrecision = getBasePrecisionForFillEvent(
+		fillEvent,
+		spotMarketPrecision
+	);
+	const levels = quoteBlob.quotes
+		.map((quote) => {
+			const rawPrice = side === 'long' ? quote.bid_price : quote.ask_price;
+			const rawSize = side === 'long' ? quote.bid_size : quote.ask_size;
+			if (rawPrice == null || rawSize == null) {
+				return undefined;
+			}
+
+			const price = quote.is_oracle_offset
+				? rawPriceToNumber(rawPrice, fillEvent.oraclePrice)
+				: Number(rawPrice) / PRICE_PRECISION.toNumber();
+			const size = Number(rawSize) / basePrecision;
+
+			return Number.isFinite(price) &&
+				price > 0 &&
+				Number.isFinite(size) &&
+				size > 0
+				? { price, size }
+				: undefined;
+		})
+		.filter((level): level is { price: number; size: number } => !!level);
+
+	if (!levels.length) {
+		return undefined;
+	}
+
+	levels.sort((a, b) =>
+		side === 'long' ? b.price - a.price : a.price - b.price
+	);
+
+	let remainingSize = fillSize;
+	let weightedNotional = 0;
+	let consumedSize = 0;
+
+	for (const level of levels) {
+		if (remainingSize <= 0) {
+			break;
+		}
+		const sizeToConsume = Math.min(level.size, remainingSize);
+		weightedNotional += level.price * sizeToConsume;
+		consumedSize += sizeToConsume;
+		remainingSize -= sizeToConsume;
+	}
+
+	return consumedSize > 0 ? weightedNotional / consumedSize : undefined;
+};
+
+/**
  * Computes the executed unit price from the fill event's quote and base amounts.
  */
 export const getFillPrice = (

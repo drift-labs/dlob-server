@@ -54,9 +54,7 @@ type TestTradeMetricsSinks = TradeMetricsSinks & {
 	indicativeCompetitiveFillCount: CounterTestSink;
 	indicativeCompetitiveOpportunityNotional: CounterTestSink;
 	indicativeCompetitiveCapturedNotional: CounterTestSink;
-	indicativeFillVsQuoteBucketCount: CounterTestSink;
-	indicativeFillVsQuoteDirectionBucketCount: CounterTestSink;
-	indicativeQuoteEvaluationCount: CounterTestSink;
+	indicativeFillVsQuoteOutcomeCount: CounterTestSink;
 	indicativeTotalSizeOnBookGauge: GaugeTestSink;
 	indicativeCompetitiveSizeOnBookGauge: GaugeTestSink;
 };
@@ -68,9 +66,7 @@ const createMetricSinks = (): TestTradeMetricsSinks => ({
 	indicativeCompetitiveFillCount: createCounterSink(),
 	indicativeCompetitiveOpportunityNotional: createCounterSink(),
 	indicativeCompetitiveCapturedNotional: createCounterSink(),
-	indicativeFillVsQuoteBucketCount: createCounterSink(),
-	indicativeFillVsQuoteDirectionBucketCount: createCounterSink(),
-	indicativeQuoteEvaluationCount: createCounterSink(),
+	indicativeFillVsQuoteOutcomeCount: createCounterSink(),
 	indicativeTotalSizeOnBookGauge: createGaugeSink(),
 	indicativeCompetitiveSizeOnBookGauge: createGaugeSink(),
 });
@@ -191,31 +187,6 @@ describe('tradeMetricsProcessor', () => {
 			},
 		]);
 
-		expect(metrics.indicativeQuoteEvaluationCount.calls).toEqual(
-			expect.arrayContaining([
-				{
-					value: 1,
-					attributes: {
-						maker: 'good-maker',
-						market_index: 0,
-						market_type: 'perp',
-						side: 'long',
-						result: 'competitive',
-					},
-				},
-				{
-					value: 1,
-					attributes: {
-						maker: 'bad-maker',
-						market_index: 0,
-						market_type: 'perp',
-						side: 'long',
-						result: 'competitive',
-					},
-				},
-			])
-		);
-
 		expect(metrics.indicativeTotalSizeOnBookGauge.calls).toEqual(
 			expect.arrayContaining([
 				{
@@ -262,7 +233,7 @@ describe('tradeMetricsProcessor', () => {
 			])
 		);
 
-		expect(metrics.indicativeFillVsQuoteBucketCount.calls).toEqual([
+		expect(metrics.indicativeFillVsQuoteOutcomeCount.calls).toEqual([
 			{
 				value: 1,
 				attributes: {
@@ -271,25 +242,13 @@ describe('tradeMetricsProcessor', () => {
 					market_type: 'perp',
 					side: 'long',
 					bucket: 'very_tight',
-				},
-			},
-		]);
-
-		expect(metrics.indicativeFillVsQuoteDirectionBucketCount.calls).toEqual([
-			{
-				value: 1,
-				attributes: {
-					maker: 'good-maker',
-					market_index: 0,
-					market_type: 'perp',
-					side: 'long',
-					bucket: 'equal',
+					direction: 'equal',
 				},
 			},
 		]);
 	});
 
-	it('does not emit maker_not_competitive for a fill maker without indicative quotes', async () => {
+	it('ignores fills from makers without indicative quotes', async () => {
 		const metrics = createMetricSinks();
 		const quoteState = new Map<string, any>([
 			['market_mms_perp_0', ['quoted-maker']],
@@ -352,23 +311,75 @@ describe('tradeMetricsProcessor', () => {
 
 		await processFillEvent(fillEvent);
 
-		expect(metrics.indicativeQuoteEvaluationCount.calls).not.toEqual(
-			expect.arrayContaining([
-				{
-					value: 1,
-					attributes: {
-						maker: 'external-maker',
-						market_index: 0,
-						market_type: 'perp',
-						side: 'long',
-						result: 'maker_not_competitive',
-					},
-				},
-			])
-		);
+		expect(metrics.indicativeFillVsQuoteOutcomeCount.calls).toHaveLength(0);
 	});
 
-	it('emits maker_not_competitive using the indicative maker label when indicative key is provided', async () => {
+	it('does not emit fill-vs-quote outcomes when the mapped indicative maker had no fresh quote', async () => {
+		const metrics = createMetricSinks();
+		const quoteState = new Map<string, any>([
+			['market_mms_perp_0', ['quoted-maker']],
+			[
+				'mm_quotes_v2_perp_0_quoted-maker',
+				{
+					ts: 1710000000000,
+					quotes: [{ bid_price: 99900000, bid_size: 1000000000 }],
+				},
+			],
+		]);
+
+		const { processFillEvent } = createTradeMetricsProcessor({
+			redisClientPrefix: 'dlob:',
+			indicativeQuoteMaxAgeMs: 1000,
+			indicativeQuotesCacheTtlMs: 250,
+			spotMarketPrecisionResolver: () => undefined,
+			publisherRedisClient: {
+				publish: async () => 1,
+			},
+			indicativeQuotesRedisClient: {
+				smembers: async (key) => quoteState.get(key) ?? [],
+				get: async (key) => quoteState.get(key),
+			},
+			metrics,
+			nowMsProvider: () => 1710000005000,
+		});
+
+		await processFillEvent({
+			ts: 1710000005,
+			marketIndex: 0,
+			marketType: 'perp',
+			filler: 'mock-filler',
+			takerFee: 0,
+			makerFee: 0,
+			quoteAssetAmountSurplus: 0,
+			baseAssetAmountFilled: 1,
+			quoteAssetAmountFilled: 100,
+			taker: 'mock-taker',
+			takerOrderId: 1,
+			takerOrderDirection: 'short',
+			takerOrderBaseAssetAmount: 1,
+			takerOrderCumulativeBaseAssetAmountFilled: 1,
+			takerOrderCumulativeQuoteAssetAmountFilled: 100,
+			maker: 'maker-user-account',
+			makerIndicativeKey: 'quoted-maker',
+			makerOrderId: 2,
+			makerOrderDirection: 'long',
+			makerOrderBaseAssetAmount: 1,
+			makerOrderCumulativeBaseAssetAmountFilled: 1,
+			makerOrderCumulativeQuoteAssetAmountFilled: 100,
+			oraclePrice: 100,
+			txSig: 'mock-no-quote',
+			slot: 5,
+			fillRecordId: 5,
+			action: 'fill',
+			actionExplanation: 'none',
+			referrerReward: 0,
+			bitFlags: 0,
+		});
+
+		expect(metrics.indicativeFillVsQuoteOutcomeCount.calls).toHaveLength(0);
+	});
+
+	it('does not count competitive fills when the mapped indicative maker is not competitive', async () => {
 		const metrics = createMetricSinks();
 		const quoteState = new Map<string, any>([
 			['market_mms_perp_0', ['quoted-maker']],
@@ -432,20 +443,85 @@ describe('tradeMetricsProcessor', () => {
 
 		await processFillEvent(fillEvent);
 
-		expect(metrics.indicativeQuoteEvaluationCount.calls).toEqual(
-			expect.arrayContaining([
+		expect(metrics.indicativeCompetitiveFillCount.calls).toHaveLength(0);
+	});
+
+	it('buckets fill-vs-quote for the mapped maker even when the quote was not competitive', async () => {
+		const metrics = createMetricSinks();
+		const quoteState = new Map<string, any>([
+			['market_mms_perp_0', ['quoted-maker']],
+			[
+				'mm_quotes_v2_perp_0_quoted-maker',
 				{
-					value: 1,
-					attributes: {
-						maker: 'quoted-maker',
-						market_index: 0,
-						market_type: 'perp',
-						side: 'long',
-						result: 'maker_not_competitive',
-					},
+					ts: 1710000000000,
+					quotes: [{ bid_price: 99900000, bid_size: 1000000000 }],
 				},
-			])
-		);
+			],
+		]);
+
+		const { processFillEvent } = createTradeMetricsProcessor({
+			redisClientPrefix: 'dlob:',
+			indicativeQuoteMaxAgeMs: 1000,
+			indicativeQuotesCacheTtlMs: 250,
+			spotMarketPrecisionResolver: () => undefined,
+			publisherRedisClient: {
+				publish: async () => 1,
+			},
+			indicativeQuotesRedisClient: {
+				smembers: async (key) => quoteState.get(key) ?? [],
+				get: async (key) => quoteState.get(key),
+			},
+			metrics,
+			nowMsProvider: () => 1710000000000,
+		});
+
+		await processFillEvent({
+			ts: 1710000000000,
+			marketIndex: 0,
+			marketType: 'perp',
+			filler: 'mock-filler',
+			takerFee: 0,
+			makerFee: 0,
+			quoteAssetAmountSurplus: 0,
+			baseAssetAmountFilled: 1,
+			quoteAssetAmountFilled: 100,
+			taker: 'mock-taker',
+			takerOrderId: 1,
+			takerOrderDirection: 'short',
+			takerOrderBaseAssetAmount: 1,
+			takerOrderCumulativeBaseAssetAmountFilled: 1,
+			takerOrderCumulativeQuoteAssetAmountFilled: 100,
+			maker: 'maker-user-account',
+			makerIndicativeKey: 'quoted-maker',
+			makerOrderId: 2,
+			makerOrderDirection: 'long',
+			makerOrderBaseAssetAmount: 1,
+			makerOrderCumulativeBaseAssetAmountFilled: 1,
+			makerOrderCumulativeQuoteAssetAmountFilled: 100,
+			oraclePrice: 100,
+			txSig: 'mock-5',
+			slot: 5,
+			fillRecordId: 5,
+			action: 'fill',
+			actionExplanation: 'none',
+			referrerReward: 0,
+			bitFlags: 0,
+		});
+
+		expect(metrics.indicativeCompetitiveFillCount.calls).toHaveLength(0);
+		expect(metrics.indicativeFillVsQuoteOutcomeCount.calls).toEqual([
+			{
+				value: 1,
+				attributes: {
+					maker: 'quoted-maker',
+					market_index: 0,
+					market_type: 'perp',
+					side: 'long',
+					bucket: 'tight',
+					direction: 'better',
+				},
+			},
+		]);
 	});
 
 	it('matches the latest quote at or before the fill timestamp', async () => {
@@ -570,21 +646,7 @@ describe('tradeMetricsProcessor', () => {
 				},
 			},
 		]);
-		expect(metrics.indicativeQuoteEvaluationCount.calls).toEqual(
-			expect.arrayContaining([
-				{
-					value: 1,
-					attributes: {
-						maker: 'good-maker',
-						market_index: 0,
-						market_type: 'perp',
-						side: 'long',
-						result: 'competitive',
-					},
-				},
-			])
-		);
-		expect(metrics.indicativeFillVsQuoteBucketCount.calls).toEqual([
+		expect(metrics.indicativeFillVsQuoteOutcomeCount.calls).toEqual([
 			{
 				value: 1,
 				attributes: {
@@ -593,6 +655,7 @@ describe('tradeMetricsProcessor', () => {
 					market_type: 'perp',
 					side: 'long',
 					bucket: 'very_tight',
+					direction: 'equal',
 				},
 			},
 			{
@@ -603,6 +666,7 @@ describe('tradeMetricsProcessor', () => {
 					market_type: 'perp',
 					side: 'long',
 					bucket: 'very_tight',
+					direction: 'equal',
 				},
 			},
 		]);
