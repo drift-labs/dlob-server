@@ -62,8 +62,7 @@
 	},
 	"resolutions": {
 		"@solana/web3.js": "1.98.0",
-		"@drift-labs/sdk": "2.161.0-beta.1",
-		"@triton-one/yellowstone-grpc": "5.0.4",
+		"@triton-one/yellowstone-grpc": "5.0.5",
 		"rpc-websockets": "9.3.2"
 	},
 	"scripts": {
