@@ -1,0 +1,43 @@
+# Lint / build checks for PRs and mainline branches (see BE-252).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, staging]
+
+jobs:
+  build:
+    runs-on: ubicloud
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: yarn
+
+      - name: Enable Corepack (uses packageManager from package.json)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Check single resolved version for gRPC-related packages
+        run: yarn check:grpc-deps
+
+      - name: Verify duplicate lockfile fixture fails the checker
+        run: |
+          set +e
+          YARN_LOCK_PATH=scripts/fixtures/yarn-lock-dup-yellowstone.lock yarn check:grpc-deps
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "Expected check to exit 1 on fixture with duplicate @triton-one/yellowstone-grpc, got $code"
+            exit 1
+          fi
+
+      - name: Build
+        run: yarn build

@@ -22,10 +22,11 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Install dependencies
-        run: |
-          yarn install
-          yarn build
+        run: yarn install
 
       # Handle sdk-update event (from protocol repo)
       # Payload: { version: "x.x.x" } - the SDK version
@@ -43,9 +44,10 @@ jobs:
         if: github.event_name == 'repository_dispatch' && github.event.client_payload.common-version
         run: yarn add @drift-labs/common@${{ github.event.client_payload.common-version }}
 
-      - name: Build after new dependency
-        if: github.event_name == 'repository_dispatch'
-        run: yarn run build
+      - name: Check gRPC deps and build
+        run: |
+          yarn check:grpc-deps
+          yarn build
 
       - name: Commit and push changes
         if: github.event_name == 'repository_dispatch'
