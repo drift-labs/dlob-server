@@ -10,6 +10,38 @@
     "@jridgewell/gen-mapping" "^0.3.5"
     "@jridgewell/trace-mapping" "^0.3.24"
 
+"@anchor-lang/borsh@^1.0.1":
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/@anchor-lang/borsh/-/borsh-1.0.2.tgz#00a4999907ec3daa83f370b2774ba84488f55d61"
+  integrity sha512-QQYhe6vaUwdLYndjFpbmmskRVoj49RoXsxRPrYtpkviuKFfWfii7bb3ziVi1bMBfl0rVMRFSVnJPKSo+EHWrmg==
+  dependencies:
+    bn.js "^5.1.2"
+    buffer-layout "^1.2.0"
+
+"@anchor-lang/core@1.0.1":
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/@anchor-lang/core/-/core-1.0.1.tgz#a194f02ed9713722a2e0e6197ec6a6c826c5aa34"
+  integrity sha512-SzZRCod5esNCFmOSwwpKp0Qx2tUiheEIR099LC56OED3BP35hLmsr6OX1xVgD2F/itR5j82xciDjFhbgHCaz2w==
+  dependencies:
+    "@anchor-lang/borsh" "^1.0.1"
+    "@anchor-lang/errors" "^1.0.1"
+    "@noble/hashes" "^1.3.1"
+    "@solana/web3.js" "^1.69.0"
+    bn.js "^5.1.2"
+    bs58 "^4.0.1"
+    buffer-layout "^1.2.2"
+    camelcase "^6.3.0"
+    cross-fetch "^3.1.5"
+    eventemitter3 "^4.0.7"
+    pako "^2.0.3"
+    superstruct "^0.15.4"
+    toml "^3.0.0"
+
+"@anchor-lang/errors@^1.0.1":
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/@anchor-lang/errors/-/errors-1.0.2.tgz#eff0c851502229b5db91854a67b976a78471c9fb"
+  integrity sha512-OZ9kpdUFdSnPzUeUnkeFYsjJbsgq26Sqv6yUljPVynuMJEADNJKL6ORL8Tb8YSVOPqHxoqggiDAelcVogGjKWg==
+
 "@aws-crypto/crc32@5.2.0":
   version "5.2.0"
   resolved "https://registry.yarnpkg.com/@aws-crypto/crc32/-/crc32-5.2.0.tgz#cfcc22570949c98c6689cfcbd2d693d36cdae2e1"
@@ -1113,6 +1145,26 @@
   resolved "https://registry.yarnpkg.com/@colors/colors/-/colors-1.6.0.tgz#ec6cd237440700bc23ca23087f513c75508958b0"
   integrity sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==
 
+"@coral-xyz/anchor-29@npm:@coral-xyz/anchor@0.29.0":
+  version "0.29.0"
+  resolved "https://registry.yarnpkg.com/@coral-xyz/anchor/-/anchor-0.29.0.tgz#bd0be95bedfb30a381c3e676e5926124c310ff12"
+  integrity sha512-eny6QNG0WOwqV0zQ7cs/b1tIuzZGmP7U7EcH+ogt4Gdbl8HDmIYVMh/9aTmYZPaFWjtUaI8qSn73uYEXWfATdA==
+  dependencies:
+    "@coral-xyz/borsh" "^0.29.0"
+    "@noble/hashes" "^1.3.1"
+    "@solana/web3.js" "^1.68.0"
+    bn.js "^5.1.2"
+    bs58 "^4.0.1"
+    buffer-layout "^1.2.2"
+    camelcase "^6.3.0"
+    cross-fetch "^3.1.5"
+    crypto-hash "^1.3.0"
+    eventemitter3 "^4.0.7"
+    pako "^2.0.3"
+    snake-case "^3.0.4"
+    superstruct "^0.15.4"
+    toml "^3.0.0"
+
 "@coral-xyz/anchor-30@npm:@coral-xyz/anchor@0.30.1":
   version "0.30.1"
   resolved "https://registry.yarnpkg.com/@coral-xyz/anchor/-/anchor-0.30.1.tgz#17f3e9134c28cd0ea83574c6bab4e410bcecec5d"
@@ -1156,6 +1208,25 @@
     eventemitter3 "^4.0.7"
     pako "^2.0.3"
     snake-case "^3.0.4"
+    superstruct "^0.15.4"
+    toml "^3.0.0"
+
+"@coral-xyz/anchor@npm:@anchor-lang/core@1.0.1":
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/@anchor-lang/core/-/core-1.0.1.tgz#a194f02ed9713722a2e0e6197ec6a6c826c5aa34"
+  integrity sha512-SzZRCod5esNCFmOSwwpKp0Qx2tUiheEIR099LC56OED3BP35hLmsr6OX1xVgD2F/itR5j82xciDjFhbgHCaz2w==
+  dependencies:
+    "@anchor-lang/borsh" "^1.0.1"
+    "@anchor-lang/errors" "^1.0.1"
+    "@noble/hashes" "^1.3.1"
+    "@solana/web3.js" "^1.69.0"
+    bn.js "^5.1.2"
+    bs58 "^4.0.1"
+    buffer-layout "^1.2.2"
+    camelcase "^6.3.0"
+    cross-fetch "^3.1.5"
+    eventemitter3 "^4.0.7"
+    pako "^2.0.3"
     superstruct "^0.15.4"
     toml "^3.0.0"
 
@@ -1213,13 +1284,14 @@
     winston "3.13.0"
     winston-slack-webhook-transport "2.3.5"
 
-"@drift-labs/sdk@2.163.0-beta.0":
-  version "2.163.0-beta.0"
-  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.163.0-beta.0.tgz#7b78efa4b78dad53785cd301673cd7a6896b8688"
-  integrity sha512-XYAlOENWfPJDgn/X/wXY7dRgi0RT5vg8H/hZsflq8vuJG5GFoky8hoM5AggBIsaRqiPD0PkWe1gV0h9YBnhO2g==
+"@drift-labs/sdk@2.163.0-beta.13":
+  version "2.163.0-beta.13"
+  resolved "https://registry.yarnpkg.com/@drift-labs/sdk/-/sdk-2.163.0-beta.13.tgz#00453116e2bae014597998331020f79af91957c7"
+  integrity sha512-6I1O1GrRD8HBqSkjR4ByvlIckcUtjLwcRhtuWukW8oJitrtyr/K2WRfaiom6/39VkNLBDGQkSLKliX/zuWIN+A==
   dependencies:
-    "@coral-xyz/anchor" "0.29.0"
-    "@coral-xyz/anchor-30" "npm:@coral-xyz/anchor@0.30.1"
+    "@anchor-lang/core" "1.0.1"
+    "@coral-xyz/anchor" "npm:@anchor-lang/core@1.0.1"
+    "@coral-xyz/anchor-29" "npm:@coral-xyz/anchor@0.29.0"
     "@ellipsis-labs/phoenix-sdk" "1.4.5"
     "@msgpack/msgpack" "^3.1.2"
     "@openbook-dex/openbook-v2" "0.2.10"
@@ -1229,14 +1301,12 @@
     "@pythnetwork/pyth-lazer-sdk" "6.0.0"
     "@solana/spl-token" "0.4.13"
     "@solana/web3.js" "1.98.0"
-    "@switchboard-xyz/common" "3.0.14"
-    "@switchboard-xyz/on-demand" "2.4.1"
     "@triton-one/yellowstone-grpc" "5.0.5"
-    anchor-bankrun "0.3.0"
+    anchor-bankrun "0.5.0"
     gill "^0.10.2"
     nanoid "3.3.4"
     node-cache "5.1.2"
-    solana-bankrun "0.3.1"
+    solana-bankrun "0.4.0"
     strict-event-emitter-types "2.0.0"
     tweetnacl "1.0.3"
     tweetnacl-util "0.15.1"
@@ -4322,7 +4392,7 @@
     "@solana/rpc-types" "5.1.0"
     "@solana/transaction-messages" "5.1.0"
 
-"@solana/web3.js@1.98.0", "@solana/web3.js@^1.17.0", "@solana/web3.js@^1.21.0", "@solana/web3.js@^1.30.2", "@solana/web3.js@^1.32.0", "@solana/web3.js@^1.36.0", "@solana/web3.js@^1.56.2", "@solana/web3.js@^1.68.0", "@solana/web3.js@^1.77.3", "@solana/web3.js@^1.98.0", "@solana/web3.js@^1.98.2":
+"@solana/web3.js@1.98.0", "@solana/web3.js@^1.17.0", "@solana/web3.js@^1.21.0", "@solana/web3.js@^1.30.2", "@solana/web3.js@^1.32.0", "@solana/web3.js@^1.36.0", "@solana/web3.js@^1.56.2", "@solana/web3.js@^1.68.0", "@solana/web3.js@^1.69.0", "@solana/web3.js@^1.77.3", "@solana/web3.js@^1.98.0", "@solana/web3.js@^1.98.2":
   version "1.98.0"
   resolved "https://registry.yarnpkg.com/@solana/web3.js/-/web3.js-1.98.0.tgz#21ecfe8198c10831df6f0cfde7f68370d0405917"
   integrity sha512-nz3Q5OeyGFpFCR+erX2f6JPt3sKhzhYcSycBCSPkWjzSVDh/Rr1FqTVMRe58FKO16/ivTUcuJjeS5MyBvpkbzA==
@@ -5115,6 +5185,11 @@ anchor-bankrun@0.3.0:
   version "0.3.0"
   resolved "https://registry.yarnpkg.com/anchor-bankrun/-/anchor-bankrun-0.3.0.tgz#3789fcecbc201a2334cff228b99cc0da8ef0167e"
   integrity sha512-PYBW5fWX+iGicIS5MIM/omhk1tQPUc0ELAnI/IkLKQJ6d75De/CQRh8MF2bU/TgGyFi6zEel80wUe3uRol9RrQ==
+
+anchor-bankrun@0.5.0:
+  version "0.5.0"
+  resolved "https://registry.yarnpkg.com/anchor-bankrun/-/anchor-bankrun-0.5.0.tgz#62b5905f6f0ed3799d4a37e6be045887c13d4f33"
+  integrity sha512-cNTRv7pN9dy+kiyJ3UlNVTg9hAXhY2HtNVNXJbP/2BkS9nOdLV0qKWhgW8UR9Go0gYuEOLKuPzrGL4HFAZPsVw==
 
 ansi-escapes@^4.2.1:
   version "4.3.2"
@@ -8817,25 +8892,50 @@ solana-bankrun-darwin-arm64@0.3.1:
   resolved "https://registry.yarnpkg.com/solana-bankrun-darwin-arm64/-/solana-bankrun-darwin-arm64-0.3.1.tgz#65ab6cd2e74eef260c38251f4c53721cf5b9030f"
   integrity sha512-9LWtH/3/WR9fs8Ve/srdo41mpSqVHmRqDoo69Dv1Cupi+o1zMU6HiEPUHEvH2Tn/6TDbPEDf18MYNfReLUqE6A==
 
+solana-bankrun-darwin-arm64@0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/solana-bankrun-darwin-arm64/-/solana-bankrun-darwin-arm64-0.4.0.tgz#eb0f3dfffb1675f6329a1e026b12d09222b33986"
+  integrity sha512-6dz78Teoz7ez/3lpRLDjktYLJb79FcmJk2me4/YaB8WiO6W43OdExU4h+d2FyuAryO2DgBPXaBoBNY/8J1HJmw==
+
 solana-bankrun-darwin-universal@0.3.1:
   version "0.3.1"
   resolved "https://registry.yarnpkg.com/solana-bankrun-darwin-universal/-/solana-bankrun-darwin-universal-0.3.1.tgz#bf691457cf046e8739c021ca11e48de5b4fefd45"
   integrity sha512-muGHpVYWT7xCd8ZxEjs/bmsbMp8XBqroYGbE4lQPMDUuLvsJEIrjGqs3MbxEFr71sa58VpyvgywWd5ifI7sGIg==
+
+solana-bankrun-darwin-universal@0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/solana-bankrun-darwin-universal/-/solana-bankrun-darwin-universal-0.4.0.tgz#0ac13ec7637b334b1030e6f51abecc50a254b5de"
+  integrity sha512-zSSw/Jx3KNU42pPMmrEWABd0nOwGJfsj7nm9chVZ3ae7WQg3Uty0hHAkn5NSDCj3OOiN0py9Dr1l9vmRJpOOxg==
 
 solana-bankrun-darwin-x64@0.3.1:
   version "0.3.1"
   resolved "https://registry.yarnpkg.com/solana-bankrun-darwin-x64/-/solana-bankrun-darwin-x64-0.3.1.tgz#c6f30c0a6bc3e1621ed90ce7562f26e93bf5303f"
   integrity sha512-oCaxfHyt7RC3ZMldrh5AbKfy4EH3YRMl8h6fSlMZpxvjQx7nK7PxlRwMeflMnVdkKKp7U8WIDak1lilIPd3/lg==
 
+solana-bankrun-darwin-x64@0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/solana-bankrun-darwin-x64/-/solana-bankrun-darwin-x64-0.4.0.tgz#f863c5a668858b7c44be51376bd05fb077c11c99"
+  integrity sha512-LWjs5fsgHFtyr7YdJR6r0Ho5zrtzI6CY4wvwPXr8H2m3b4pZe6RLIZjQtabCav4cguc14G0K8yQB2PTMuGub8w==
+
 solana-bankrun-linux-x64-gnu@0.3.1:
   version "0.3.1"
   resolved "https://registry.yarnpkg.com/solana-bankrun-linux-x64-gnu/-/solana-bankrun-linux-x64-gnu-0.3.1.tgz#78b522f1a581955a48f43a8fb560709c11301cfd"
   integrity sha512-PfRFhr7igGFNt2Ecfdzh3li9eFPB3Xhmk0Eib17EFIB62YgNUg3ItRnQQFaf0spazFjjJLnglY1TRKTuYlgSVA==
 
+solana-bankrun-linux-x64-gnu@0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/solana-bankrun-linux-x64-gnu/-/solana-bankrun-linux-x64-gnu-0.4.0.tgz#30fd7edaf3ff6585468138d3bed6eaed37878d9e"
+  integrity sha512-SrlVrb82UIxt21Zr/XZFHVV/h9zd2/nP25PMpLJVLD7Pgl2yhkhfi82xj3OjxoQqWe+zkBJ+uszA0EEKr67yNw==
+
 solana-bankrun-linux-x64-musl@0.3.1:
   version "0.3.1"
   resolved "https://registry.yarnpkg.com/solana-bankrun-linux-x64-musl/-/solana-bankrun-linux-x64-musl-0.3.1.tgz#1a044a132138a0084e82406ec7bf4939f06bed68"
   integrity sha512-6r8i0NuXg3CGURql8ISMIUqhE7Hx/O7MlIworK4oN08jYrP0CXdLeB/hywNn7Z8d1NXrox/NpYUgvRm2yIzAsQ==
+
+solana-bankrun-linux-x64-musl@0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/solana-bankrun-linux-x64-musl/-/solana-bankrun-linux-x64-musl-0.4.0.tgz#3c870218140b1307dc44b51d2282697c99f2e1e4"
+  integrity sha512-Nv328ZanmURdYfcLL+jwB1oMzX4ZzK57NwIcuJjGlf0XSNLq96EoaO5buEiUTo4Ls7MqqMyLbClHcrPE7/aKyA==
 
 solana-bankrun@0.3.1:
   version "0.3.1"
@@ -8850,6 +8950,20 @@ solana-bankrun@0.3.1:
     solana-bankrun-darwin-x64 "0.3.1"
     solana-bankrun-linux-x64-gnu "0.3.1"
     solana-bankrun-linux-x64-musl "0.3.1"
+
+solana-bankrun@0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/solana-bankrun/-/solana-bankrun-0.4.0.tgz#a48a7a74ce6c56be4ec7e200336026f65e90b8dc"
+  integrity sha512-NMmXUipPBkt8NgnyNO3SCnPERP6xT/AMNMBooljGA3+rG6NN8lmXJsKeLqQTiFsDeWD74U++QM/DgcueSWvrIg==
+  dependencies:
+    "@solana/web3.js" "^1.68.0"
+    bs58 "^4.0.1"
+  optionalDependencies:
+    solana-bankrun-darwin-arm64 "0.4.0"
+    solana-bankrun-darwin-universal "0.4.0"
+    solana-bankrun-darwin-x64 "0.4.0"
+    solana-bankrun-linux-x64-gnu "0.4.0"
+    solana-bankrun-linux-x64-musl "0.4.0"
 
 sonic-boom@^1.0.2:
   version "1.4.1"
