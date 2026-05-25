@@ -1,5 +1,8 @@
-import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
-import { sleep } from '@drift-labs/common';
+import {
+	RedisClient,
+	RedisClientPrefix,
+} from '@velocity-exchange/common/clients';
+import { sleep } from '@velocity-exchange/common';
 import {
 	BigNum,
 	DriftClient,
@@ -13,7 +16,7 @@ import {
 	ZERO,
 	calculateClaimablePnl,
 	decodeUser,
-} from '@drift-labs/sdk';
+} from '@velocity-exchange/sdk';
 import { Connection, Keypair } from '@solana/web3.js';
 import { logger } from '../utils/logger';
 import Bottleneck from 'bottleneck';
@@ -213,8 +216,7 @@ const buildUserMarketLists = (
 					if (
 						!perpPosition ||
 						(perpPosition.baseAssetAmount.eq(ZERO) &&
-							perpPosition.quoteAssetAmount.eq(ZERO) &&
-							perpPosition.lpShares.eq(ZERO))
+							perpPosition.quoteAssetAmount.eq(ZERO))
 					)
 						return [];
 

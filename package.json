@@ -1,5 +1,5 @@
 {
-	"name": "@drift-labs/dlob-server",
+	"name": "@velocity-exchange/dlob-server",
 	"version": "0.1.0",
 	"author": "wphan",
 	"main": "lib/index.js",
@@ -9,8 +9,8 @@
 		"@aws-sdk/client-kinesis": "^3.830.0",
 		"@aws-sdk/util-retry": "^3.374.0",
 		"@coral-xyz/anchor": "^0.29.0",
-		"@drift-labs/common": "1.0.20",
-		"@drift-labs/sdk": "2.163.0-beta.13",
+		"@velocity-exchange/common": "0.0.1",
+		"@velocity-exchange/sdk": "0.0.3",
 		"@opentelemetry/api": "^1.1.0",
 		"@opentelemetry/auto-instrumentations-node": "^0.31.1",
 		"@opentelemetry/exporter-prometheus": "^0.31.0",
@@ -60,7 +60,9 @@
 		"ts-node": "^10.9.1"
 	},
 	"resolutions": {
-		"@solana/web3.js": "1.98.0"
+		"@solana/web3.js": "1.98.0",
+		"@drift-labs/sdk": "npm:@velocity-exchange/sdk@0.0.3",
+		"@velocity-exchange/sdk": "0.0.3"
 	},
 	"scripts": {
 		"prepare": "husky install",

@@ -2,7 +2,7 @@ import {
 	OrderSubscriber,
 	OrderSubscriberConfig,
 	UserAccount,
-} from '@drift-labs/sdk';
+} from '@velocity-exchange/sdk';
 
 export class OrderSubscriberFiltered extends OrderSubscriber {
 	public ignoreList: string[];

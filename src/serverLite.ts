@@ -12,8 +12,11 @@ import {
 	initialize,
 	MarketType,
 	getVariant,
-} from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+} from '@velocity-exchange/sdk';
+import {
+	RedisClient,
+	RedisClientPrefix,
+} from '@velocity-exchange/common/clients';
 
 import { logger, setLogLevel } from './utils/logger';
 

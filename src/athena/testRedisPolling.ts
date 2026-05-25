@@ -1,4 +1,7 @@
-import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+import {
+	RedisClient,
+	RedisClientPrefix,
+} from '@velocity-exchange/common/clients';
 import { logger, setLogLevel } from '../utils/logger';
 
 setLogLevel('info');

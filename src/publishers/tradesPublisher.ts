@@ -19,8 +19,11 @@ import {
 	BN,
 	OrderActionRecord,
 	Event,
-} from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+} from '@velocity-exchange/sdk';
+import {
+	RedisClient,
+	RedisClientPrefix,
+} from '@velocity-exchange/common/clients';
 import express from 'express';
 
 import { Metrics } from '../core/metricsV2';
@@ -255,16 +258,20 @@ const main = async () => {
 
 	await slotSubscriber.subscribe();
 
-	const eventSubscriber = new EventSubscriber(connection, driftClient.program, {
-		maxTx: 8192,
-		maxEventsPerType: 4096,
-		orderBy: 'client',
-		commitment: 'confirmed',
-		logProviderConfig: {
-			type: 'polling',
-			frequency: 1000,
-		},
-	});
+	const eventSubscriber = new EventSubscriber(
+		connection,
+		driftClient.program as any,
+		{
+			maxTx: 8192,
+			maxEventsPerType: 4096,
+			orderBy: 'client',
+			commitment: 'confirmed',
+			logProviderConfig: {
+				type: 'polling',
+				frequency: 1000,
+			},
+		}
+	);
 
 	await eventSubscriber.subscribe();
 

@@ -17,8 +17,8 @@ import {
 	getLimitPrice,
 	isOperationPaused,
 	isVariant,
-} from '@drift-labs/sdk';
-import { RedisClient } from '@drift-labs/common/clients';
+} from '@velocity-exchange/sdk';
+import { RedisClient } from '@velocity-exchange/common/clients';
 import { logger } from '../utils/logger';
 import {
 	SubscriberLookup,
@@ -31,7 +31,7 @@ import {
 import { OffloadQueue } from '../utils/offload';
 import { setHealthStatus, HEALTH_STATUS } from '../core/healthCheck';
 import { CounterValue } from '../core/metricsV2';
-import { COMMON_MATH } from '@drift-labs/common';
+import { COMMON_MATH } from '@velocity-exchange/common';
 
 export type wsMarketArgs = {
 	marketIndex: number;
@@ -133,10 +133,7 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 				depth: -1,
 				includeVamm: false,
 				updateOnChange: false,
-				fallbackL2Generators: [
-					config.spotMarketSubscribers[market.marketIndex].phoenix,
-					config.spotMarketSubscribers[market.marketIndex].openbook,
-				].filter((a) => !!a),
+				fallbackL2Generators: [],
 				tickSize:
 					config.spotMarketSubscribers[market.marketIndex].tickSize ?? ONE,
 			});
@@ -187,7 +184,6 @@ export class DLOBSubscriberIO extends DLOBSubscriber {
 								marketArgs.marketIndex
 							),
 							true,
-							undefined,
 							new BN(this.slotSource.getSlot())
 						);
 

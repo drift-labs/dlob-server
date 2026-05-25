@@ -10,26 +10,21 @@ import {
 	SlotSource,
 	DriftClientSubscriptionConfig,
 	SlotSubscriber,
-	isVariant,
 	OracleInfo,
 	PerpMarketConfig,
 	SpotMarketConfig,
-	PhoenixSubscriber,
 	decodeName,
 	ONE,
-	WebSocketAccountSubscriberV2,
 	OrderSubscriberConfig,
 	GrpcConfigs,
-} from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+} from '@velocity-exchange/sdk';
+import {
+	RedisClient,
+	RedisClientPrefix,
+} from '@velocity-exchange/common/clients';
 
 import { logger, setLogLevel } from '../utils/logger';
-import {
-	SubscriberLookup,
-	getOpenbookSubscriber,
-	parsePositiveIntArray,
-	sleep,
-} from '../utils/utils';
+import { SubscriberLookup, parsePositiveIntArray, sleep } from '../utils/utils';
 import {
 	DLOBSubscriberIO,
 	wsMarketInfo,
@@ -49,7 +44,7 @@ import {
 	FillQualityAnalyticsRepository,
 	TakerFillVsOracleBpsRedisResult,
 } from '../athena/repositories/fillQualityAnalytics';
-import { CommitmentLevel } from '@drift-labs/sdk/lib/node/isomorphic/grpc';
+import { CommitmentLevel } from '@velocity-exchange/sdk/lib/node/isomorphic/grpc';
 
 setGlobalDispatcher(
 	new Agent({
@@ -304,76 +299,8 @@ const initializeAllMarketSubscribers = async (driftClient: DriftClient) => {
 
 	for (const market of driftClient.getSpotMarketAccounts()) {
 		markets[market.marketIndex] = {
-			phoenix: undefined,
+			tickSize: market?.orderTickSize ?? ONE,
 		};
-		const marketConfig = sdkConfig.SPOT_MARKETS[market.marketIndex];
-
-		if (marketConfig.phoenixMarket) {
-			const phoenixConfigAccount =
-				await driftClient.getPhoenixV1FulfillmentConfig(
-					marketConfig.phoenixMarket
-				);
-			if (isVariant(phoenixConfigAccount.status, 'enabled')) {
-				logger.info(
-					`Loading phoenix subscriber for spot market ${market.marketIndex}`
-				);
-				const bulkAccountLoader = new BulkAccountLoader(
-					driftClient.connection,
-					stateCommitment,
-					2_000
-				);
-				const phoenixSubscriber = new PhoenixSubscriber({
-					connection: driftClient.connection,
-					programId: new PublicKey(sdkConfig.PHOENIX),
-					marketAddress: phoenixConfigAccount.phoenixMarket,
-					accountSubscription: {
-						type: 'polling',
-						accountLoader: bulkAccountLoader,
-					},
-				});
-				await phoenixSubscriber.subscribe();
-				// Test get L2 to know if we should add
-				try {
-					phoenixSubscriber.getL2Asks();
-					phoenixSubscriber.getL2Bids();
-					markets[market.marketIndex].phoenix = phoenixSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding phoenix for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
-
-		if (marketConfig.openbookMarket) {
-			const openbookMarketAccount =
-				await driftClient.getOpenbookV2FulfillmentConfig(
-					marketConfig.openbookMarket
-				);
-
-			if (isVariant(openbookMarketAccount.status, 'enabled')) {
-				logger.info(
-					`Loading openbook subscriber for spot market ${market.marketIndex}`
-				);
-				const openbookSubscriber = getOpenbookSubscriber(
-					driftClient,
-					marketConfig,
-					sdkConfig
-				);
-				await openbookSubscriber.subscribe();
-				try {
-					openbookSubscriber.getL2Asks();
-					openbookSubscriber.getL2Bids();
-					markets[market.marketIndex].openbook = openbookSubscriber;
-				} catch (e) {
-					logger.info(
-						`Excluding openbook for ${market.marketIndex}, error: ${e}`
-					);
-				}
-			}
-		}
-
-		markets[market.marketIndex].tickSize = market?.orderTickSize ?? ONE;
 	}
 
 	return markets;
@@ -453,7 +380,6 @@ const main = async () => {
 			commitment: stateCommitment,
 			resubTimeoutMs: 30_000,
 			logResubMessages: true,
-			perpMarketAccountSubscriber: WebSocketAccountSubscriberV2,
 		};
 		slotSubscriber = new SlotSubscriber(connection, {
 			resubTimeoutMs: 10_000,
@@ -586,7 +512,6 @@ const main = async () => {
 		perpMarketInfos,
 		spotMarketInfos,
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
-		protectedMakerView: false,
 	});
 	await dlobSubscriber.subscribe();
 
@@ -601,7 +526,6 @@ const main = async () => {
 		perpMarketInfos,
 		spotMarketInfos,
 		killSwitchSlotDiffThreshold: KILLSWITCH_SLOT_DIFF_THRESHOLD,
-		protectedMakerView: false,
 		indicativeQuotesRedisClient: indicativeRedisClient,
 		enableOffloadQueue,
 		offloadQueueCounter: kinesisRecordsSentCounter,

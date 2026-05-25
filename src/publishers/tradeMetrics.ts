@@ -1,4 +1,4 @@
-import { BASE_PRECISION, PRICE_PRECISION } from '@drift-labs/sdk';
+import { BASE_PRECISION, PRICE_PRECISION } from '@velocity-exchange/sdk';
 
 export type FillEventStub = {
 	ts: number;

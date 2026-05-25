@@ -1,5 +1,5 @@
-import { AssetType, MarketTypeStr } from '@drift-labs/sdk';
-import { TradeOffsetPrice } from '@drift-labs/common';
+import { AssetType, MarketTypeStr } from '@velocity-exchange/sdk';
+import { TradeOffsetPrice } from '@velocity-exchange/common';
 
 export type AuctionParamArgs = {
 	// mandatory args

@@ -4,8 +4,11 @@ import * as http from 'http';
 import compression from 'compression';
 import { WebSocket, WebSocketServer } from 'ws';
 import { sleep, selectMostRecentBySlot, GROUPING_OPTIONS } from './utils/utils';
-import { DriftEnv, PerpMarkets, SpotMarkets } from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+import { DriftEnv, PerpMarkets, SpotMarkets } from '@velocity-exchange/sdk';
+import {
+	RedisClient,
+	RedisClientPrefix,
+} from '@velocity-exchange/common/clients';
 import { Metrics, GaugeValue } from './core/metricsV2';
 
 // Stream selector with hysteresis to prevent flip-flopping between sources
