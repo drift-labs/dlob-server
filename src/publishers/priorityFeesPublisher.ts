@@ -9,8 +9,11 @@ import {
 	Wallet,
 	BulkAccountLoader,
 	getMarketsAndOraclesForSubscription,
-} from '@drift-labs/sdk';
-import { RedisClient, RedisClientPrefix } from '@drift-labs/common/clients';
+} from '@velocity-exchange/sdk';
+import {
+	RedisClient,
+	RedisClientPrefix,
+} from '@velocity-exchange/common/clients';
 
 import { logger, setLogLevel } from '../utils/logger';
 import { sleep } from '../utils/utils';
@@ -202,18 +205,6 @@ const main = async () => {
 
 		const driftMarket = driftClient.getSpotMarketAccount(market.marketIndex);
 		pubkeysForMarket.push(driftMarket.pubkey.toString());
-
-		if (market.serumMarket) {
-			pubkeysForMarket.push(market.serumMarket.toString());
-		}
-
-		if (market.phoenixMarket) {
-			pubkeysForMarket.push(market.phoenixMarket.toString());
-		}
-
-		if (market.openbookMarket) {
-			pubkeysForMarket.push(market.openbookMarket.toString());
-		}
 
 		spotMarketPubkeys.push({
 			marketIndex: market.marketIndex,

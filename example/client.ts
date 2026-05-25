@@ -17,7 +17,7 @@ import {
     PRICE_PRECISION,
     Wallet,
     WrappedEvent,
-} from "@drift-labs/sdk";
+} from "@velocity-exchange/sdk";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 
 /********** SET THESE **********/

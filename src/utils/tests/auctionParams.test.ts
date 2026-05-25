@@ -7,7 +7,7 @@ import {
 	QUOTE_PRECISION,
 	PRICE_PRECISION,
 	BASE_PRECISION,
-} from '@drift-labs/sdk';
+} from '@velocity-exchange/sdk';
 import {
 	createMarketBasedAuctionParams,
 	mapToMarketOrderParams,

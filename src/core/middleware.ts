@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import responseTime = require('response-time');
 import { MEASURED_ENDPOINTS } from '../utils/constants';
-import { SlotSource } from '@drift-labs/sdk';
+import { SlotSource } from '@velocity-exchange/sdk';
 import {
 	evaluateHealth,
 	globalHealthState,

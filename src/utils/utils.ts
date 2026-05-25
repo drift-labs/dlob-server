@@ -6,12 +6,8 @@ import {
 	L2OrderBook,
 	L3OrderBook,
 	MarketType,
-	OpenbookV2Subscriber,
 	OraclePriceData,
-	PhoenixSubscriber,
 	PublicKey,
-	SerumSubscriber,
-	SpotMarketConfig,
 	decodeUser,
 	isVariant,
 	PositionDirection,
@@ -23,9 +19,9 @@ import {
 	MainnetSpotMarkets,
 	DevnetSpotMarkets,
 	PERCENTAGE_PRECISION_EXP,
-} from '@drift-labs/sdk';
-import { RedisClient } from '@drift-labs/common/clients';
-import { TradeOffsetPrice } from '@drift-labs/common';
+} from '@velocity-exchange/sdk';
+import { RedisClient } from '@velocity-exchange/common/clients';
+import { TradeOffsetPrice } from '@velocity-exchange/common';
 import { logger } from './logger';
 import { NextFunction, Request, Response } from 'express';
 import FEATURE_FLAGS from './featureFlags';
@@ -33,7 +29,7 @@ import { Connection } from '@solana/web3.js';
 import { wsMarketArgs } from 'src/dlob-subscriber/DLOBSubscriberIO';
 import { DEFAULT_AUCTION_PARAMS, MID_MAJOR_MARKETS } from './constants';
 import { AuctionParamArgs } from './types';
-import { COMMON_MATH, ENUM_UTILS } from '@drift-labs/common';
+import { COMMON_MATH, ENUM_UTILS } from '@velocity-exchange/common';
 import { TakerFillVsOracleBpsRedisResult } from '../athena/repositories/fillQualityAnalytics';
 
 const MAX_FILL_QUALITY_AGE_MS = 10 * 60 * 1000; // 10 minutes
@@ -614,60 +610,8 @@ export function errorHandler(
 	}
 }
 
-/**
- * Spot market utils
- */
-
-export const getPhoenixSubscriber = (
-	driftClient: DriftClient,
-	marketConfig: SpotMarketConfig,
-	sdkConfig
-): PhoenixSubscriber => {
-	return new PhoenixSubscriber({
-		connection: driftClient.connection,
-		programId: new PublicKey(sdkConfig.PHOENIX),
-		marketAddress: marketConfig.phoenixMarket,
-		accountSubscription: {
-			type: 'websocket',
-		},
-	});
-};
-
-export const getSerumSubscriber = (
-	driftClient: DriftClient,
-	marketConfig: SpotMarketConfig,
-	sdkConfig
-): SerumSubscriber => {
-	return new SerumSubscriber({
-		connection: driftClient.connection,
-		programId: new PublicKey(sdkConfig.SERUM_V3),
-		marketAddress: marketConfig.serumMarket,
-		accountSubscription: {
-			type: 'websocket',
-		},
-	});
-};
-
-export const getOpenbookSubscriber = (
-	driftClient: DriftClient,
-	marketConfig: SpotMarketConfig,
-	sdkConfig
-): OpenbookV2Subscriber => {
-	return new OpenbookV2Subscriber({
-		connection: driftClient.connection,
-		programId: new PublicKey(sdkConfig.OPENBOOK),
-		marketAddress: marketConfig.openbookMarket,
-		accountSubscription: {
-			type: 'websocket',
-		},
-	});
-};
-
 export type SubscriberLookup = {
 	[marketIndex: number]: {
-		phoenix?: PhoenixSubscriber;
-		serum?: SerumSubscriber;
-		openbook?: OpenbookV2Subscriber;
 		tickSize?: BN;
 	};
 };

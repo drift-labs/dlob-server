@@ -1,4 +1,4 @@
-import { RedisClient } from '@drift-labs/common/clients';
+import { RedisClient } from '@velocity-exchange/common/clients';
 
 require('dotenv').config();
 
